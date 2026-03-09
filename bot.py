@@ -6,6 +6,7 @@ from pathlib import Path
 
 import anthropic
 import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
@@ -20,6 +21,19 @@ ANTHROPIC_KEY = os.environ["ANTHROPIC_API_KEY"]
 PIPELINE_PATH = os.environ.get("PIPELINE_PATH", "pipeline.xlsx")
 
 client = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
+
+# ── Styling constants ──
+TEAL = "1ABC9C"
+NAVY = "0F1B2D"
+WHITE = "FFFFFF"
+LIGHT_GRAY = "F0F2F5"
+MED_GRAY = "DDE1E6"
+TEXT_COLOR = "2C3E50"
+
+thin_border = Border(
+    left=Side(style='thin', color=MED_GRAY), right=Side(style='thin', color=MED_GRAY),
+    top=Side(style='thin', color=MED_GRAY), bottom=Side(style='thin', color=MED_GRAY),
+)
 
 # ── Pipeline Excel helpers ──
 
@@ -242,6 +256,379 @@ def get_pipeline_summary():
     )
 
 
+# ── Ensure sheets exist ──
+
+def ensure_sheet(sheet_name, headers, col_widths=None):
+    """Create a sheet if it doesn't exist in the pipeline."""
+    wb = openpyxl.load_workbook(PIPELINE_PATH)
+    if sheet_name not in wb.sheetnames:
+        ws = wb.create_sheet(sheet_name)
+        # Title row
+        ws.merge_cells(f'A1:{chr(64+len(headers))}1')
+        c = ws['A1']
+        c.value = sheet_name.upper()
+        c.font = Font(name='Aptos', size=18, bold=True, color=WHITE)
+        c.fill = PatternFill(start_color=NAVY, end_color=NAVY, fill_type='solid')
+        c.alignment = Alignment(horizontal='left', vertical='center', indent=1)
+        ws.row_dimensions[1].height = 50
+        # Headers
+        for i, h in enumerate(headers, 1):
+            cell = ws.cell(row=2, column=i, value=h)
+            cell.font = Font(name='Aptos', size=10, bold=True, color=WHITE)
+            cell.fill = PatternFill(start_color=TEAL, end_color=TEAL, fill_type='solid')
+            cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+            cell.border = thin_border
+            if col_widths and i <= len(col_widths):
+                ws.column_dimensions[chr(64+i)].width = col_widths[i-1]
+        ws.freeze_panes = 'A3'
+        wb.save(PIPELINE_PATH)
+    wb.close()
+
+
+def init_extra_sheets():
+    """Initialize Meetings and Insurance Book sheets if they don't exist."""
+    ensure_sheet("Meetings",
+                 ["Date", "Time", "Prospect", "Type", "Prep Notes", "Status"],
+                 [14, 10, 24, 18, 40, 14])
+    ensure_sheet("Insurance Book",
+                 ["Name", "Phone", "Address", "Policy Start", "Status", "Last Called", "Notes", "Retry Date"],
+                 [24, 16, 30, 14, 14, 14, 35, 14])
+
+
+# ── Meeting helpers ──
+
+def add_meeting(data: dict) -> str:
+    """Add a meeting to the Meetings sheet."""
+    init_extra_sheets()
+    wb = openpyxl.load_workbook(PIPELINE_PATH)
+    ws = wb["Meetings"]
+
+    target_row = None
+    for r in range(3, 103):
+        if not ws.cell(row=r, column=1).value:
+            target_row = r
+            break
+
+    if not target_row:
+        wb.close()
+        return "Meetings sheet is full!"
+
+    fields = {"date": 1, "time": 2, "prospect": 3, "type": 4, "prep_notes": 5, "status": 6}
+    for field, col in fields.items():
+        if field in data and data[field]:
+            ws.cell(row=target_row, column=col, value=data[field])
+
+    if not data.get("status"):
+        ws.cell(row=target_row, column=6, value="Scheduled")
+
+    # Auto-fill prep notes from pipeline
+    if data.get("prospect") and not data.get("prep_notes"):
+        prospects = read_pipeline()
+        for p in prospects:
+            if data["prospect"].lower() in p["name"].lower():
+                notes = f"{p['product']} | {p['stage']}"
+                if p["notes"]:
+                    notes += f" | {p['notes'][:100]}"
+                ws.cell(row=target_row, column=5, value=notes)
+                break
+
+    wb.save(PIPELINE_PATH)
+    wb.close()
+    return f"Meeting added: {data.get('prospect', '?')} on {data.get('date', '?')} at {data.get('time', '?')}"
+
+
+def get_meetings(date_filter: str = "") -> str:
+    """Get upcoming meetings, optionally filtered by date."""
+    init_extra_sheets()
+    wb = openpyxl.load_workbook(PIPELINE_PATH)
+    ws = wb["Meetings"]
+
+    meetings = []
+    for r in range(3, 103):
+        d = ws.cell(row=r, column=1).value
+        if not d:
+            continue
+        status = str(ws.cell(row=r, column=6).value or "Scheduled")
+        if status == "Cancelled":
+            continue
+        meetings.append({
+            "date": str(d),
+            "time": str(ws.cell(row=r, column=2).value or ""),
+            "prospect": str(ws.cell(row=r, column=3).value or ""),
+            "type": str(ws.cell(row=r, column=4).value or ""),
+            "prep_notes": str(ws.cell(row=r, column=5).value or ""),
+            "status": status,
+            "row": r,
+        })
+    wb.close()
+
+    if date_filter:
+        meetings = [m for m in meetings if date_filter in m["date"]]
+
+    if not meetings:
+        return "No meetings scheduled."
+
+    return json.dumps(meetings, default=str)
+
+
+def cancel_meeting(prospect: str) -> str:
+    """Cancel a meeting by prospect name."""
+    init_extra_sheets()
+    wb = openpyxl.load_workbook(PIPELINE_PATH)
+    ws = wb["Meetings"]
+
+    for r in range(3, 103):
+        name = ws.cell(row=r, column=3).value
+        if name and prospect.lower() in str(name).lower():
+            ws.cell(row=r, column=6, value="Cancelled")
+            wb.save(PIPELINE_PATH)
+            wb.close()
+            return f"Cancelled meeting with {name}."
+
+    wb.close()
+    return f"No meeting found for '{prospect}'."
+
+
+# ── Insurance Book helpers ──
+
+def upload_insurance_book(file_path: str) -> str:
+    """Process an uploaded insurance book CSV/Excel into the Insurance Book sheet."""
+    # This is handled via the document handler - just a placeholder for the tool
+    return "Use the file upload feature to send your insurance book."
+
+
+def get_next_calls(count: int = 5) -> str:
+    """Get next prospects to call from the insurance book."""
+    init_extra_sheets()
+    wb = openpyxl.load_workbook(PIPELINE_PATH)
+
+    if "Insurance Book" not in wb.sheetnames:
+        wb.close()
+        return "No insurance book uploaded yet. Send me the file."
+
+    ws = wb["Insurance Book"]
+    today = date.today()
+    calls = []
+
+    for r in range(3, 503):
+        name = ws.cell(row=r, column=1).value
+        if not name:
+            continue
+
+        status = str(ws.cell(row=r, column=5).value or "Not Called")
+        if status in ("Not Interested", "Client", "Booked Meeting"):
+            continue
+
+        # Check retry date for "No Answer" / "Callback"
+        if status in ("No Answer", "Callback"):
+            retry = ws.cell(row=r, column=8).value
+            if retry:
+                try:
+                    retry_date = datetime.strptime(str(retry).split(" ")[0], "%Y-%m-%d").date()
+                    if retry_date > today:
+                        continue
+                except (ValueError, IndexError):
+                    pass
+
+        calls.append({
+            "row": r,
+            "name": str(name),
+            "phone": str(ws.cell(row=r, column=2).value or ""),
+            "address": str(ws.cell(row=r, column=3).value or ""),
+            "policy_start": str(ws.cell(row=r, column=4).value or ""),
+            "notes": str(ws.cell(row=r, column=7).value or ""),
+        })
+
+        if len(calls) >= count:
+            break
+
+    wb.close()
+
+    if not calls:
+        return "No more calls in the book. You've been through everyone!"
+
+    return json.dumps(calls, default=str)
+
+
+def log_book_call(name: str, outcome: str, notes: str = "", retry_days: int = 3) -> str:
+    """Log a call outcome in the insurance book."""
+    init_extra_sheets()
+    wb = openpyxl.load_workbook(PIPELINE_PATH)
+    ws = wb["Insurance Book"]
+
+    target_row = None
+    matched_name = None
+    for r in range(3, 503):
+        cell_val = ws.cell(row=r, column=1).value
+        if cell_val and name.lower() in str(cell_val).lower():
+            target_row = r
+            matched_name = cell_val
+            break
+
+    if not target_row:
+        wb.close()
+        return f"Could not find '{name}' in the insurance book."
+
+    today_str = date.today().strftime("%Y-%m-%d")
+    ws.cell(row=target_row, column=6, value=today_str)  # Last Called
+
+    result_msg = f"Logged call with {matched_name}: {outcome}"
+
+    if outcome.lower() in ("not interested", "declined", "remove"):
+        ws.cell(row=target_row, column=5, value="Not Interested")
+    elif outcome.lower() in ("no answer", "voicemail", "no pick up"):
+        ws.cell(row=target_row, column=5, value="No Answer")
+        retry = (date.today() + timedelta(days=retry_days)).strftime("%Y-%m-%d")
+        ws.cell(row=target_row, column=8, value=retry)
+        result_msg += f". Retry in {retry_days} days."
+    elif "meeting" in outcome.lower() or "booked" in outcome.lower():
+        ws.cell(row=target_row, column=5, value="Booked Meeting")
+        result_msg += ". Added to pipeline as New Lead."
+        # Also add to pipeline
+        phone = str(ws.cell(row=target_row, column=2).value or "")
+        wb.save(PIPELINE_PATH)
+        wb.close()
+        add_prospect({"name": str(matched_name), "phone": phone, "source": "Insurance Book", "stage": "New Lead", "priority": "Warm"})
+        return result_msg
+    elif "callback" in outcome.lower():
+        ws.cell(row=target_row, column=5, value="Callback")
+        retry = (date.today() + timedelta(days=retry_days)).strftime("%Y-%m-%d")
+        ws.cell(row=target_row, column=8, value=retry)
+        result_msg += f". Callback set for {retry}."
+    else:
+        ws.cell(row=target_row, column=5, value=outcome)
+
+    if notes:
+        ws.cell(row=target_row, column=7, value=notes)
+
+    wb.save(PIPELINE_PATH)
+    wb.close()
+    return result_msg
+
+
+def get_book_stats() -> str:
+    """Get insurance book calling stats."""
+    init_extra_sheets()
+    wb = openpyxl.load_workbook(PIPELINE_PATH)
+
+    if "Insurance Book" not in wb.sheetnames:
+        wb.close()
+        return "No insurance book uploaded yet."
+
+    ws = wb["Insurance Book"]
+
+    total = 0
+    not_called = 0
+    no_answer = 0
+    not_interested = 0
+    booked = 0
+    callback = 0
+    client = 0
+
+    for r in range(3, 503):
+        name = ws.cell(row=r, column=1).value
+        if not name:
+            continue
+        total += 1
+        status = str(ws.cell(row=r, column=5).value or "Not Called")
+        if status == "Not Called":
+            not_called += 1
+        elif status == "No Answer":
+            no_answer += 1
+        elif status == "Not Interested":
+            not_interested += 1
+        elif status == "Booked Meeting":
+            booked += 1
+        elif status == "Callback":
+            callback += 1
+        elif status == "Client":
+            client += 1
+
+    wb.close()
+
+    called = total - not_called
+    conversion = f"{booked/called*100:.1f}%" if called > 0 else "0%"
+
+    return (
+        f"Insurance Book Stats:\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"Total in book: {total}\n"
+        f"Called: {called} | Remaining: {not_called}\n"
+        f"No answer (retry queued): {no_answer}\n"
+        f"Callbacks pending: {callback}\n"
+        f"Meetings booked: {booked}\n"
+        f"Not interested: {not_interested}\n"
+        f"Conversion rate: {conversion}\n"
+        f"Progress: {called}/{total} ({called/total*100:.0f}%)" if total > 0 else "Insurance book is empty."
+    )
+
+
+# ── Email drafting helper ──
+
+def draft_email(prospect_name: str, email_type: str, details: str = "") -> str:
+    """Draft an email for a prospect using Claude. Returns the drafted email text."""
+    # Get prospect context
+    prospects = read_pipeline()
+    context = ""
+    for p in prospects:
+        if prospect_name.lower() in p["name"].lower():
+            context = json.dumps(p, default=str)
+            break
+
+    prompt = f"""Draft a short, casual email for Marc (financial planner at Calm Money, London Ontario) to send to a prospect.
+
+Prospect info: {context}
+Email type: {email_type}
+Additional details: {details}
+
+Marc's style:
+- Very casual and direct, like texting a friend
+- Short sentences, no fluff
+- Signs off as "Marc" or "Marc / Calm Money"
+- For quotes, just lists prices simply (e.g., "$81/mo for $500K")
+- No formal language, no "I hope this finds you well"
+
+Return ONLY the email (subject line + body). No commentary."""
+
+    response = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=1024,
+        messages=[{"role": "user", "content": prompt}],
+    )
+
+    return response.content[0].text
+
+
+# ── Otter transcript processing ──
+
+def process_transcript(transcript: str) -> str:
+    """Process an Otter meeting transcript. Returns structured summary."""
+    prompt = f"""You are a sales assistant for Marc, a financial planner who sells life insurance and wealth management.
+
+Analyze this meeting transcript and return a structured summary:
+
+TRANSCRIPT:
+{transcript[:4000]}
+
+Return in this EXACT format:
+PROSPECT: [name]
+SUMMARY: [2-3 sentence summary of key discussion points]
+FINANCIAL SITUATION: [income, assets, debts mentioned]
+NEEDS: [what they need - insurance, investments, retirement, etc.]
+NEXT STEPS: [specific action items with dates if mentioned]
+FOLLOW-UP EMAIL: [draft a short casual follow-up email in Marc's style]
+
+Marc's email style: casual, direct, short. Signs off as "Marc / Calm Money"."""
+
+    response = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=2048,
+        messages=[{"role": "user", "content": prompt}],
+    )
+
+    return response.content[0].text
+
+
 # ── Available tools for Claude ──
 
 TOOLS = [
@@ -323,6 +710,96 @@ TOOLS = [
         "description": "Get a full summary of the current pipeline: active deals, value, stages, overdue items.",
         "input_schema": {"type": "object", "properties": {}, "required": []},
     },
+    {
+        "name": "add_meeting",
+        "description": "Schedule a meeting with a prospect. Auto-fills prep notes from pipeline.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "date": {"type": "string", "description": "Meeting date in YYYY-MM-DD format"},
+                "time": {"type": "string", "description": "Meeting time (e.g., '2:00 PM')"},
+                "prospect": {"type": "string", "description": "Prospect name"},
+                "type": {"type": "string", "enum": ["Discovery Call", "Plan Presentation", "Review", "Follow-Up", "Closing", "Other"]},
+            },
+            "required": ["date", "prospect"],
+        },
+    },
+    {
+        "name": "get_meetings",
+        "description": "Get scheduled meetings. Optionally filter by date (YYYY-MM-DD) or 'this week'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "date_filter": {"type": "string", "description": "Date to filter by (YYYY-MM-DD), or leave empty for all"},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "cancel_meeting",
+        "description": "Cancel a meeting by prospect name.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "prospect": {"type": "string", "description": "Prospect name to cancel meeting for"},
+            },
+            "required": ["prospect"],
+        },
+    },
+    {
+        "name": "get_next_calls",
+        "description": "Get the next prospects to call from the insurance book.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "count": {"type": "integer", "description": "Number of calls to get (default 5)"},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "log_book_call",
+        "description": "Log the outcome of a call from the insurance book. Outcomes: 'not interested', 'no answer', 'booked meeting [date]', 'callback [date]'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Person's name from the book"},
+                "outcome": {"type": "string", "description": "Call outcome"},
+                "notes": {"type": "string", "description": "Any notes"},
+                "retry_days": {"type": "integer", "description": "Days until retry for no answer/callback (default 3)"},
+            },
+            "required": ["name", "outcome"],
+        },
+    },
+    {
+        "name": "get_book_stats",
+        "description": "Get insurance book calling statistics: total, called, remaining, meetings booked, conversion rate.",
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "draft_email",
+        "description": "Draft an email for a prospect. Types: 'follow-up', 'quote', 'intro', 'check-in', 'referral request'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "prospect_name": {"type": "string", "description": "Prospect name"},
+                "email_type": {"type": "string", "description": "Type of email to draft"},
+                "details": {"type": "string", "description": "Additional details (e.g., quote prices, context)"},
+            },
+            "required": ["prospect_name", "email_type"],
+        },
+    },
+    {
+        "name": "process_transcript",
+        "description": "Process a meeting transcript (from Otter or pasted). Extracts summary, needs, next steps, and drafts follow-up email. Use when receiving a long message that looks like a meeting transcript.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "transcript": {"type": "string", "description": "The meeting transcript text"},
+            },
+            "required": ["transcript"],
+        },
+    },
 ]
 
 TOOL_FUNCTIONS = {
@@ -332,24 +809,41 @@ TOOL_FUNCTIONS = {
     "add_activity": lambda args: add_activity(args),
     "get_overdue": lambda _: get_overdue(),
     "get_pipeline_summary": lambda _: get_pipeline_summary(),
+    "add_meeting": lambda args: add_meeting(args),
+    "get_meetings": lambda args: get_meetings(args.get("date_filter", "")),
+    "cancel_meeting": lambda args: cancel_meeting(args["prospect"]),
+    "get_next_calls": lambda args: get_next_calls(args.get("count", 5)),
+    "log_book_call": lambda args: log_book_call(args["name"], args["outcome"], args.get("notes", ""), args.get("retry_days", 3)),
+    "get_book_stats": lambda _: get_book_stats(),
+    "draft_email": lambda args: draft_email(args["prospect_name"], args["email_type"], args.get("details", "")),
+    "process_transcript": lambda args: process_transcript(args["transcript"]),
 }
 
-SYSTEM_PROMPT = """You are Calm Money Pipeline Bot — a sales assistant for Matthew, a financial planner in London, Ontario who sells life insurance and wealth management.
+SYSTEM_PROMPT = """You are Calm Money Sales Assistant — Marc's personal sales assistant. Marc is a financial planner in London, Ontario who sells life insurance and wealth management.
 
-Your job is to manage his sales pipeline via an Excel spreadsheet. You receive natural language messages and use tools to read/write the pipeline.
+You manage his sales pipeline, meetings, insurance book prospecting, and draft emails. You use tools to read/write an Excel-based CRM.
 
 Key rules:
-- Be concise. This is a text chat, not an email. Short replies.
-- When adding prospects, default stage to "New Lead" and first_contact to today unless specified.
-- When the user says "move X to Y" — update the prospect's stage.
-- When the user says "mark X as hot/warm/cold" — update priority.
-- When dates are relative ("friday", "next week", "tomorrow"), calculate the actual YYYY-MM-DD date. Today is """ + date.today().strftime("%Y-%m-%d") + """.
-- For "log:" messages, add to the Activity Log AND update the prospect's next_followup if a next step involves a date.
-- For "pipeline", "update", "summary", "how's it going" — give a pipeline summary.
-- For "overdue", "who's late", "follow-ups" — check overdue follow-ups.
-- After any write action, confirm what you did in 1-2 lines.
-- Use $ for dollar amounts, keep it casual and friendly.
-- If something is ambiguous, make your best guess and confirm what you did so Matthew can correct if needed.
+- Be concise. This is a text chat. Short replies.
+- When adding prospects, default stage to "New Lead" and first_contact to today.
+- "move X to Y" → update stage. "mark X as hot" → update priority.
+- Relative dates ("friday", "next week", "tomorrow") → calculate YYYY-MM-DD. Today is """ + date.today().strftime("%Y-%m-%d") + """.
+- "log:" messages → add to Activity Log AND update next_followup if applicable.
+- "pipeline" / "summary" → pipeline summary.
+- "overdue" / "who's late" → check overdue follow-ups.
+- "meeting with X on [date] at [time]" → add_meeting.
+- "what's on this week" / "my meetings" → get_meetings.
+- "cancel meeting with X" → cancel_meeting.
+- "calls" / "who should I call" → get_next_calls from insurance book.
+- "called X, [outcome]" → log_book_call. Outcomes: not interested, no answer, booked meeting, callback.
+- "book stats" → get_book_stats.
+- "draft email/follow-up/quote for X" → draft_email. Include any details (prices, context).
+- Long messages (500+ chars) that look like meeting transcripts → process_transcript.
+- After any write action, confirm in 1-2 lines.
+- Keep it casual and friendly. Use $ for money.
+- If ambiguous, make your best guess and confirm.
+
+Marc's email style: casual, direct, short. No corporate speak. Signs off as "Marc" or "Marc / Calm Money".
 """
 
 
@@ -440,43 +934,170 @@ async def export(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle uploaded Excel files — replace the pipeline."""
+    """Handle uploaded files — pipeline Excel or insurance book CSV/Excel."""
     doc = update.message.document
-    if not doc.file_name.endswith(('.xlsx', '.xls')):
-        await update.message.reply_text("That's not an Excel file. Send me an .xlsx file to update the pipeline.")
+    fname = doc.file_name.lower()
+
+    # CSV = insurance book
+    if fname.endswith('.csv'):
+        try:
+            import csv
+            import io
+
+            file = await doc.get_file()
+            file_bytes = await file.download_as_bytearray()
+            text = file_bytes.decode('utf-8')
+            reader = csv.reader(io.StringIO(text))
+            rows = list(reader)
+
+            if not rows:
+                await update.message.reply_text("CSV is empty.")
+                return
+
+            init_extra_sheets()
+            wb = openpyxl.load_workbook(PIPELINE_PATH)
+            ws = wb["Insurance Book"]
+
+            # Clear existing data
+            for r in range(3, 503):
+                for c in range(1, 9):
+                    ws.cell(row=r, column=c, value=None)
+
+            # Import — try to map columns intelligently
+            header = [h.lower().strip() for h in rows[0]] if rows else []
+            data_rows = rows[1:] if len(rows) > 1 else rows
+
+            count = 0
+            for i, row in enumerate(data_rows):
+                if not row or not row[0].strip():
+                    continue
+                r = 3 + count
+                # Column A: Name (first column or 'name' column)
+                ws.cell(row=r, column=1, value=row[0].strip())
+                # Try to map other columns
+                for j, val in enumerate(row[1:], 1):
+                    if j < len(header):
+                        h = header[j] if j < len(header) else ""
+                        if "phone" in h or "tel" in h:
+                            ws.cell(row=r, column=2, value=val.strip())
+                        elif "address" in h or "addr" in h:
+                            ws.cell(row=r, column=3, value=val.strip())
+                        elif "date" in h or "start" in h or "inception" in h:
+                            ws.cell(row=r, column=4, value=val.strip())
+                        else:
+                            # Put remaining data in notes
+                            existing = ws.cell(row=r, column=7).value or ""
+                            ws.cell(row=r, column=7, value=f"{existing} {val.strip()}".strip())
+                    elif j == 1:
+                        ws.cell(row=r, column=2, value=val.strip())  # Assume phone
+                    elif j == 2:
+                        ws.cell(row=r, column=3, value=val.strip())  # Assume address
+
+                ws.cell(row=r, column=5, value="Not Called")
+                count += 1
+
+            wb.save(PIPELINE_PATH)
+            wb.close()
+
+            await update.message.reply_text(
+                f"Insurance book loaded! {count} contacts imported.\n"
+                f"Text 'calls' to get your first batch."
+            )
+            logger.info(f"Insurance book imported: {count} contacts from {doc.file_name}")
+
+        except Exception as e:
+            await update.message.reply_text(f"Error importing CSV: {str(e)[:200]}")
+        return
+
+    if not fname.endswith(('.xlsx', '.xls')):
+        await update.message.reply_text("Send me an .xlsx or .csv file.")
         return
 
     try:
+        # Check if it looks like a pipeline file or an insurance book
         file = await doc.get_file()
-        await file.download_to_drive(PIPELINE_PATH)
 
-        # Verify it's valid
-        wb = openpyxl.load_workbook(PIPELINE_PATH)
-        sheets = wb.sheetnames
-        wb.close()
+        if "insurance" in fname or "book" in fname or "home" in fname or "client" in fname:
+            # Import as insurance book
+            await file.download_to_drive("/tmp/book_upload.xlsx")
+            src_wb = openpyxl.load_workbook("/tmp/book_upload.xlsx")
+            src_ws = src_wb.active
 
-        await update.message.reply_text(
-            f"Pipeline updated from your file.\n"
-            f"Sheets: {', '.join(sheets)}\n"
-            f"All changes are live now."
-        )
-        logger.info(f"Pipeline replaced from uploaded file: {doc.file_name}")
+            init_extra_sheets()
+            wb = openpyxl.load_workbook(PIPELINE_PATH)
+            ws = wb["Insurance Book"]
+
+            for r in range(3, 503):
+                for c in range(1, 9):
+                    ws.cell(row=r, column=c, value=None)
+
+            count = 0
+            start = 2 if src_ws.cell(row=1, column=1).value and any(
+                h in str(src_ws.cell(row=1, column=1).value).lower()
+                for h in ["name", "client", "first", "last"]
+            ) else 1
+
+            for r in range(start, src_ws.max_row + 1):
+                name = src_ws.cell(row=r, column=1).value
+                if not name:
+                    continue
+                target = 3 + count
+                ws.cell(row=target, column=1, value=str(name))
+                for c in range(2, min(src_ws.max_column + 1, 8)):
+                    val = src_ws.cell(row=r, column=c).value
+                    if val:
+                        ws.cell(row=target, column=c, value=str(val))
+                ws.cell(row=target, column=5, value="Not Called")
+                count += 1
+
+            wb.save(PIPELINE_PATH)
+            wb.close()
+            src_wb.close()
+
+            await update.message.reply_text(
+                f"Insurance book loaded! {count} contacts imported.\n"
+                f"Text 'calls' to get your first batch."
+            )
+        else:
+            # Replace pipeline
+            await file.download_to_drive(PIPELINE_PATH)
+            wb = openpyxl.load_workbook(PIPELINE_PATH)
+            sheets = wb.sheetnames
+            wb.close()
+
+            await update.message.reply_text(
+                f"Pipeline updated from your file.\n"
+                f"Sheets: {', '.join(sheets)}\n"
+                f"All changes are live now."
+            )
+
+        logger.info(f"File processed: {doc.file_name}")
     except Exception as e:
         await update.message.reply_text(f"Error processing file: {str(e)[:200]}")
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Hey Matthew! I'm your Calm Money pipeline bot.\n\n"
-        "Just text me naturally:\n"
+        "Hey Marc! I'm your Calm Money sales assistant.\n\n"
+        "Pipeline:\n"
         "• \"add John Smith, $300K wealth, hot, referral\"\n"
         "• \"move Sarah to discovery call\"\n"
-        "• \"log: called Michael, no answer\"\n"
-        "• \"who's overdue?\"\n"
-        "• \"pipeline update\"\n"
-        "• /export — download your pipeline Excel\n"
-        "• Send me an Excel file to update the pipeline\n\n"
-        "I'll handle the rest."
+        "• \"pipeline update\" / \"who's overdue?\"\n\n"
+        "Meetings:\n"
+        "• \"meeting with Sarah Thursday 2pm\"\n"
+        "• \"what's on this week?\"\n\n"
+        "Insurance Book:\n"
+        "• \"calls\" — get next prospects to call\n"
+        "• \"called John, no answer\" / \"booked meeting\"\n"
+        "• \"book stats\" — see your progress\n\n"
+        "Emails:\n"
+        "• \"draft follow-up for Sarah\"\n"
+        "• \"draft quote for Mike, 500K at $81, 1M at $140\"\n\n"
+        "Other:\n"
+        "• /export — download Excel\n"
+        "• Send Excel file to update pipeline\n"
+        "• Paste Otter transcript for auto-processing\n\n"
+        "Let's close some deals."
     )
 
 
@@ -485,6 +1106,9 @@ def main():
     if not Path(PIPELINE_PATH).exists():
         logger.info(f"Pipeline file not found at {PIPELINE_PATH}. Please provide one.")
         return
+
+    # Initialize extra sheets
+    init_extra_sheets()
 
     # Start web dashboard in background thread
     from dashboard import start_dashboard_thread
@@ -496,6 +1120,14 @@ def main():
     app.add_handler(CommandHandler("export", export))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    # Start scheduler for morning briefings and auto-nags
+    try:
+        from scheduler import start_scheduler
+        start_scheduler(app)
+        logger.info("Scheduler started (morning briefing + auto-nags).")
+    except Exception as e:
+        logger.warning(f"Scheduler failed to start: {e}. Bot will run without scheduled messages.")
 
     logger.info("Bot started. Listening for messages...")
     app.run_polling()

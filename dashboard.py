@@ -26,7 +26,7 @@ STAGE_TEXT = {
 
 def read_data():
     if not Path(PIPELINE_PATH).exists():
-        return [], []
+        return [], [], [], []
 
     wb = openpyxl.load_workbook(PIPELINE_PATH, data_only=True)
 
@@ -67,8 +67,44 @@ def read_data():
             "next_step": str(log_ws.cell(row=r, column=5).value or ""),
         })
 
+    # Meetings
+    meetings = []
+    if "Meetings" in wb.sheetnames:
+        ms = wb["Meetings"]
+        for r in range(3, 103):
+            d = ms.cell(row=r, column=1).value
+            if not d:
+                continue
+            meetings.append({
+                "date": str(d).split(" ")[0] if d else "",
+                "time": str(ms.cell(row=r, column=2).value or ""),
+                "prospect": str(ms.cell(row=r, column=3).value or ""),
+                "type": str(ms.cell(row=r, column=4).value or ""),
+                "prep_notes": str(ms.cell(row=r, column=5).value or ""),
+                "status": str(ms.cell(row=r, column=6).value or "Scheduled"),
+            })
+
+    # Insurance Book
+    book_entries = []
+    if "Insurance Book" in wb.sheetnames:
+        bs = wb["Insurance Book"]
+        for r in range(3, 203):
+            name = bs.cell(row=r, column=1).value
+            if not name:
+                continue
+            book_entries.append({
+                "name": str(name),
+                "phone": str(bs.cell(row=r, column=2).value or ""),
+                "address": str(bs.cell(row=r, column=3).value or ""),
+                "policy_start": str(bs.cell(row=r, column=4).value or ""),
+                "status": str(bs.cell(row=r, column=5).value or "Not Called"),
+                "last_called": str(bs.cell(row=r, column=6).value or ""),
+                "notes": str(bs.cell(row=r, column=7).value or ""),
+                "retry_date": str(bs.cell(row=r, column=8).value or ""),
+            })
+
     wb.close()
-    return prospects, activities
+    return prospects, activities, meetings, book_entries
 
 
 def fmt_money(val):
@@ -92,7 +128,7 @@ def fmt_money_full(val):
 
 @app.route("/")
 def dashboard():
-    prospects, activities = read_data()
+    prospects, activities, meetings, book_entries = read_data()
     today = date.today()
 
     active = [p for p in prospects if p["stage"] not in ("Closed-Won", "Closed-Lost", "")]
@@ -391,6 +427,17 @@ tr:hover {{ background: #f8f9fa; }}
         <div class="section">
             <h2>Recent Activity <span class="count">(last 10)</span></h2>
             {'<table><tr><th>Date</th><th>Prospect</th><th>Action</th><th>Outcome</th><th>Next</th></tr>' + activity_rows + '</table>' if activities else '<div class="empty-state"><p>No activity logged yet.</p></div>'}
+        </div>
+    </div>
+
+    <div class="two-col">
+        <div class="section">
+            <h2>Upcoming Meetings <span class="count">({len([m for m in meetings if m['status'] != 'Cancelled'])})</span></h2>
+            {'<table><tr><th>Date</th><th>Time</th><th>Prospect</th><th>Type</th><th>Status</th><th>Prep</th></tr>' + ''.join(f'<tr><td>{m["date"]}</td><td>{m["time"]}</td><td class="name-cell">{m["prospect"]}</td><td>{m["type"]}</td><td><span class="badge" style="background:{"#27ae60" if m["status"]=="Completed" else "#e74c3c" if m["status"]=="Cancelled" else "#3498db"}">{m["status"]}</span></td><td class="notes">{m["prep_notes"][:50]}{"..." if len(m["prep_notes"])>50 else ""}</td></tr>' for m in meetings if m['status'] != 'Cancelled') + '</table>' if meetings else '<div class="empty-state"><p>No meetings scheduled. Text the bot to add one.</p></div>'}
+        </div>
+        <div class="section">
+            <h2>Insurance Book <span class="count">({len(book_entries)} contacts)</span></h2>
+            {'<div style="display:flex;gap:24px;margin-bottom:16px"><div class="kpi-card" style="flex:1;padding:12px 16px"><div class="kpi-label">Called</div><div class="kpi-value" style="font-size:24px">' + str(len([b for b in book_entries if b["status"].lower() not in ("not called","")])) + '</div></div><div class="kpi-card green" style="flex:1;padding:12px 16px"><div class="kpi-label">Booked</div><div class="kpi-value" style="font-size:24px">' + str(len([b for b in book_entries if b["status"].lower()=="booked meeting"])) + '</div></div><div class="kpi-card blue" style="flex:1;padding:12px 16px"><div class="kpi-label">Remaining</div><div class="kpi-value" style="font-size:24px">' + str(len([b for b in book_entries if b["status"].lower() in ("not called","")])) + '</div></div></div><table><tr><th>Name</th><th>Phone</th><th>Status</th><th>Last Called</th><th>Notes</th></tr>' + ''.join(f'<tr><td class="name-cell">{b["name"]}</td><td>{b["phone"]}</td><td><span class="badge" style="background:{"#27ae60" if b["status"].lower()=="booked meeting" else "#e74c3c" if b["status"].lower()=="not interested" else "#f39c12" if b["status"].lower() in ("callback","no answer") else "#3498db"}">{b["status"]}</span></td><td>{b["last_called"].split(" ")[0] if b["last_called"] and b["last_called"]!="None" else ""}</td><td class="notes">{b["notes"][:40]}{"..." if len(b["notes"])>40 else ""}</td></tr>' for b in book_entries[:20]) + '</table>' if book_entries else '<div class="empty-state"><p>No insurance book uploaded. Send a CSV via Telegram.</p></div>'}
         </div>
     </div>
 
