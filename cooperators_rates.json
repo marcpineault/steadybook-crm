@@ -1,0 +1,1322 @@
+{
+  "20_M_N_10_100000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "N",
+    "term": "10",
+    "amount": 100000,
+    "annual": "106.00",
+    "monthly": "9.54",
+    "product": "Versatile Term 10"
+  },
+  "20_M_N_10_250000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "N",
+    "term": "10",
+    "amount": 250000,
+    "annual": "157.50",
+    "monthly": "14.18",
+    "product": "Versatile Term 10"
+  },
+  "20_M_N_10_500000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "N",
+    "term": "10",
+    "amount": 500000,
+    "annual": "250.00",
+    "monthly": "22.50",
+    "product": "Versatile Term 10"
+  },
+  "20_M_N_10_750000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "N",
+    "term": "10",
+    "amount": 750000,
+    "annual": "357.50",
+    "monthly": "32.18",
+    "product": "Versatile Term 10"
+  },
+  "20_M_N_10_1000000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "N",
+    "term": "10",
+    "amount": 1000000,
+    "annual": "395.00",
+    "monthly": "35.55",
+    "product": "Versatile Term 10"
+  },
+  "20_M_N_15_100000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "N",
+    "term": "15",
+    "amount": 100000,
+    "annual": "116.00",
+    "monthly": "10.44",
+    "product": "Versatile Term 15"
+  },
+  "20_M_N_15_250000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "N",
+    "term": "15",
+    "amount": 250000,
+    "annual": "187.50",
+    "monthly": "16.88",
+    "product": "Versatile Term 15"
+  },
+  "20_M_N_15_500000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "N",
+    "term": "15",
+    "amount": 500000,
+    "annual": "285.00",
+    "monthly": "25.65",
+    "product": "Versatile Term 15"
+  },
+  "20_M_N_15_750000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "N",
+    "term": "15",
+    "amount": 750000,
+    "annual": "410.00",
+    "monthly": "36.90",
+    "product": "Versatile Term 15"
+  },
+  "20_M_N_15_1000000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "N",
+    "term": "15",
+    "amount": 1000000,
+    "annual": "495.00",
+    "monthly": "44.55",
+    "product": "Versatile Term 15"
+  },
+  "20_M_N_20_100000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "N",
+    "term": "20",
+    "amount": 100000,
+    "annual": "116.00",
+    "monthly": "10.44",
+    "product": "Versatile Term 20"
+  },
+  "20_M_N_20_250000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "N",
+    "term": "20",
+    "amount": 250000,
+    "annual": "187.50",
+    "monthly": "16.88",
+    "product": "Versatile Term 20"
+  },
+  "20_M_N_20_500000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "N",
+    "term": "20",
+    "amount": 500000,
+    "annual": "315.00",
+    "monthly": "28.35",
+    "product": "Versatile Term 20"
+  },
+  "20_M_N_20_750000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "N",
+    "term": "20",
+    "amount": 750000,
+    "annual": "455.00",
+    "monthly": "40.95",
+    "product": "Versatile Term 20"
+  },
+  "20_M_N_20_1000000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "N",
+    "term": "20",
+    "amount": 1000000,
+    "annual": "545.00",
+    "monthly": "49.05",
+    "product": "Versatile Term 20"
+  },
+  "20_M_N_25_100000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "N",
+    "term": "25",
+    "amount": 100000,
+    "annual": "128.00",
+    "monthly": "11.52",
+    "product": "Versatile Term 25"
+  },
+  "20_M_N_25_250000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "N",
+    "term": "25",
+    "amount": 250000,
+    "annual": "217.50",
+    "monthly": "19.58",
+    "product": "Versatile Term 25"
+  },
+  "20_M_N_25_500000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "N",
+    "term": "25",
+    "amount": 500000,
+    "annual": "345.00",
+    "monthly": "31.05",
+    "product": "Versatile Term 25"
+  },
+  "20_M_N_25_750000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "N",
+    "term": "25",
+    "amount": 750000,
+    "annual": "500.00",
+    "monthly": "45.00",
+    "product": "Versatile Term 25"
+  },
+  "20_M_N_25_1000000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "N",
+    "term": "25",
+    "amount": 1000000,
+    "annual": "635.00",
+    "monthly": "57.15",
+    "product": "Versatile Term 25"
+  },
+  "20_M_N_30_100000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "N",
+    "term": "30",
+    "amount": 100000,
+    "annual": "131.00",
+    "monthly": "11.79",
+    "product": "Versatile Term 30"
+  },
+  "20_M_N_30_250000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "N",
+    "term": "30",
+    "amount": 250000,
+    "annual": "230.00",
+    "monthly": "20.70",
+    "product": "Versatile Term 30"
+  },
+  "20_M_N_30_500000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "N",
+    "term": "30",
+    "amount": 500000,
+    "annual": "365.00",
+    "monthly": "32.85",
+    "product": "Versatile Term 30"
+  },
+  "20_M_N_30_750000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "N",
+    "term": "30",
+    "amount": 750000,
+    "annual": "530.00",
+    "monthly": "47.70",
+    "product": "Versatile Term 30"
+  },
+  "20_M_N_30_1000000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "N",
+    "term": "30",
+    "amount": 1000000,
+    "annual": "665.00",
+    "monthly": "59.85",
+    "product": "Versatile Term 30"
+  },
+  "20_M_Y_10_100000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "Y",
+    "term": "10",
+    "amount": 100000,
+    "annual": "148.00",
+    "monthly": "13.32",
+    "product": "Versatile Term 10"
+  },
+  "20_M_Y_10_250000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "Y",
+    "term": "10",
+    "amount": 250000,
+    "annual": "270.00",
+    "monthly": "24.30",
+    "product": "Versatile Term 10"
+  },
+  "20_M_Y_10_500000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "Y",
+    "term": "10",
+    "amount": 500000,
+    "annual": "450.00",
+    "monthly": "40.50",
+    "product": "Versatile Term 10"
+  },
+  "20_M_Y_10_750000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "Y",
+    "term": "10",
+    "amount": 750000,
+    "annual": "657.50",
+    "monthly": "59.18",
+    "product": "Versatile Term 10"
+  },
+  "20_M_Y_10_1000000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "Y",
+    "term": "10",
+    "amount": 1000000,
+    "annual": "845.00",
+    "monthly": "76.05",
+    "product": "Versatile Term 10"
+  },
+  "20_M_Y_15_100000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "Y",
+    "term": "15",
+    "amount": 100000,
+    "annual": "162.00",
+    "monthly": "14.58",
+    "product": "Versatile Term 15"
+  },
+  "20_M_Y_15_250000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "Y",
+    "term": "15",
+    "amount": 250000,
+    "annual": "300.00",
+    "monthly": "27.00",
+    "product": "Versatile Term 15"
+  },
+  "20_M_Y_15_500000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "Y",
+    "term": "15",
+    "amount": 500000,
+    "annual": "510.00",
+    "monthly": "45.90",
+    "product": "Versatile Term 15"
+  },
+  "20_M_Y_15_750000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "Y",
+    "term": "15",
+    "amount": 750000,
+    "annual": "747.50",
+    "monthly": "67.28",
+    "product": "Versatile Term 15"
+  },
+  "20_M_Y_15_1000000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "Y",
+    "term": "15",
+    "amount": 1000000,
+    "annual": "865.00",
+    "monthly": "77.85",
+    "product": "Versatile Term 15"
+  },
+  "20_M_Y_20_100000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "Y",
+    "term": "20",
+    "amount": 100000,
+    "annual": "167.00",
+    "monthly": "15.03",
+    "product": "Versatile Term 20"
+  },
+  "20_M_Y_20_250000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "Y",
+    "term": "20",
+    "amount": 250000,
+    "annual": "322.50",
+    "monthly": "29.03",
+    "product": "Versatile Term 20"
+  },
+  "20_M_Y_20_500000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "Y",
+    "term": "20",
+    "amount": 500000,
+    "annual": "555.00",
+    "monthly": "49.95",
+    "product": "Versatile Term 20"
+  },
+  "20_M_Y_20_750000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "Y",
+    "term": "20",
+    "amount": 750000,
+    "annual": "815.00",
+    "monthly": "73.35",
+    "product": "Versatile Term 20"
+  },
+  "20_M_Y_20_1000000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "Y",
+    "term": "20",
+    "amount": 1000000,
+    "annual": "915.00",
+    "monthly": "82.35",
+    "product": "Versatile Term 20"
+  },
+  "20_M_Y_25_100000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "Y",
+    "term": "25",
+    "amount": 100000,
+    "annual": "170.00",
+    "monthly": "15.30",
+    "product": "Versatile Term 25"
+  },
+  "20_M_Y_25_250000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "Y",
+    "term": "25",
+    "amount": 250000,
+    "annual": "347.50",
+    "monthly": "31.28",
+    "product": "Versatile Term 25"
+  },
+  "20_M_Y_25_500000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "Y",
+    "term": "25",
+    "amount": 500000,
+    "annual": "615.00",
+    "monthly": "55.35",
+    "product": "Versatile Term 25"
+  },
+  "20_M_Y_25_750000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "Y",
+    "term": "25",
+    "amount": 750000,
+    "annual": "905.00",
+    "monthly": "81.45",
+    "product": "Versatile Term 25"
+  },
+  "20_M_Y_25_1000000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "Y",
+    "term": "25",
+    "amount": 1000000,
+    "annual": "1,175.00",
+    "monthly": "105.75",
+    "product": "Versatile Term 25"
+  },
+  "20_M_Y_30_100000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "Y",
+    "term": "30",
+    "amount": 100000,
+    "annual": "192.00",
+    "monthly": "17.28",
+    "product": "Versatile Term 30"
+  },
+  "20_M_Y_30_250000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "Y",
+    "term": "30",
+    "amount": 250000,
+    "annual": "390.00",
+    "monthly": "35.10",
+    "product": "Versatile Term 30"
+  },
+  "20_M_Y_30_500000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "Y",
+    "term": "30",
+    "amount": 500000,
+    "annual": "695.00",
+    "monthly": "62.55",
+    "product": "Versatile Term 30"
+  },
+  "20_M_Y_30_750000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "Y",
+    "term": "30",
+    "amount": 750000,
+    "annual": "1,025.00",
+    "monthly": "92.25",
+    "product": "Versatile Term 30"
+  },
+  "20_M_Y_30_1000000": {
+    "age": 20,
+    "gender": "M",
+    "smoker": "Y",
+    "term": "30",
+    "amount": 1000000,
+    "annual": "1,305.00",
+    "monthly": "117.45",
+    "product": "Versatile Term 30"
+  },
+  "20_F_N_10_100000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "N",
+    "term": "10",
+    "amount": 100000,
+    "annual": "84.00",
+    "monthly": "7.56",
+    "product": "Versatile Term 10"
+  },
+  "20_F_N_10_250000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "N",
+    "term": "10",
+    "amount": 250000,
+    "annual": "115.00",
+    "monthly": "10.35",
+    "product": "Versatile Term 10"
+  },
+  "20_F_N_10_500000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "N",
+    "term": "10",
+    "amount": 500000,
+    "annual": "165.00",
+    "monthly": "14.85",
+    "product": "Versatile Term 10"
+  },
+  "20_F_N_10_750000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "N",
+    "term": "10",
+    "amount": 750000,
+    "annual": "230.00",
+    "monthly": "20.70",
+    "product": "Versatile Term 10"
+  },
+  "20_F_N_10_1000000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "N",
+    "term": "10",
+    "amount": 1000000,
+    "annual": "225.00",
+    "monthly": "20.25",
+    "product": "Versatile Term 10"
+  },
+  "20_F_N_15_100000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "N",
+    "term": "15",
+    "amount": 100000,
+    "annual": "99.00",
+    "monthly": "8.91",
+    "product": "Versatile Term 15"
+  },
+  "20_F_N_15_250000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "N",
+    "term": "15",
+    "amount": 250000,
+    "annual": "135.00",
+    "monthly": "12.15",
+    "product": "Versatile Term 15"
+  },
+  "20_F_N_15_500000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "N",
+    "term": "15",
+    "amount": 500000,
+    "annual": "200.00",
+    "monthly": "18.00",
+    "product": "Versatile Term 15"
+  },
+  "20_F_N_15_750000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "N",
+    "term": "15",
+    "amount": 750000,
+    "annual": "282.50",
+    "monthly": "25.43",
+    "product": "Versatile Term 15"
+  },
+  "20_F_N_15_1000000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "N",
+    "term": "15",
+    "amount": 1000000,
+    "annual": "305.00",
+    "monthly": "27.45",
+    "product": "Versatile Term 15"
+  },
+  "20_F_N_20_100000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "N",
+    "term": "20",
+    "amount": 100000,
+    "annual": "100.00",
+    "monthly": "9.00",
+    "product": "Versatile Term 20"
+  },
+  "20_F_N_20_250000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "N",
+    "term": "20",
+    "amount": 250000,
+    "annual": "140.00",
+    "monthly": "12.60",
+    "product": "Versatile Term 20"
+  },
+  "20_F_N_20_500000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "N",
+    "term": "20",
+    "amount": 500000,
+    "annual": "215.00",
+    "monthly": "19.35",
+    "product": "Versatile Term 20"
+  },
+  "20_F_N_20_750000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "N",
+    "term": "20",
+    "amount": 750000,
+    "annual": "305.00",
+    "monthly": "27.45",
+    "product": "Versatile Term 20"
+  },
+  "20_F_N_20_1000000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "N",
+    "term": "20",
+    "amount": 1000000,
+    "annual": "385.00",
+    "monthly": "34.65",
+    "product": "Versatile Term 20"
+  },
+  "20_F_N_25_100000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "N",
+    "term": "25",
+    "amount": 100000,
+    "annual": "112.00",
+    "monthly": "10.08",
+    "product": "Versatile Term 25"
+  },
+  "20_F_N_25_250000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "N",
+    "term": "25",
+    "amount": 250000,
+    "annual": "165.00",
+    "monthly": "14.85",
+    "product": "Versatile Term 25"
+  },
+  "20_F_N_25_500000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "N",
+    "term": "25",
+    "amount": 500000,
+    "annual": "250.00",
+    "monthly": "22.50",
+    "product": "Versatile Term 25"
+  },
+  "20_F_N_25_750000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "N",
+    "term": "25",
+    "amount": 750000,
+    "annual": "357.50",
+    "monthly": "32.18",
+    "product": "Versatile Term 25"
+  },
+  "20_F_N_25_1000000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "N",
+    "term": "25",
+    "amount": 1000000,
+    "annual": "425.00",
+    "monthly": "38.25",
+    "product": "Versatile Term 25"
+  },
+  "20_F_N_30_100000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "N",
+    "term": "30",
+    "amount": 100000,
+    "annual": "116.00",
+    "monthly": "10.44",
+    "product": "Versatile Term 30"
+  },
+  "20_F_N_30_250000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "N",
+    "term": "30",
+    "amount": 250000,
+    "annual": "172.50",
+    "monthly": "15.53",
+    "product": "Versatile Term 30"
+  },
+  "20_F_N_30_500000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "N",
+    "term": "30",
+    "amount": 500000,
+    "annual": "275.00",
+    "monthly": "24.75",
+    "product": "Versatile Term 30"
+  },
+  "20_F_N_30_750000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "N",
+    "term": "30",
+    "amount": 750000,
+    "annual": "395.00",
+    "monthly": "35.55",
+    "product": "Versatile Term 30"
+  },
+  "20_F_N_30_1000000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "N",
+    "term": "30",
+    "amount": 1000000,
+    "annual": "445.00",
+    "monthly": "40.05",
+    "product": "Versatile Term 30"
+  },
+  "20_F_Y_10_100000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "Y",
+    "term": "10",
+    "amount": 100000,
+    "annual": "104.00",
+    "monthly": "9.36",
+    "product": "Versatile Term 10"
+  },
+  "20_F_Y_10_250000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "Y",
+    "term": "10",
+    "amount": 250000,
+    "annual": "167.50",
+    "monthly": "15.08",
+    "product": "Versatile Term 10"
+  },
+  "20_F_Y_10_500000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "Y",
+    "term": "10",
+    "amount": 500000,
+    "annual": "270.00",
+    "monthly": "24.30",
+    "product": "Versatile Term 10"
+  },
+  "20_F_Y_10_750000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "Y",
+    "term": "10",
+    "amount": 750000,
+    "annual": "387.50",
+    "monthly": "34.88",
+    "product": "Versatile Term 10"
+  },
+  "20_F_Y_10_1000000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "Y",
+    "term": "10",
+    "amount": 1000000,
+    "annual": "455.00",
+    "monthly": "40.95",
+    "product": "Versatile Term 10"
+  },
+  "20_F_Y_15_100000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "Y",
+    "term": "15",
+    "amount": 100000,
+    "annual": "119.00",
+    "monthly": "10.71",
+    "product": "Versatile Term 15"
+  },
+  "20_F_Y_15_250000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "Y",
+    "term": "15",
+    "amount": 250000,
+    "annual": "185.00",
+    "monthly": "16.65",
+    "product": "Versatile Term 15"
+  },
+  "20_F_Y_15_500000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "Y",
+    "term": "15",
+    "amount": 500000,
+    "annual": "285.00",
+    "monthly": "25.65",
+    "product": "Versatile Term 15"
+  },
+  "20_F_Y_15_750000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "Y",
+    "term": "15",
+    "amount": 750000,
+    "annual": "410.00",
+    "monthly": "36.90",
+    "product": "Versatile Term 15"
+  },
+  "20_F_Y_15_1000000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "Y",
+    "term": "15",
+    "amount": 1000000,
+    "annual": "495.00",
+    "monthly": "44.55",
+    "product": "Versatile Term 15"
+  },
+  "20_F_Y_20_100000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "Y",
+    "term": "20",
+    "amount": 100000,
+    "annual": "131.00",
+    "monthly": "11.79",
+    "product": "Versatile Term 20"
+  },
+  "20_F_Y_20_250000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "Y",
+    "term": "20",
+    "amount": 250000,
+    "annual": "197.50",
+    "monthly": "17.78",
+    "product": "Versatile Term 20"
+  },
+  "20_F_Y_20_500000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "Y",
+    "term": "20",
+    "amount": 500000,
+    "annual": "320.00",
+    "monthly": "28.80",
+    "product": "Versatile Term 20"
+  },
+  "20_F_Y_20_750000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "Y",
+    "term": "20",
+    "amount": 750000,
+    "annual": "462.50",
+    "monthly": "41.63",
+    "product": "Versatile Term 20"
+  },
+  "20_F_Y_20_1000000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "Y",
+    "term": "20",
+    "amount": 1000000,
+    "annual": "565.00",
+    "monthly": "50.85",
+    "product": "Versatile Term 20"
+  },
+  "20_F_Y_25_100000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "Y",
+    "term": "25",
+    "amount": 100000,
+    "annual": "136.00",
+    "monthly": "12.24",
+    "product": "Versatile Term 25"
+  },
+  "20_F_Y_25_250000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "Y",
+    "term": "25",
+    "amount": 250000,
+    "annual": "220.00",
+    "monthly": "19.80",
+    "product": "Versatile Term 25"
+  },
+  "20_F_Y_25_500000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "Y",
+    "term": "25",
+    "amount": 500000,
+    "annual": "370.00",
+    "monthly": "33.30",
+    "product": "Versatile Term 25"
+  },
+  "20_F_Y_25_750000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "Y",
+    "term": "25",
+    "amount": 750000,
+    "annual": "537.50",
+    "monthly": "48.38",
+    "product": "Versatile Term 25"
+  },
+  "20_F_Y_25_1000000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "Y",
+    "term": "25",
+    "amount": 1000000,
+    "annual": "685.00",
+    "monthly": "61.65",
+    "product": "Versatile Term 25"
+  },
+  "20_F_Y_30_100000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "Y",
+    "term": "30",
+    "amount": 100000,
+    "annual": "153.00",
+    "monthly": "13.77",
+    "product": "Versatile Term 30"
+  },
+  "20_F_Y_30_250000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "Y",
+    "term": "30",
+    "amount": 250000,
+    "annual": "282.50",
+    "monthly": "25.43",
+    "product": "Versatile Term 30"
+  },
+  "20_F_Y_30_500000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "Y",
+    "term": "30",
+    "amount": 500000,
+    "annual": "490.00",
+    "monthly": "44.10",
+    "product": "Versatile Term 30"
+  },
+  "20_F_Y_30_750000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "Y",
+    "term": "30",
+    "amount": 750000,
+    "annual": "717.50",
+    "monthly": "64.58",
+    "product": "Versatile Term 30"
+  },
+  "20_F_Y_30_1000000": {
+    "age": 20,
+    "gender": "F",
+    "smoker": "Y",
+    "term": "30",
+    "amount": 1000000,
+    "annual": "915.00",
+    "monthly": "82.35",
+    "product": "Versatile Term 30"
+  },
+  "21_M_N_10_100000": {
+    "age": 21,
+    "gender": "M",
+    "smoker": "N",
+    "term": "10",
+    "amount": 100000,
+    "annual": "106.00",
+    "monthly": "9.54",
+    "product": "Versatile Term 10"
+  },
+  "21_M_N_10_250000": {
+    "age": 21,
+    "gender": "M",
+    "smoker": "N",
+    "term": "10",
+    "amount": 250000,
+    "annual": "157.50",
+    "monthly": "14.18",
+    "product": "Versatile Term 10"
+  },
+  "21_M_N_10_500000": {
+    "age": 21,
+    "gender": "M",
+    "smoker": "N",
+    "term": "10",
+    "amount": 500000,
+    "annual": "250.00",
+    "monthly": "22.50",
+    "product": "Versatile Term 10"
+  },
+  "21_M_N_10_750000": {
+    "age": 21,
+    "gender": "M",
+    "smoker": "N",
+    "term": "10",
+    "amount": 750000,
+    "annual": "357.50",
+    "monthly": "32.18",
+    "product": "Versatile Term 10"
+  },
+  "21_M_N_10_1000000": {
+    "age": 21,
+    "gender": "M",
+    "smoker": "N",
+    "term": "10",
+    "amount": 1000000,
+    "annual": "395.00",
+    "monthly": "35.55",
+    "product": "Versatile Term 10"
+  },
+  "21_M_N_15_100000": {
+    "age": 21,
+    "gender": "M",
+    "smoker": "N",
+    "term": "15",
+    "amount": 100000,
+    "annual": "116.00",
+    "monthly": "10.44",
+    "product": "Versatile Term 15"
+  },
+  "21_M_N_15_250000": {
+    "age": 21,
+    "gender": "M",
+    "smoker": "N",
+    "term": "15",
+    "amount": 250000,
+    "annual": "187.50",
+    "monthly": "16.88",
+    "product": "Versatile Term 15"
+  },
+  "21_M_N_15_500000": {
+    "age": 21,
+    "gender": "M",
+    "smoker": "N",
+    "term": "15",
+    "amount": 500000,
+    "annual": "285.00",
+    "monthly": "25.65",
+    "product": "Versatile Term 15"
+  },
+  "21_M_N_15_750000": {
+    "age": 21,
+    "gender": "M",
+    "smoker": "N",
+    "term": "15",
+    "amount": 750000,
+    "annual": "410.00",
+    "monthly": "36.90",
+    "product": "Versatile Term 15"
+  },
+  "21_M_N_15_1000000": {
+    "age": 21,
+    "gender": "M",
+    "smoker": "N",
+    "term": "15",
+    "amount": 1000000,
+    "annual": "495.00",
+    "monthly": "44.55",
+    "product": "Versatile Term 15"
+  },
+  "21_M_N_20_100000": {
+    "age": 21,
+    "gender": "M",
+    "smoker": "N",
+    "term": "20",
+    "amount": 100000,
+    "annual": "116.00",
+    "monthly": "10.44",
+    "product": "Versatile Term 20"
+  },
+  "21_M_N_20_250000": {
+    "age": 21,
+    "gender": "M",
+    "smoker": "N",
+    "term": "20",
+    "amount": 250000,
+    "annual": "187.50",
+    "monthly": "16.88",
+    "product": "Versatile Term 20"
+  },
+  "21_M_N_20_500000": {
+    "age": 21,
+    "gender": "M",
+    "smoker": "N",
+    "term": "20",
+    "amount": 500000,
+    "annual": "315.00",
+    "monthly": "28.35",
+    "product": "Versatile Term 20"
+  },
+  "21_M_N_20_750000": {
+    "age": 21,
+    "gender": "M",
+    "smoker": "N",
+    "term": "20",
+    "amount": 750000,
+    "annual": "455.00",
+    "monthly": "40.95",
+    "product": "Versatile Term 20"
+  },
+  "21_M_N_20_1000000": {
+    "age": 21,
+    "gender": "M",
+    "smoker": "N",
+    "term": "20",
+    "amount": 1000000,
+    "annual": "545.00",
+    "monthly": "49.05",
+    "product": "Versatile Term 20"
+  },
+  "21_M_N_25_100000": {
+    "age": 21,
+    "gender": "M",
+    "smoker": "N",
+    "term": "25",
+    "amount": 100000,
+    "annual": "128.00",
+    "monthly": "11.52",
+    "product": "Versatile Term 25"
+  },
+  "21_M_N_25_250000": {
+    "age": 21,
+    "gender": "M",
+    "smoker": "N",
+    "term": "25",
+    "amount": 250000,
+    "annual": "217.50",
+    "monthly": "19.58",
+    "product": "Versatile Term 25"
+  },
+  "21_M_N_25_500000": {
+    "age": 21,
+    "gender": "M",
+    "smoker": "N",
+    "term": "25",
+    "amount": 500000,
+    "annual": "350.00",
+    "monthly": "31.50",
+    "product": "Versatile Term 25"
+  },
+  "21_M_N_25_750000": {
+    "age": 21,
+    "gender": "M",
+    "smoker": "N",
+    "term": "25",
+    "amount": 750000,
+    "annual": "507.50",
+    "monthly": "45.68",
+    "product": "Versatile Term 25"
+  },
+  "21_M_N_25_1000000": {
+    "age": 21,
+    "gender": "M",
+    "smoker": "N",
+    "term": "25",
+    "amount": 1000000,
+    "annual": "635.00",
+    "monthly": "57.15",
+    "product": "Versatile Term 25"
+  },
+  "21_M_N_30_100000": {
+    "age": 21,
+    "gender": "M",
+    "smoker": "N",
+    "term": "30",
+    "amount": 100000,
+    "annual": "132.00",
+    "monthly": "11.88",
+    "product": "Versatile Term 30"
+  },
+  "21_M_N_30_250000": {
+    "age": 21,
+    "gender": "M",
+    "smoker": "N",
+    "term": "30",
+    "amount": 250000,
+    "annual": "232.50",
+    "monthly": "20.93",
+    "product": "Versatile Term 30"
+  },
+  "21_M_N_30_500000": {
+    "age": 21,
+    "gender": "M",
+    "smoker": "N",
+    "term": "30",
+    "amount": 500000,
+    "annual": "370.00",
+    "monthly": "33.30",
+    "product": "Versatile Term 30"
+  },
+  "21_M_N_30_750000": {
+    "age": 21,
+    "gender": "M",
+    "smoker": "N",
+    "term": "30",
+    "amount": 750000,
+    "annual": "537.50",
+    "monthly": "48.38",
+    "product": "Versatile Term 30"
+  },
+  "21_M_N_30_1000000": {
+    "age": 21,
+    "gender": "M",
+    "smoker": "N",
+    "term": "30",
+    "amount": 1000000,
+    "annual": "675.00",
+    "monthly": "60.75",
+    "product": "Versatile Term 30"
+  },
+  "21_M_Y_10_100000": {
+    "age": 21,
+    "gender": "M",
+    "smoker": "Y",
+    "term": "10",
+    "amount": 100000,
+    "annual": "148.00",
+    "monthly": "13.32",
+    "product": "Versatile Term 10"
+  },
+  "21_M_Y_10_250000": {
+    "age": 21,
+    "gender": "M",
+    "smoker": "Y",
+    "term": "10",
+    "amount": 250000,
+    "annual": "270.00",
+    "monthly": "24.30",
+    "product": "Versatile Term 10"
+  },
+  "21_M_Y_10_500000": {
+    "age": 21,
+    "gender": "M",
+    "smoker": "Y",
+    "term": "10",
+    "amount": 500000,
+    "annual": "450.00",
+    "monthly": "40.50",
+    "product": "Versatile Term 10"
+  },
+  "21_M_Y_10_750000": {
+    "age": 21,
+    "gender": "M",
+    "smoker": "Y",
+    "term": "10",
+    "amount": 750000,
+    "annual": "657.50",
+    "monthly": "59.18",
+    "product": "Versatile Term 10"
+  },
+  "21_M_Y_10_1000000": {
+    "age": 21,
+    "gender": "M",
+    "smoker": "Y",
+    "term": "10",
+    "amount": 1000000,
+    "annual": "845.00",
+    "monthly": "76.05",
+    "product": "Versatile Term 10"
+  },
+  "21_M_Y_15_100000": {
+    "age": 21,
+    "gender": "M",
+    "smoker": "Y",
+    "term": "15",
+    "amount": 100000,
+    "annual": "162.00",
+    "monthly": "14.58",
+    "product": "Versatile Term 15"
+  },
+  "21_M_Y_15_250000": {
+    "age": 21,
+    "gender": "M",
+    "smoker": "Y",
+    "term": "15",
+    "amount": 250000,
+    "annual": "300.00",
+    "monthly": "27.00",
+    "product": "Versatile Term 15"
+  }
+}

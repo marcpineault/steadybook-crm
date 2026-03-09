@@ -422,6 +422,207 @@ def get_win_loss_stats() -> str:
     return "\n".join(lines)
 
 
+# ── Quote Helper ──
+
+RATE_FILE = "cooperators_rates.json"
+EDGE_RATE_FILE = "edge_benefits_rates.json"
+_rate_cache = None
+_edge_cache = None
+
+
+def _load_rates():
+    global _rate_cache
+    if _rate_cache is None and Path(RATE_FILE).exists():
+        with open(RATE_FILE, "r") as f:
+            _rate_cache = json.load(f)
+    return _rate_cache or {}
+
+
+def _load_edge_rates():
+    global _edge_cache
+    if _edge_cache is None and Path(EDGE_RATE_FILE).exists():
+        with open(EDGE_RATE_FILE, "r") as f:
+            _edge_cache = json.load(f)
+    return _edge_cache or {}
+
+
+RATE_AMOUNTS = [100000, 250000, 500000, 750000, 1000000]
+
+
+def _closest_amount(amount: int) -> int:
+    return min(RATE_AMOUNTS, key=lambda x: abs(x - amount))
+
+
+def get_term_quote(age: int, gender: str, smoker: bool, term: str, amount: int, health: str = "regular") -> str:
+    """Look up Co-operators term life insurance rates."""
+    sex = "M" if gender.lower().startswith("m") else "F"
+    smoke = "Y" if smoker else "N"
+    face = _closest_amount(amount)
+    term_str = str(term).strip()
+
+    rates = _load_rates()
+    key = f"{age}_{sex}_{smoke}_{term_str}_{face}"
+
+    if key in rates:
+        r = rates[key]
+        sex_name = "Male" if sex == "M" else "Female"
+        smoke_name = "Smoker" if smoker else "Non-Smoker"
+        lines = [
+            f"CO-OPERATORS QUOTE — {r.get('product', 'Versatile Term ' + term_str)}",
+            f"━━━━━━━━━━━━━━━━",
+            f"  {age}{sex_name[0]} {smoke_name}, ${face:,} coverage",
+            f"  Annual: ${r['annual']}/yr",
+            f"  Monthly: ${r['monthly']}/mo",
+            "",
+            f"Health class: Regular (standard rates)",
+        ]
+
+        # Also show nearby amounts if available
+        other_lines = []
+        for alt_face in RATE_AMOUNTS:
+            if alt_face == face:
+                continue
+            alt_key = f"{age}_{sex}_{smoke}_{term_str}_{alt_face}"
+            if alt_key in rates:
+                ar = rates[alt_key]
+                other_lines.append(f"  ${alt_face:,}: ${ar['annual']}/yr (${ar['monthly']}/mo)")
+
+        if other_lines:
+            lines.append("\nOther coverage amounts:")
+            lines.extend(other_lines)
+
+        return "\n".join(lines)
+    else:
+        # Rate not in table — give lookup instructions
+        sex_name = "Male" if sex == "M" else "Female"
+        smoke_name = "Smoker" if smoker else "Non-Smoker"
+        return (
+            f"Rate not found for {age}{sex_name[0]} {smoke_name}, ${amount:,} Term {term_str}.\n"
+            f"Check term4sale.ca → N6A 1A1, {age}{sex_name[0]}, {smoke_name}, Regular, "
+            f"${amount:,}, Term {term_str}\n"
+            f"Co-operators product: Versatile Term {term_str}"
+        )
+
+
+EDGE_AGE_BANDS = {
+    (18, 29): "18-29", (30, 39): "30-39", (40, 49): "40-49",
+    (50, 59): "50-59", (60, 69): "60-69",
+}
+
+EDGE_BENEFITS = [1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000, 5500, 6000]
+EDGE_WAIT_LABELS = {"0": "0 days", "30": "30 days", "112": "112 days"}
+EDGE_PERIOD_LABELS = {"2": "2 Year", "5": "5 Year", "70": "To Age 70"}
+
+
+def _get_age_band(age: int) -> str:
+    for (lo, hi), label in EDGE_AGE_BANDS.items():
+        if lo <= age <= hi:
+            return label
+    return ""
+
+
+def get_disability_quote(age: int, gender: str, occupation: str, income: int,
+                         benefit: int = 0, wait_days: str = "30",
+                         benefit_period: str = "5", coverage_type: str = "24hour") -> str:
+    """Look up Edge Benefits disability insurance rates."""
+    data = _load_edge_rates()
+    if not data:
+        return "Edge Benefits rate data not loaded. Check edge_benefits_rates.json."
+
+    rates = data.get("rates", data)
+    occupations = data.get("occupations", {})
+
+    # Determine risk class from occupation
+    occ_lower = occupation.lower().strip()
+    risk_class = None
+
+    # Direct lookup
+    if occ_lower in occupations:
+        occ_code = str(occupations[occ_lower])
+        rate_key = f"OCCR-RATE-{occ_code}"
+        risk_class = rates.get(rate_key)
+
+    # Fuzzy match
+    if not risk_class:
+        matches = [(k, v) for k, v in occupations.items() if occ_lower in k.lower()]
+        if matches:
+            occ_code = str(matches[0][1])
+            rate_key = f"OCCR-RATE-{occ_code}"
+            risk_class = rates.get(rate_key)
+            occ_lower = matches[0][0]
+
+    if not risk_class:
+        return f"Occupation '{occupation}' not found in Edge Benefits database. Try a different title."
+
+    if risk_class in ("UI", "IC"):
+        return f"Occupation '{occupation}' is rated '{risk_class}' (uninsurable/individual consideration) by Edge Benefits."
+
+    # Calculate max eligible benefit (income / 12 * 0.69, rounded to nearest $500)
+    max_monthly = int(income / 12 * 0.69)
+    max_benefit = min(6000, max(1000, (max_monthly // 500) * 500))
+
+    if benefit <= 0:
+        benefit = max_benefit
+    benefit = min(benefit, max_benefit)
+
+    sex_code = "0" if gender.lower().startswith("m") else "1"
+    cov_code = "0" if coverage_type == "24hour" else "1"
+    gender_label = "Male" if sex_code == "0" else "Female"
+
+    lines = [
+        f"EDGE BENEFITS DISABILITY QUOTE",
+        f"━━━━━━━━━━━━━━━━",
+        f"  {age}{gender_label[0]}, {occupation.title()}",
+        f"  Risk Class: {risk_class} | Income: ${income:,}/yr",
+        f"  Max eligible benefit: ${max_benefit:,}/mo",
+        "",
+    ]
+
+    # Injury rate (not age-dependent)
+    inj_key = f"DIPR-{risk_class}-{benefit}-{sex_code}-{wait_days}-{benefit_period}-{cov_code}-0"
+    inj_rate = rates.get(inj_key)
+
+    # Illness rate (age-banded)
+    age_band = _get_age_band(age)
+    ill_key = f"DIPR_ILL-{risk_class}-{benefit}-{age_band}-{sex_code}-{wait_days}-{benefit_period}"
+    ill_rate = rates.get(ill_key)
+
+    wait_label = EDGE_WAIT_LABELS.get(wait_days, f"{wait_days} days")
+    period_label = EDGE_PERIOD_LABELS.get(benefit_period, benefit_period)
+    cov_label = "24-Hour" if cov_code == "0" else "Non-Occupational"
+
+    lines.append(f"  ${benefit:,}/mo benefit | {wait_label} wait | {period_label} | {cov_label}")
+    lines.append("")
+
+    if inj_rate:
+        lines.append(f"  Injury Only:      ${inj_rate:.2f}/mo")
+    if ill_rate:
+        lines.append(f"  Illness Only:     ${ill_rate:.2f}/mo")
+    if inj_rate and ill_rate:
+        lines.append(f"  Injury + Illness: ${inj_rate + ill_rate:.2f}/mo")
+
+    if not inj_rate and not ill_rate:
+        lines.append(f"  Rate not found for this combination.")
+
+    # Show comparison table for different benefit amounts
+    lines.append("")
+    lines.append("Other benefit amounts (Injury+Illness):")
+    for alt in EDGE_BENEFITS:
+        if alt == benefit:
+            continue
+        if alt > max_benefit:
+            break
+        alt_inj = rates.get(f"DIPR-{risk_class}-{alt}-{sex_code}-{wait_days}-{benefit_period}-{cov_code}-0")
+        alt_ill = rates.get(f"DIPR_ILL-{risk_class}-{alt}-{age_band}-{sex_code}-{wait_days}-{benefit_period}")
+        if alt_inj and alt_ill:
+            lines.append(f"  ${alt:,}/mo: ${alt_inj + alt_ill:.2f}/mo")
+
+    lines.append("")
+    lines.append("Insured by Co-operators Life Insurance Company via Edge Benefits.")
+
+    return "\n".join(lines)
+
+
 def get_pipeline_summary():
     """Get a summary of the current pipeline."""
     prospects = read_pipeline()
@@ -1050,6 +1251,40 @@ TOOLS = [
         "description": "Get win/loss analysis: win rate, top reasons for winning and losing, breakdown by product.",
         "input_schema": {"type": "object", "properties": {}, "required": []},
     },
+    {
+        "name": "get_term_quote",
+        "description": "Look up term life insurance quotes from term4sale.ca. Returns competitive rates from multiple carriers including Co-operators. Use when Marc says 'quote' or asks for life insurance rates.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "age": {"type": "integer", "description": "Client's age"},
+                "gender": {"type": "string", "enum": ["male", "female"], "description": "Client's gender"},
+                "smoker": {"type": "boolean", "description": "Whether client smokes/uses tobacco"},
+                "term": {"type": "string", "enum": ["10", "15", "20", "25", "30"], "description": "Term length in years"},
+                "amount": {"type": "integer", "description": "Coverage amount in dollars (e.g., 500000)"},
+                "health": {"type": "string", "enum": ["regular"], "description": "Health class. Always use 'regular'."},
+            },
+            "required": ["age", "gender", "smoker", "term", "amount"],
+        },
+    },
+    {
+        "name": "get_disability_quote",
+        "description": "Look up disability insurance quotes from Edge Benefits (insured by Co-operators). Returns monthly premiums for injury and illness income protection. Use when Marc says 'disability quote' or asks for DI rates.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "age": {"type": "integer", "description": "Client's age (18-69)"},
+                "gender": {"type": "string", "enum": ["male", "female"], "description": "Client's gender"},
+                "occupation": {"type": "string", "description": "Client's occupation (e.g., 'accountant', 'nurse', 'teacher')"},
+                "income": {"type": "integer", "description": "Client's annual employment income"},
+                "benefit": {"type": "integer", "description": "Desired monthly benefit amount ($1000-$6000 in $500 increments). 0 = auto-calculate max eligible."},
+                "wait_days": {"type": "string", "enum": ["0", "30", "112"], "description": "Waiting period in days. Default 30."},
+                "benefit_period": {"type": "string", "enum": ["2", "5", "70"], "description": "Benefit period: 2=2yr, 5=5yr, 70=to age 70. Default 5."},
+                "coverage_type": {"type": "string", "enum": ["24hour", "non-occupational"], "description": "Coverage type. Default 24hour."},
+            },
+            "required": ["age", "gender", "occupation", "income"],
+        },
+    },
 ]
 
 TOOL_FUNCTIONS = {
@@ -1071,6 +1306,8 @@ TOOL_FUNCTIONS = {
     "auto_set_follow_up": lambda args: auto_set_follow_up(args["prospect_name"], args["stage"]),
     "log_win_loss": lambda args: log_win_loss(args["prospect_name"], args["outcome"], args["reason"]),
     "get_win_loss_stats": lambda _: get_win_loss_stats(),
+    "get_term_quote": lambda args: get_term_quote(args["age"], args["gender"], args.get("smoker", False), args["term"], args["amount"], args.get("health", "regular")),
+    "get_disability_quote": lambda args: get_disability_quote(args["age"], args["gender"], args["occupation"], args["income"], args.get("benefit", 0), args.get("wait_days", "30"), args.get("benefit_period", "5"), args.get("coverage_type", "24hour")),
 }
 
 SYSTEM_PROMPT = """You are Calm Money Sales Assistant — Marc's personal sales assistant. Marc is a financial planner in London, Ontario who sells life insurance and wealth management.
@@ -1097,6 +1334,8 @@ Key rules:
 - IMPORTANT: When moving a prospect to a new stage, ALWAYS call auto_set_follow_up to set the next follow-up date automatically.
 - IMPORTANT: When moving a prospect to Closed-Won or Closed-Lost, ALWAYS ask Marc WHY they won or lost, then call log_win_loss. Don't skip this.
 - "why do I win" / "win loss stats" / "why do I lose" → get_win_loss_stats.
+- "quote [name], [age][M/F] [smoker/non-smoker], $[amount] term [length]" → get_term_quote. Highlights Co-operators rates.
+- "disability quote [name], [age][M/F], [occupation], $[income]" → get_disability_quote. Edge Benefits rates (insured by Co-operators). Risk class determined by occupation. Show injury-only AND injury+illness combo pricing.
 - After any write action, confirm in 1-2 lines.
 - Keep it casual and friendly. Use $ for money.
 - If ambiguous, make your best guess and confirm.
