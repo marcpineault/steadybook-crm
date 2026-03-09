@@ -400,6 +400,170 @@ async def auto_nag():
         logger.info(f"Auto-nag sent with {len(alerts)} alerts.")
 
 
+# ── Weekly Performance Report ──
+
+async def weekly_report():
+    """Send weekly performance report Sunday at 7 PM ET."""
+    if not _bot or not CHAT_ID:
+        return
+
+    if not Path(PIPELINE_PATH).exists():
+        return
+
+    today = date.today()
+    week_start = today - timedelta(days=7)
+
+    try:
+        prospects = _read_prospects()
+    except Exception as e:
+        logger.error(f"Error reading pipeline for weekly report: {e}")
+        return
+
+    active = [p for p in prospects if p["stage"] not in ("Closed-Won", "Closed-Lost", "")]
+    won = [p for p in prospects if p["stage"] == "Closed-Won"]
+
+    # Pipeline value
+    total_aum = 0
+    total_rev = 0
+    for p in active:
+        try:
+            total_aum += float(p["aum"].replace("$", "").replace(",", "")) if p["aum"] else 0
+        except ValueError:
+            pass
+        try:
+            total_rev += float(p["revenue"].replace("$", "").replace(",", "")) if p["revenue"] else 0
+        except ValueError:
+            pass
+
+    won_rev = 0
+    for p in won:
+        try:
+            won_rev += float(p["revenue"].replace("$", "").replace(",", "")) if p["revenue"] else 0
+        except ValueError:
+            pass
+
+    hot_count = len([p for p in active if p["priority"].lower() == "hot"])
+
+    # Activity log this week
+    wb = openpyxl.load_workbook(PIPELINE_PATH, data_only=True)
+    week_activities = 0
+    calls_made = 0
+    emails_sent = 0
+    meetings_held = 0
+    if "Activity Log" in wb.sheetnames:
+        log_ws = wb["Activity Log"]
+        for r in range(3, 200):
+            d = log_ws.cell(row=r, column=1).value
+            if not d:
+                continue
+            activity_date = _parse_date(d)
+            if activity_date and activity_date >= week_start:
+                week_activities += 1
+                action = _cell(log_ws, r, 3).lower()
+                if "call" in action or "phone" in action:
+                    calls_made += 1
+                if "email" in action:
+                    emails_sent += 1
+                if "meeting" in action or "discovery" in action or "presentation" in action:
+                    meetings_held += 1
+
+    # Insurance book stats this week
+    book_calls_week = 0
+    book_booked = 0
+    if "Insurance Book" in wb.sheetnames:
+        bs = wb["Insurance Book"]
+        for r in range(INSURANCE_DATA_START, INSURANCE_DATA_START + 200):
+            name = bs.cell(row=r, column=INSURANCE_COLS["name"]).value
+            if not name:
+                continue
+            last_called = _parse_date(bs.cell(row=r, column=INSURANCE_COLS["last_called"]).value)
+            if last_called and last_called >= week_start:
+                book_calls_week += 1
+            status = _cell(bs, r, INSURANCE_COLS["status"]).lower()
+            if status == "booked meeting":
+                lc = _parse_date(bs.cell(row=r, column=INSURANCE_COLS["last_called"]).value)
+                if lc and lc >= week_start:
+                    book_booked += 1
+
+    # Win/loss this week
+    wins_week = 0
+    losses_week = 0
+    if "Win Loss Log" in wb.sheetnames:
+        wl = wb["Win Loss Log"]
+        for r in range(3, 103):
+            d = wl.cell(row=r, column=1).value
+            if not d:
+                continue
+            wl_date = _parse_date(d)
+            outcome = _cell(wl, r, 3).lower()
+            if wl_date and wl_date >= week_start:
+                if outcome in ("won", "closed-won"):
+                    wins_week += 1
+                elif outcome in ("lost", "closed-lost"):
+                    losses_week += 1
+
+    wb.close()
+
+    # Overdue count
+    overdue_count = 0
+    for p in active:
+        fu = p["_next_followup_date"]
+        if fu and fu < today:
+            overdue_count += 1
+
+    # Build the report
+    lines = [
+        f"WEEKLY REPORT — {week_start.strftime('%b %d')} to {today.strftime('%b %d')}",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "",
+        "ACTIVITY:",
+        f"  Total touchpoints: {week_activities}",
+        f"  Calls: {calls_made} | Emails: {emails_sent} | Meetings: {meetings_held}",
+    ]
+
+    if book_calls_week > 0:
+        lines.append(f"  Book calls: {book_calls_week} | Booked: {book_booked}")
+
+    lines.extend([
+        "",
+        "RESULTS:",
+        f"  Deals won: {wins_week} | Lost: {losses_week}",
+        f"  Won revenue: ${won_rev:,.0f}",
+        "",
+        "PIPELINE:",
+        f"  Active: {len(active)} | Value: ${total_aum:,.0f} | Hot: {hot_count}",
+        f"  Est. revenue: ${total_rev:,.0f}",
+        f"  Overdue follow-ups: {overdue_count}",
+        "",
+        "MONDAY PRIORITIES:",
+    ])
+
+    # Top 3 priorities for Monday
+    priorities = []
+    # Overdue hot leads first
+    for p in active:
+        fu = p["_next_followup_date"]
+        if p["priority"].lower() == "hot" and fu and fu < today:
+            priorities.append(f"  1. Follow up with {p['name']} (Hot, {(today - fu).days}d overdue)")
+    # Then other overdue
+    for p in active:
+        fu = p["_next_followup_date"]
+        if p["priority"].lower() != "hot" and fu and fu < today:
+            priorities.append(f"  {len(priorities)+1}. Follow up with {p['name']} ({(today - fu).days}d overdue)")
+        if len(priorities) >= 3:
+            break
+
+    if not priorities:
+        priorities.append("  All caught up! Focus on prospecting.")
+
+    lines.extend(priorities[:3])
+    lines.append(f"\nKeep grinding, Marc. 💪")
+
+    msg = "\n".join(lines)
+    await _bot.send_message(chat_id=CHAT_ID, text=msg)
+    logger.info("Weekly report sent.")
+
+
 # ── Scheduler entry point ──
 
 def start_scheduler(telegram_app):
@@ -438,5 +602,16 @@ def start_scheduler(telegram_app):
         name="Auto-Nag Check",
     )
 
+    # Weekly performance report Sunday at 7 PM ET
+    scheduler.add_job(
+        weekly_report,
+        "cron",
+        day_of_week="sun",
+        hour=19,
+        minute=0,
+        id="weekly_report",
+        name="Weekly Performance Report",
+    )
+
     scheduler.start()
-    logger.info("Scheduler started — morning briefing at 8:00 AM ET, auto-nag every 2h (9-5 ET).")
+    logger.info("Scheduler started — morning briefing 8AM, auto-nag 9-5, weekly report Sun 7PM ET.")

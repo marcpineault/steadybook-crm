@@ -214,6 +214,214 @@ def get_overdue():
     return f"Overdue follow-ups ({len(overdue)}):\n" + "\n".join(overdue)
 
 
+# ── Follow-up sequences ──
+
+FOLLOW_UP_SEQUENCES = {
+    "Discovery Call": [
+        (1, "Send thank-you email + summary of discussion"),
+        (3, "Check-in — any questions about what we discussed?"),
+        (7, "Share a relevant article or insight"),
+    ],
+    "Plan Presentation": [
+        (1, "Send plan summary + next steps"),
+        (3, "Follow up — any questions about the plan?"),
+        (7, "Gentle nudge — ready to move forward?"),
+    ],
+    "Proposal Sent": [
+        (1, "Confirm they received the proposal"),
+        (3, "Check if they have questions"),
+        (5, "Ask if they need anything else to decide"),
+        (10, "Final follow-up — still interested?"),
+    ],
+    "Needs Analysis": [
+        (1, "Send recap of what you learned"),
+        (5, "Share that you're working on their plan"),
+    ],
+    "Contacted": [
+        (2, "Follow up if no response"),
+        (5, "Try different channel (call vs email)"),
+        (10, "Last attempt before moving to Nurture"),
+    ],
+}
+
+
+def get_follow_up_sequence(prospect_name: str, stage: str) -> str:
+    """Get the recommended follow-up sequence for a prospect's current stage."""
+    seq = FOLLOW_UP_SEQUENCES.get(stage)
+    if not seq:
+        return f"No follow-up sequence defined for stage '{stage}'. Just stay in touch!"
+
+    today = date.today()
+    lines = [f"Follow-up sequence for {prospect_name} ({stage}):"]
+    for day_offset, action in seq:
+        target = today + timedelta(days=day_offset)
+        lines.append(f"  Day {day_offset} ({target.strftime('%b %d')}): {action}")
+
+    lines.append(f"\nWant me to set the first follow-up ({(today + timedelta(days=seq[0][0])).strftime('%Y-%m-%d')}) now?")
+    return "\n".join(lines)
+
+
+def auto_set_follow_up(prospect_name: str, stage: str) -> str:
+    """Automatically set the next follow-up date based on stage sequence."""
+    seq = FOLLOW_UP_SEQUENCES.get(stage)
+    if not seq:
+        return ""
+
+    next_date = date.today() + timedelta(days=seq[0][0])
+    result = update_prospect(prospect_name, {"next_followup": next_date.strftime("%Y-%m-%d")})
+    return f"Auto-set follow-up to {next_date.strftime('%b %d')} — {seq[0][1]}"
+
+
+# ── Win/Loss Analysis ──
+
+def log_win_loss(prospect_name: str, outcome: str, reason: str) -> str:
+    """Log why a deal was won or lost."""
+    wb = openpyxl.load_workbook(PIPELINE_PATH)
+
+    # Ensure Win/Loss sheet exists
+    if "Win Loss Log" not in wb.sheetnames:
+        ws = wb.create_sheet("Win Loss Log")
+        ws.merge_cells('A1:E1')
+        c = ws['A1']
+        c.value = "WIN / LOSS LOG"
+        c.font = Font(name='Aptos', size=18, bold=True, color=WHITE)
+        c.fill = PatternFill(start_color=NAVY, end_color=NAVY, fill_type='solid')
+        c.alignment = Alignment(horizontal='left', vertical='center', indent=1)
+        ws.row_dimensions[1].height = 50
+        headers = ["Date", "Prospect", "Outcome", "Reason", "Product"]
+        for i, h in enumerate(headers, 1):
+            cell = ws.cell(row=2, column=i, value=h)
+            cell.font = Font(name='Aptos', size=10, bold=True, color=WHITE)
+            cell.fill = PatternFill(start_color=TEAL, end_color=TEAL, fill_type='solid')
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+            cell.border = thin_border
+        ws.column_dimensions['A'].width = 14
+        ws.column_dimensions['B'].width = 24
+        ws.column_dimensions['C'].width = 14
+        ws.column_dimensions['D'].width = 40
+        ws.column_dimensions['E'].width = 20
+        ws.freeze_panes = 'A3'
+    else:
+        ws = wb["Win Loss Log"]
+
+    # Find prospect's product from pipeline
+    ps = wb["Pipeline"]
+    product = ""
+    for r in range(DATA_START, DATA_START + MAX_ROWS):
+        cell_val = ps.cell(row=r, column=1).value
+        if cell_val and prospect_name.lower() in str(cell_val).lower():
+            product = str(ps.cell(row=r, column=7).value or "")
+            break
+
+    # Find first empty row
+    target_row = None
+    for r in range(3, 103):
+        if not ws.cell(row=r, column=1).value:
+            target_row = r
+            break
+
+    if not target_row:
+        wb.close()
+        return "Win/Loss log is full!"
+
+    ws.cell(row=target_row, column=1, value=date.today().strftime("%Y-%m-%d"))
+    ws.cell(row=target_row, column=2, value=prospect_name)
+    ws.cell(row=target_row, column=3, value=outcome)
+    ws.cell(row=target_row, column=4, value=reason)
+    ws.cell(row=target_row, column=5, value=product)
+
+    wb.save(PIPELINE_PATH)
+    wb.close()
+    return f"Logged {outcome} for {prospect_name}: {reason}"
+
+
+def get_win_loss_stats() -> str:
+    """Get win/loss analysis: patterns, reasons, conversion by product."""
+    wb = openpyxl.load_workbook(PIPELINE_PATH, data_only=True)
+    if "Win Loss Log" not in wb.sheetnames:
+        wb.close()
+        return "No win/loss data yet. Close some deals first!"
+
+    ws = wb["Win Loss Log"]
+    wins = []
+    losses = []
+    for r in range(3, 103):
+        outcome = ws.cell(row=r, column=3).value
+        if not outcome:
+            continue
+        entry = {
+            "date": str(ws.cell(row=r, column=1).value or ""),
+            "prospect": str(ws.cell(row=r, column=2).value or ""),
+            "reason": str(ws.cell(row=r, column=4).value or ""),
+            "product": str(ws.cell(row=r, column=5).value or ""),
+        }
+        if outcome.lower() in ("won", "closed-won"):
+            wins.append(entry)
+        else:
+            losses.append(entry)
+
+    wb.close()
+
+    total = len(wins) + len(losses)
+    if total == 0:
+        return "No win/loss data yet."
+
+    win_rate = len(wins) / total * 100
+
+    # Reason tallies
+    win_reasons = {}
+    for w in wins:
+        r = w["reason"]
+        if r:
+            win_reasons[r] = win_reasons.get(r, 0) + 1
+
+    loss_reasons = {}
+    for l in losses:
+        r = l["reason"]
+        if r:
+            loss_reasons[r] = loss_reasons.get(r, 0) + 1
+
+    # Product breakdown
+    product_wins = {}
+    product_losses = {}
+    for w in wins:
+        p = w["product"] or "Unknown"
+        product_wins[p] = product_wins.get(p, 0) + 1
+    for l in losses:
+        p = l["product"] or "Unknown"
+        product_losses[p] = product_losses.get(p, 0) + 1
+
+    lines = [
+        f"Win/Loss Analysis ({total} deals):",
+        f"━━━━━━━━━━━━━━━━",
+        f"Won: {len(wins)} | Lost: {len(losses)} | Win rate: {win_rate:.0f}%",
+        "",
+    ]
+
+    if win_reasons:
+        lines.append("Why you WIN:")
+        for reason, count in sorted(win_reasons.items(), key=lambda x: -x[1]):
+            lines.append(f"  • {reason} ({count}x)")
+        lines.append("")
+
+    if loss_reasons:
+        lines.append("Why you LOSE:")
+        for reason, count in sorted(loss_reasons.items(), key=lambda x: -x[1]):
+            lines.append(f"  • {reason} ({count}x)")
+        lines.append("")
+
+    all_products = set(list(product_wins.keys()) + list(product_losses.keys()))
+    if all_products:
+        lines.append("By product:")
+        for p in all_products:
+            w = product_wins.get(p, 0)
+            l = product_losses.get(p, 0)
+            rate = w / (w + l) * 100 if (w + l) > 0 else 0
+            lines.append(f"  • {p}: {w}W/{l}L ({rate:.0f}%)")
+
+    return "\n".join(lines)
+
+
 def get_pipeline_summary():
     """Get a summary of the current pipeline."""
     prospects = read_pipeline()
@@ -800,6 +1008,48 @@ TOOLS = [
             "required": ["transcript"],
         },
     },
+    {
+        "name": "get_follow_up_sequence",
+        "description": "Get the recommended follow-up cadence for a prospect based on their current stage. Shows what to do on which day.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "prospect_name": {"type": "string", "description": "Prospect name"},
+                "stage": {"type": "string", "description": "Current pipeline stage"},
+            },
+            "required": ["prospect_name", "stage"],
+        },
+    },
+    {
+        "name": "auto_set_follow_up",
+        "description": "Automatically set the next follow-up date based on the stage's follow-up sequence. Call this after moving a prospect to a new stage.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "prospect_name": {"type": "string", "description": "Prospect name"},
+                "stage": {"type": "string", "description": "Current pipeline stage"},
+            },
+            "required": ["prospect_name", "stage"],
+        },
+    },
+    {
+        "name": "log_win_loss",
+        "description": "Log why a deal was won or lost. Call this whenever a prospect is moved to Closed-Won or Closed-Lost. Ask Marc for the reason.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "prospect_name": {"type": "string", "description": "Prospect name"},
+                "outcome": {"type": "string", "enum": ["Won", "Lost"], "description": "Whether the deal was won or lost"},
+                "reason": {"type": "string", "description": "Why the deal was won or lost (e.g., 'great rapport', 'went with competitor', 'price too high', 'referral trust')"},
+            },
+            "required": ["prospect_name", "outcome", "reason"],
+        },
+    },
+    {
+        "name": "get_win_loss_stats",
+        "description": "Get win/loss analysis: win rate, top reasons for winning and losing, breakdown by product.",
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
 ]
 
 TOOL_FUNCTIONS = {
@@ -817,6 +1067,10 @@ TOOL_FUNCTIONS = {
     "get_book_stats": lambda _: get_book_stats(),
     "draft_email": lambda args: draft_email(args["prospect_name"], args["email_type"], args.get("details", "")),
     "process_transcript": lambda args: process_transcript(args["transcript"]),
+    "get_follow_up_sequence": lambda args: get_follow_up_sequence(args["prospect_name"], args["stage"]),
+    "auto_set_follow_up": lambda args: auto_set_follow_up(args["prospect_name"], args["stage"]),
+    "log_win_loss": lambda args: log_win_loss(args["prospect_name"], args["outcome"], args["reason"]),
+    "get_win_loss_stats": lambda _: get_win_loss_stats(),
 }
 
 SYSTEM_PROMPT = """You are Calm Money Sales Assistant — Marc's personal sales assistant. Marc is a financial planner in London, Ontario who sells life insurance and wealth management.
@@ -839,6 +1093,10 @@ Key rules:
 - "book stats" → get_book_stats.
 - "draft email/follow-up/quote for X" → draft_email. Include any details (prices, context).
 - Long messages (500+ chars) that look like meeting transcripts → process_transcript.
+- "what's the sequence for X" / "follow-up plan for X" → get_follow_up_sequence.
+- IMPORTANT: When moving a prospect to a new stage, ALWAYS call auto_set_follow_up to set the next follow-up date automatically.
+- IMPORTANT: When moving a prospect to Closed-Won or Closed-Lost, ALWAYS ask Marc WHY they won or lost, then call log_win_loss. Don't skip this.
+- "why do I win" / "win loss stats" / "why do I lose" → get_win_loss_stats.
 - After any write action, confirm in 1-2 lines.
 - Keep it casual and friendly. Use $ for money.
 - If ambiguous, make your best guess and confirm.
