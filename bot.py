@@ -486,6 +486,11 @@ def main():
         logger.info(f"Pipeline file not found at {PIPELINE_PATH}. Please provide one.")
         return
 
+    # Start web dashboard in background thread
+    from dashboard import start_dashboard_thread
+    start_dashboard_thread()
+    logger.info("Web dashboard started.")
+
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("export", export))
