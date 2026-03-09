@@ -424,6 +424,47 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Something went wrong: {str(e)[:200]}")
 
 
+async def export(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Send the pipeline Excel file to the user."""
+    try:
+        if Path(PIPELINE_PATH).exists():
+            await update.message.reply_document(
+                document=open(PIPELINE_PATH, "rb"),
+                filename=f"CalmMoney_Pipeline_{date.today().strftime('%Y-%m-%d')}.xlsx",
+                caption="Here's your current pipeline file."
+            )
+        else:
+            await update.message.reply_text("Pipeline file not found.")
+    except Exception as e:
+        await update.message.reply_text(f"Error sending file: {str(e)[:200]}")
+
+
+async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle uploaded Excel files — replace the pipeline."""
+    doc = update.message.document
+    if not doc.file_name.endswith(('.xlsx', '.xls')):
+        await update.message.reply_text("That's not an Excel file. Send me an .xlsx file to update the pipeline.")
+        return
+
+    try:
+        file = await doc.get_file()
+        await file.download_to_drive(PIPELINE_PATH)
+
+        # Verify it's valid
+        wb = openpyxl.load_workbook(PIPELINE_PATH)
+        sheets = wb.sheetnames
+        wb.close()
+
+        await update.message.reply_text(
+            f"Pipeline updated from your file.\n"
+            f"Sheets: {', '.join(sheets)}\n"
+            f"All changes are live now."
+        )
+        logger.info(f"Pipeline replaced from uploaded file: {doc.file_name}")
+    except Exception as e:
+        await update.message.reply_text(f"Error processing file: {str(e)[:200]}")
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Hey Matthew! I'm your Calm Money pipeline bot.\n\n"
@@ -432,7 +473,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• \"move Sarah to discovery call\"\n"
         "• \"log: called Michael, no answer\"\n"
         "• \"who's overdue?\"\n"
-        "• \"pipeline update\"\n\n"
+        "• \"pipeline update\"\n"
+        "• /export — download your pipeline Excel\n"
+        "• Send me an Excel file to update the pipeline\n\n"
         "I'll handle the rest."
     )
 
@@ -445,6 +488,8 @@ def main():
 
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("export", export))
+    app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     logger.info("Bot started. Listening for messages...")
