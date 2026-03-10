@@ -1310,41 +1310,232 @@ TOOL_FUNCTIONS = {
     "get_disability_quote": lambda args: get_disability_quote(args["age"], args["gender"], args["occupation"], args["income"], args.get("benefit", 0), args.get("wait_days", "30"), args.get("benefit_period", "5"), args.get("coverage_type", "24hour")),
 }
 
-SYSTEM_PROMPT_TEMPLATE = """You are Marc's sales assistant. He is a financial planner in London, Ontario. Today is {today}.
+FORMATTING_RULE = "Reply in plain text only. No markdown, no bold, no italic, no bullet points, no numbered lists, no emojis. Write like texting. Keep it short."
 
-You WRITE LIKE A PERSON TEXTING. No markdown. No bold. No italic. No bullet points. No numbered lists. No emojis. No menus. Just plain short sentences.
+# ── Focused system prompts per command context ──
 
-When Marc says "quote" or "price" or gives you age/gender/occupation/income, CALL THE QUOTE TOOL IMMEDIATELY. Do not ask unnecessary questions. Do not add a prospect. Do not draft an email.
+PROMPT_QUOTE = """You help Marc get insurance quotes. Today is {today}.
 
-For disability quotes: call get_disability_quote. "3k benefit" means $3,000/mo monthly benefit, not income. Income is always annual. If Marc says "multiple prices" or "all periods", call the tool 3 times with benefit_period 2, 5, and 70.
+{formatting}
 
-For term life quotes: call get_term_quote.
+Marc wants a quote. Parse his message and call the right tool.
 
-Only add a prospect to the pipeline when Marc explicitly says "add" or "new prospect". Not when he asks for a quote.
+For disability: call get_disability_quote. Calculate age from DOB if given. "3k benefit" = $3,000/mo monthly benefit amount. Income is always annual. If he says "multiple prices" or "all periods", call the tool 3 times with benefit_period 2, 5, and 70.
 
-When Marc gives a short reply like a name or "yes" or an occupation, use context from earlier in the conversation. Do not start over.
+For term life: call get_term_quote.
 
-Never claim you did something you didn't do via a tool call.
+If something critical is missing (age, gender, occupation, income), ask for it. Do NOT add prospects or draft emails. Just get quotes."""
 
-After completing an action, you may ask ONE follow-up if something important is missing like product type or dollar amount. Do not ask for phone or email.
+PROMPT_ADD = """You help Marc add prospects to his CRM pipeline. Today is {today}.
 
-Revenue auto-calc: AUM → revenue = AUM x 0.009. FYC → premium = FYC / 5.555 (T20/25/30) or FYC / 4.444 (T10/15). Premium → revenue = premium.
+{formatting}
 
-Stages: PHQ/paperwork = Proposal Sent, just met = Discovery Call, wants quote = Needs Analysis, done = Closed-Won, else = New Lead.
-"""
+Parse Marc's message and call add_prospect, then auto_set_follow_up.
+
+Guess fields from context:
+- stage: PHQ/paperwork = "Proposal Sent", just met = "Discovery Call", wants quote = "Needs Analysis", done = "Closed-Won", else = "New Lead"
+- product: insurance = "Life Insurance", disability = "Disability Insurance", investments = "Wealth Management"
+- revenue auto-calc: AUM → revenue = AUM x 0.009. FYC → premium = FYC / 5.555 (T20/25/30) or FYC / 4.444 (T10/15). Premium → revenue = premium.
+
+After adding, ask ONE follow-up if product type or dollar amount is missing. Don't ask for phone or email."""
+
+PROMPT_GENERAL = """You are Marc's sales CRM assistant. He is a financial planner in London, Ontario. Today is {today}.
+
+{formatting}
+
+Use context from earlier messages. When Marc gives a short reply, figure out what he means from conversation history. Never claim you did something you didn't actually do via a tool call.
+
+After completing an action, you may ask ONE follow-up if something important is missing. Don't ask for phone or email.
+
+Commands Marc might use:
+- move/update prospect stages
+- delete prospects
+- pipeline summary, overdue follow-ups
+- schedule/view/cancel meetings
+- log calls, activities
+- draft emails
+- process meeting transcripts
+- mark priorities"""
+
+def _build_prompt(template):
+    return template.format(today=date.today().strftime("%Y-%m-%d"), formatting=FORMATTING_RULE)
 
 
-def build_system_prompt():
-    return SYSTEM_PROMPT_TEMPLATE.format(today=date.today().strftime("%Y-%m-%d"))
+# ── Conversation history ──
+MAX_HISTORY = 20
+_chat_histories = {}
 
 
-# Conversation history per chat (keeps last N exchanges for context)
-MAX_HISTORY = 20  # max user+assistant message pairs to keep
-_chat_histories = {}  # chat_id -> list of message dicts
+async def _llm_respond(update, messages, tools=None):
+    """Send messages to LLM, process tool calls, return reply."""
+    response = client.chat.completions.create(
+        model="gpt-4.1",
+        max_completion_tokens=1024,
+        tools=tools or TOOLS,
+        tool_choice="auto",
+        messages=messages,
+    )
 
+    msg = response.choices[0].message
+
+    # Process tool calls in a loop (max 8 rounds)
+    tool_rounds = 0
+    while msg.tool_calls and tool_rounds < 8:
+        tool_rounds += 1
+        messages.append(msg)
+
+        for tool_call in msg.tool_calls:
+            tool_name = tool_call.function.name
+            tool_input = json.loads(tool_call.function.arguments)
+            logger.info(f"Tool call: {tool_name}({json.dumps(tool_input)})")
+
+            func = TOOL_FUNCTIONS.get(tool_name)
+            if func:
+                with pipeline_lock:
+                    result = func(tool_input)
+            else:
+                result = f"Unknown tool: {tool_name}"
+
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "content": str(result),
+            })
+
+        response = client.chat.completions.create(
+            model="gpt-4.1",
+            max_completion_tokens=1024,
+            tools=tools or TOOLS,
+            messages=messages,
+        )
+        msg = response.choices[0].message
+
+    return msg.content or "Done!"
+
+
+def _get_history(chat_id):
+    if chat_id not in _chat_histories:
+        _chat_histories[chat_id] = []
+    return _chat_histories[chat_id]
+
+
+def _save_history(chat_id, user_msg, reply):
+    history = _get_history(chat_id)
+    history.append({"role": "user", "content": user_msg})
+    history.append({"role": "assistant", "content": reply})
+    if len(history) > MAX_HISTORY * 2:
+        _chat_histories[chat_id] = history[-(MAX_HISTORY * 2):]
+
+
+# ── /quote command ──
+
+async def cmd_quote(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /quote command — disability or term life quotes."""
+    user_msg = update.message.text.replace("/quote", "", 1).strip()
+    if not user_msg:
+        await update.message.reply_text(
+            "Usage: /quote disability female 30 office worker 50k income 3k benefit\n"
+            "Or: /quote term 35 male nonsmoker 500k 20yr"
+        )
+        return
+
+    chat_id = update.effective_chat.id
+    logger.info(f"/quote: {user_msg}")
+
+    try:
+        # Quote-only tools
+        quote_tools = [t for t in TOOLS if t["function"]["name"] in ("get_disability_quote", "get_term_quote")]
+
+        messages = [{"role": "system", "content": _build_prompt(PROMPT_QUOTE)}]
+        messages.extend(_get_history(chat_id))
+        messages.append({"role": "user", "content": user_msg})
+
+        reply = await _llm_respond(update, messages, tools=quote_tools)
+        _save_history(chat_id, f"[quote] {user_msg}", reply)
+        await update.message.reply_text(reply)
+        logger.info(f"/quote replied: {reply[:100]}")
+
+    except Exception as e:
+        logger.error(f"/quote error: {e}")
+        await update.message.reply_text(f"Something went wrong: {str(e)[:200]}")
+
+
+# ── /add command ──
+
+async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /add command — add prospect to pipeline."""
+    user_msg = update.message.text.replace("/add", "", 1).strip()
+    if not user_msg:
+        await update.message.reply_text(
+            "Usage: /add John Smith, 500k AUM, wealth management, hot, referral from Sarah"
+        )
+        return
+
+    chat_id = update.effective_chat.id
+    logger.info(f"/add: {user_msg}")
+
+    try:
+        add_tools = [t for t in TOOLS if t["function"]["name"] in ("add_prospect", "auto_set_follow_up")]
+
+        messages = [{"role": "system", "content": _build_prompt(PROMPT_ADD)}]
+        messages.append({"role": "user", "content": user_msg})
+
+        reply = await _llm_respond(update, messages, tools=add_tools)
+        _save_history(chat_id, f"[add] {user_msg}", reply)
+        await update.message.reply_text(reply)
+        logger.info(f"/add replied: {reply[:100]}")
+
+    except Exception as e:
+        logger.error(f"/add error: {e}")
+        await update.message.reply_text(f"Something went wrong: {str(e)[:200]}")
+
+
+# ── /pipeline, /overdue, /meetings, /calls — direct tool commands ──
+
+async def cmd_pipeline(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        result = get_pipeline_summary()
+        await update.message.reply_text(result)
+    except Exception as e:
+        await update.message.reply_text(f"Error: {str(e)[:200]}")
+
+
+async def cmd_overdue(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        result = get_overdue()
+        await update.message.reply_text(result)
+    except Exception as e:
+        await update.message.reply_text(f"Error: {str(e)[:200]}")
+
+
+async def cmd_meetings(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        result = get_meetings()
+        await update.message.reply_text(result)
+    except Exception as e:
+        await update.message.reply_text(f"Error: {str(e)[:200]}")
+
+
+async def cmd_calls(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        result = get_next_calls()
+        await update.message.reply_text(result)
+    except Exception as e:
+        await update.message.reply_text(f"Error: {str(e)[:200]}")
+
+
+async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        result = get_win_loss_stats()
+        await update.message.reply_text(result)
+    except Exception as e:
+        await update.message.reply_text(f"Error: {str(e)[:200]}")
+
+
+# ── Free-form message handler (still works for everything else) ──
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle incoming Telegram messages."""
+    """Handle free-form text messages."""
     user_msg = update.message.text
     if not user_msg:
         return
@@ -1353,71 +1544,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"Received: {user_msg}")
 
     try:
-        # Get or create conversation history for this chat
-        if chat_id not in _chat_histories:
-            _chat_histories[chat_id] = []
-        history = _chat_histories[chat_id]
-
-        # Build messages: system prompt + history + new message
-        messages = [{"role": "system", "content": build_system_prompt()}]
+        history = _get_history(chat_id)
+        messages = [{"role": "system", "content": _build_prompt(PROMPT_GENERAL)}]
         messages.extend(history)
         messages.append({"role": "user", "content": user_msg})
 
-        response = client.chat.completions.create(
-            model="gpt-4.1",
-            max_completion_tokens=1024,
-            tools=TOOLS,
-            tool_choice="auto",
-            messages=messages,
-        )
-
-        msg = response.choices[0].message
-
-        if not msg.tool_calls:
-            logger.warning(f"NO TOOL CALLED. Model replied with text only: {msg.content[:200] if msg.content else '(empty)'}")
-
-        # Process tool calls in a loop (max 8 rounds to prevent infinite loops)
-        tool_rounds = 0
-        while msg.tool_calls and tool_rounds < 8:
-            tool_rounds += 1
-            messages.append(msg)
-
-            for tool_call in msg.tool_calls:
-                tool_name = tool_call.function.name
-                tool_input = json.loads(tool_call.function.arguments)
-                logger.info(f"Tool call: {tool_name}({json.dumps(tool_input)})")
-
-                func = TOOL_FUNCTIONS.get(tool_name)
-                if func:
-                    with pipeline_lock:
-                        result = func(tool_input)
-                else:
-                    result = f"Unknown tool: {tool_name}"
-
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tool_call.id,
-                    "content": str(result),
-                })
-
-            response = client.chat.completions.create(
-                model="gpt-4.1",
-                max_completion_tokens=1024,
-                tools=TOOLS,
-                messages=messages,
-            )
-            msg = response.choices[0].message
-
-        reply = msg.content or "Done!"
-
-        # Save to conversation history (user message + final assistant reply only)
-        history.append({"role": "user", "content": user_msg})
-        history.append({"role": "assistant", "content": reply})
-
-        # Trim history to keep last N exchanges
-        if len(history) > MAX_HISTORY * 2:
-            _chat_histories[chat_id] = history[-(MAX_HISTORY * 2):]
-
+        reply = await _llm_respond(update, messages)
+        _save_history(chat_id, user_msg, reply)
         await update.message.reply_text(reply)
         logger.info(f"Replied: {reply[:100]}")
 
@@ -1598,25 +1731,23 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Hey Marc! I'm your Calm Money sales assistant.\n\n"
-        "Pipeline:\n"
-        "• \"add John Smith, $300K wealth, hot, referral\"\n"
-        "• \"move Sarah to discovery call\"\n"
-        "• \"pipeline update\" / \"who's overdue?\"\n\n"
-        "Meetings:\n"
-        "• \"meeting with Sarah Thursday 2pm\"\n"
-        "• \"what's on this week?\"\n\n"
-        "Insurance Book:\n"
-        "• \"calls\" — get next prospects to call\n"
-        "• \"called John, no answer\" / \"booked meeting\"\n"
-        "• \"book stats\" — see your progress\n\n"
-        "Emails:\n"
-        "• \"draft follow-up for Sarah\"\n"
-        "• \"draft quote for Mike, 500K at $81, 1M at $140\"\n\n"
-        "Other:\n"
-        "• /export — download Excel\n"
-        "• Send Excel file to update pipeline\n"
-        "• Paste Otter transcript for auto-processing\n\n"
+        "Hey Marc! Here are your commands:\n\n"
+        "/quote — insurance quotes\n"
+        "  /quote disability female 30 office worker 50k income 3k benefit\n"
+        "  /quote term 35 male nonsmoker 500k 20yr\n\n"
+        "/add — add a prospect\n"
+        "  /add John Smith, 300k AUM, wealth management, hot, referral\n\n"
+        "/pipeline — see your deals\n"
+        "/overdue — who needs follow-up\n"
+        "/meetings — view meetings\n"
+        "/calls — next prospects to call\n"
+        "/stats — win/loss stats\n"
+        "/export — download Excel file\n\n"
+        "You can also type anything and I'll figure it out:\n"
+        "  move Sarah to discovery call\n"
+        "  meeting with John Thursday 2pm\n"
+        "  called Mike, booked meeting\n"
+        "  draft follow-up email for Sarah\n\n"
         "Let's close some deals."
     )
 
@@ -1637,7 +1768,16 @@ def main():
 
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", start))
     app.add_handler(CommandHandler("export", export))
+    app.add_handler(CommandHandler("quote", cmd_quote))
+    app.add_handler(CommandHandler("q", cmd_quote))  # shortcut
+    app.add_handler(CommandHandler("add", cmd_add))
+    app.add_handler(CommandHandler("pipeline", cmd_pipeline))
+    app.add_handler(CommandHandler("overdue", cmd_overdue))
+    app.add_handler(CommandHandler("meetings", cmd_meetings))
+    app.add_handler(CommandHandler("calls", cmd_calls))
+    app.add_handler(CommandHandler("stats", cmd_stats))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
