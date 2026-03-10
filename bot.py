@@ -1256,7 +1256,13 @@ When Marc mentions a person:
 1. Call add_prospect immediately. Guess fields from context:
    - stage: PHQ/paperwork = "Proposal Sent", just met = "Discovery Call", wants quote = "Needs Analysis", done = "Closed-Won", else = "New Lead"
    - product: insurance = "Life Insurance", disability = "Disability Insurance", investments = "Wealth Management"
-   - revenue: use any $ amount mentioned
+   - revenue: use any $ amount mentioned. Auto-calculate if not given:
+     * If AUM is given (Wealth Management): revenue = AUM × 0.009 (0.9% mgmt fee)
+     * If FYC is given (insurance): back-calculate premium:
+       Term 20/25/30: premium = FYC / (11.11 × 0.5)
+       Term 10/15: premium = FYC / (11.11 × 0.4)
+       Then set revenue = that premium
+     * If premium is given (insurance): revenue = premium
    - notes: any extra details
 2. Then call auto_set_follow_up for that stage.
 3. Reply in 1-2 lines confirming what you did + one follow-up if useful context is missing.
