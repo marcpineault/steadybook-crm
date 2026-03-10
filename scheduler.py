@@ -14,49 +14,19 @@ import json
 import logging
 import os
 from datetime import date, datetime, timedelta
-from pathlib import Path
-
-import openpyxl
+import db
 import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 logger = logging.getLogger(__name__)
 
 DATA_DIR = os.environ.get("DATA_DIR", "")
-if DATA_DIR:
-    PIPELINE_PATH = os.path.join(DATA_DIR, "pipeline.xlsx")
-else:
-    PIPELINE_PATH = os.environ.get("PIPELINE_PATH", "pipeline.xlsx")
 CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 if DATA_DIR:
     NAG_STATE_FILE = os.path.join(DATA_DIR, "nag_state.json")
 else:
     NAG_STATE_FILE = "nag_state.json"
 ET = pytz.timezone("America/Toronto")
-
-# Pipeline sheet layout
-PIPELINE_DATA_START = 5
-PIPELINE_MAX_ROWS = 80
-PIPELINE_COLS = {
-    "name": 1, "phone": 2, "email": 3, "source": 4,
-    "priority": 5, "stage": 6, "product": 7,
-    "aum": 8, "revenue": 9, "first_contact": 10,
-    "next_followup": 11, "days_open": 12, "notes": 13,
-}
-
-# Meetings sheet layout
-MEETINGS_DATA_START = 3
-MEETINGS_COLS = {
-    "date": 1, "time": 2, "prospect": 3,
-    "type": 4, "prep_notes": 5, "status": 6,
-}
-
-# Insurance Book sheet layout
-INSURANCE_DATA_START = 3
-INSURANCE_COLS = {
-    "name": 1, "phone": 2, "address": 3, "policy_start": 4,
-    "status": 5, "last_called": 6, "notes": 7, "retry_date": 8,
-}
 
 INSURANCE_DAILY_LIMIT = 5
 
@@ -68,7 +38,7 @@ _bot = None
 # ── Nag state persistence ──
 
 def _load_nag_state() -> dict:
-    if Path(NAG_STATE_FILE).exists():
+    if os.path.exists(NAG_STATE_FILE):
         try:
             with open(NAG_STATE_FILE, "r") as f:
                 return json.load(f)
@@ -100,10 +70,10 @@ def _mark_nagged(state: dict, prospect_name: str, nag_type: str):
     state[key] = datetime.now().isoformat()
 
 
-# ── Excel readers ──
+# ── Data readers ──
 
 def _parse_date(val) -> date | None:
-    """Parse a date value from Excel (could be datetime, date, or string)."""
+    """Parse a date value (could be None, datetime, date, or string)."""
     if val is None:
         return None
     if isinstance(val, datetime):
@@ -123,143 +93,45 @@ def _parse_date(val) -> date | None:
     return None
 
 
-def _cell(ws, row, col):
-    """Get cell value, return empty string for None."""
-    v = ws.cell(row=row, column=col).value
-    return str(v) if v is not None else ""
-
-
-def _get_lock():
-    from bot import pipeline_lock
-    return pipeline_lock
-
-
 def _read_prospects():
     """Read pipeline prospects."""
-    with _get_lock():
-        return _read_prospects_inner()
-
-
-def _read_prospects_inner():
-    wb = openpyxl.load_workbook(PIPELINE_PATH, data_only=True)
-    ws = wb["Pipeline"]
-    prospects = []
-    for r in range(PIPELINE_DATA_START, PIPELINE_DATA_START + PIPELINE_MAX_ROWS):
-        name = ws.cell(row=r, column=1).value
-        if not name:
-            continue
-        p = {"row": r}
-        for field, col in PIPELINE_COLS.items():
-            p[field] = _cell(ws, r, col)
-        p["_next_followup_date"] = _parse_date(ws.cell(row=r, column=PIPELINE_COLS["next_followup"]).value)
-        p["_first_contact_date"] = _parse_date(ws.cell(row=r, column=PIPELINE_COLS["first_contact"]).value)
-        prospects.append(p)
-    wb.close()
+    prospects = db.read_pipeline()
+    # Add parsed date fields for compatibility
+    for p in prospects:
+        p["_next_followup_date"] = _parse_date(p.get("next_followup"))
+        p["_first_contact_date"] = _parse_date(p.get("first_contact"))
     return prospects
 
 
 def _read_meetings_today():
-    """Read meetings for today from the Meetings sheet."""
-    with _get_lock():
-        return _read_meetings_today_inner()
-
-
-def _read_meetings_today_inner():
-    wb = openpyxl.load_workbook(PIPELINE_PATH, data_only=True)
-    if "Meetings" not in wb.sheetnames:
-        wb.close()
-        return []
-    ws = wb["Meetings"]
-    today = date.today()
-    meetings = []
-    for r in range(MEETINGS_DATA_START, MEETINGS_DATA_START + 100):
-        raw_date = ws.cell(row=r, column=MEETINGS_COLS["date"]).value
-        if not raw_date:
-            continue
-        meeting_date = _parse_date(raw_date)
-        if meeting_date == today:
-            meetings.append({
-                "time": _cell(ws, r, MEETINGS_COLS["time"]),
-                "prospect": _cell(ws, r, MEETINGS_COLS["prospect"]),
-                "type": _cell(ws, r, MEETINGS_COLS["type"]),
-                "prep_notes": _cell(ws, r, MEETINGS_COLS["prep_notes"]),
-                "status": _cell(ws, r, MEETINGS_COLS["status"]),
-            })
-    wb.close()
-    return meetings
+    """Read meetings for today."""
+    today_str = date.today().strftime("%Y-%m-%d")
+    return [m for m in db.read_meetings() if (m.get("date") or "").startswith(today_str)]
 
 
 def _read_meetings_tomorrow():
-    """Read meetings for tomorrow from the Meetings sheet."""
-    with _get_lock():
-        return _read_meetings_tomorrow_inner()
-
-
-def _read_meetings_tomorrow_inner():
-    wb = openpyxl.load_workbook(PIPELINE_PATH, data_only=True)
-    if "Meetings" not in wb.sheetnames:
-        wb.close()
-        return []
-    ws = wb["Meetings"]
-    tomorrow = date.today() + timedelta(days=1)
-    meetings = []
-    for r in range(MEETINGS_DATA_START, MEETINGS_DATA_START + 100):
-        raw_date = ws.cell(row=r, column=MEETINGS_COLS["date"]).value
-        if not raw_date:
-            continue
-        meeting_date = _parse_date(raw_date)
-        if meeting_date == tomorrow:
-            meetings.append({
-                "time": _cell(ws, r, MEETINGS_COLS["time"]),
-                "prospect": _cell(ws, r, MEETINGS_COLS["prospect"]),
-                "type": _cell(ws, r, MEETINGS_COLS["type"]),
-                "prep_notes": _cell(ws, r, MEETINGS_COLS["prep_notes"]),
-                "status": _cell(ws, r, MEETINGS_COLS["status"]),
-            })
-    wb.close()
-    return meetings
+    """Read meetings for tomorrow."""
+    tomorrow_str = (date.today() + timedelta(days=1)).strftime("%Y-%m-%d")
+    return [m for m in db.read_meetings() if (m.get("date") or "").startswith(tomorrow_str)]
 
 
 def _read_insurance_calls():
     """Read insurance book entries that need calling today."""
-    with _get_lock():
-        return _read_insurance_calls_inner()
-
-
-def _read_insurance_calls_inner():
-    wb = openpyxl.load_workbook(PIPELINE_PATH, data_only=True)
-    if "Insurance Book" not in wb.sheetnames:
-        wb.close()
-        return []
-    ws = wb["Insurance Book"]
     today = date.today()
     calls = []
-    for r in range(INSURANCE_DATA_START, INSURANCE_DATA_START + 200):
-        name = ws.cell(row=r, column=INSURANCE_COLS["name"]).value
-        if not name:
-            continue
-        status = _cell(ws, r, INSURANCE_COLS["status"]).strip()
-        retry_raw = ws.cell(row=r, column=INSURANCE_COLS["retry_date"]).value
-        retry_date = _parse_date(retry_raw)
-
-        eligible = False
-        if status.lower() in ("not called", ""):
-            eligible = True
-        elif retry_date and retry_date <= today:
-            eligible = True
-
+    for entry in db.read_insurance_book():
+        status = (entry.get("status") or "").strip().lower()
+        eligible = status in ("not called", "")
+        if not eligible and entry.get("retry_date"):
+            try:
+                rd = datetime.strptime(entry["retry_date"].split(" ")[0], "%Y-%m-%d").date()
+                eligible = rd <= today
+            except (ValueError, IndexError):
+                pass
         if eligible:
-            calls.append({
-                "name": _cell(ws, r, INSURANCE_COLS["name"]),
-                "phone": _cell(ws, r, INSURANCE_COLS["phone"]),
-                "address": _cell(ws, r, INSURANCE_COLS["address"]),
-                "policy_start": _cell(ws, r, INSURANCE_COLS["policy_start"]),
-                "status": status,
-                "notes": _cell(ws, r, INSURANCE_COLS["notes"]),
-            })
+            calls.append(entry)
             if len(calls) >= INSURANCE_DAILY_LIMIT:
                 break
-    wb.close()
     return calls
 
 
@@ -269,10 +141,6 @@ async def morning_briefing():
     """Send the daily morning briefing at 8:00 AM ET."""
     if not _bot or not CHAT_ID:
         logger.warning("Bot or CHAT_ID not configured, skipping morning briefing.")
-        return
-
-    if not Path(PIPELINE_PATH).exists():
-        await _bot.send_message(chat_id=CHAT_ID, text="Good morning! Pipeline file not found — upload one to get started.")
         return
 
     today = date.today()
@@ -343,10 +211,10 @@ async def morning_briefing():
     total_aum = 0
     for p in active:
         try:
-            total_aum += float(p["aum"].replace("$", "").replace(",", "")) if p["aum"] else 0
-        except ValueError:
+            total_aum += float(p["aum"] or 0)
+        except (ValueError, TypeError):
             pass
-    hot_count = len([p for p in active if p["priority"].lower() == "hot"])
+    hot_count = len([p for p in active if (p.get("priority") or "").lower() == "hot"])
 
     lines.append("PIPELINE SNAPSHOT:")
     lines.append(f"  Active: {len(active)} | Value: ${total_aum:,.0f} | Hot: {hot_count}")
@@ -367,9 +235,6 @@ async def auto_nag():
         logger.warning("Bot or CHAT_ID not configured, skipping auto-nag.")
         return
 
-    if not Path(PIPELINE_PATH).exists():
-        return
-
     today = date.today()
     nag_state = _load_nag_state()
     alerts = []
@@ -387,7 +252,7 @@ async def auto_nag():
         fu = p["_next_followup_date"]
         fc = p["_first_contact_date"]
         stage = p["stage"]
-        priority = p["priority"].lower()
+        priority = (p.get("priority") or "").lower()
 
         # 1. No activity for 7+ days
         ref_date = fu or fc
@@ -439,9 +304,6 @@ async def weekly_report():
     if not _bot or not CHAT_ID:
         return
 
-    if not Path(PIPELINE_PATH).exists():
-        return
-
     today = date.today()
     week_start = today - timedelta(days=7)
 
@@ -459,57 +321,37 @@ async def weekly_report():
     total_rev = 0
     for p in active:
         try:
-            total_aum += float(p["aum"].replace("$", "").replace(",", "")) if p["aum"] else 0
-        except ValueError:
+            total_aum += float(p["aum"] or 0)
+        except (ValueError, TypeError):
             pass
         try:
-            total_rev += float(p["revenue"].replace("$", "").replace(",", "")) if p["revenue"] else 0
-        except ValueError:
+            total_rev += float(p["revenue"] or 0)
+        except (ValueError, TypeError):
             pass
 
     won_rev = 0
     for p in won:
         try:
-            won_rev += float(p["revenue"].replace("$", "").replace(",", "")) if p["revenue"] else 0
-        except ValueError:
+            won_rev += float(p["revenue"] or 0)
+        except (ValueError, TypeError):
             pass
 
-    hot_count = len([p for p in active if p["priority"].lower() == "hot"])
+    hot_count = len([p for p in active if (p.get("priority") or "").lower() == "hot"])
 
     # Activity log this week
-    # Read all raw data inside lock, compute stats outside
     raw_activities = []
+    for a in db.read_activities():
+        raw_activities.append((_parse_date(a.get("date")), (a.get("action") or "").lower()))
+
     raw_book = []
+    for e in db.read_insurance_book():
+        raw_book.append((_parse_date(e.get("last_called")), (e.get("status") or "").lower()))
+
     raw_wl = []
-    with _get_lock():
-        wb = openpyxl.load_workbook(PIPELINE_PATH, data_only=True)
-        if "Activity Log" in wb.sheetnames:
-            log_ws = wb["Activity Log"]
-            for r in range(3, 200):
-                d = log_ws.cell(row=r, column=1).value
-                if d:
-                    raw_activities.append((_parse_date(d), _cell(log_ws, r, 3).lower()))
+    for w in db.get_win_loss_stats():
+        raw_wl.append((_parse_date(w.get("date")), (w.get("outcome") or "").lower()))
 
-        if "Insurance Book" in wb.sheetnames:
-            bs = wb["Insurance Book"]
-            for r in range(INSURANCE_DATA_START, INSURANCE_DATA_START + 200):
-                name = bs.cell(row=r, column=INSURANCE_COLS["name"]).value
-                if name:
-                    raw_book.append((
-                        _parse_date(bs.cell(row=r, column=INSURANCE_COLS["last_called"]).value),
-                        _cell(bs, r, INSURANCE_COLS["status"]).lower(),
-                    ))
-
-        if "Win Loss Log" in wb.sheetnames:
-            wl = wb["Win Loss Log"]
-            for r in range(3, 103):
-                d = wl.cell(row=r, column=1).value
-                if d:
-                    raw_wl.append((_parse_date(d), _cell(wl, r, 3).lower()))
-
-        wb.close()
-
-    # Compute stats outside the lock
+    # Compute stats
     week_activities = 0
     calls_made = 0
     emails_sent = 0
@@ -580,12 +422,12 @@ async def weekly_report():
     # Overdue hot leads first
     for p in active:
         fu = p["_next_followup_date"]
-        if p["priority"].lower() == "hot" and fu and fu < today:
+        if (p.get("priority") or "").lower() == "hot" and fu and fu < today:
             priorities.append(f"  {len(priorities)+1}. Follow up with {p['name']} (Hot, {(today - fu).days}d overdue)")
     # Then other overdue
     for p in active:
         fu = p["_next_followup_date"]
-        if p["priority"].lower() != "hot" and fu and fu < today:
+        if (p.get("priority") or "").lower() != "hot" and fu and fu < today:
             priorities.append(f"  {len(priorities)+1}. Follow up with {p['name']} ({(today - fu).days}d overdue)")
         if len(priorities) >= 3:
             break
