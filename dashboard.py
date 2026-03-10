@@ -289,13 +289,20 @@ def dashboard():
     PREMIUM_TARGET = 200000
     AUM_TARGET = 5000000
 
-    # Calculate won AUM
-    won_aum = 0
+    # Baseline numbers (existing business not tracked in pipeline)
+    BASELINE_AUM = 400000    # Current AUM as of March 2025
+    BASELINE_PREMIUM = 0     # Update when you know life premium YTD
+
+    # Calculate won AUM from pipeline + baseline
+    won_aum = BASELINE_AUM
     for p in won:
         try:
             won_aum += float(str(p["aum"]).replace("$","").replace(",","") or 0)
         except ValueError:
             pass
+
+    # Add baseline to won revenue
+    won_revenue += BASELINE_PREMIUM
 
     # Days into the year / days remaining
     year_start = date(today.year, 1, 1)
