@@ -1,6 +1,8 @@
 import os
 import json
 import logging
+import signal
+import sys
 import threading
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -1450,6 +1452,13 @@ def main():
         logger.info("Scheduler started (morning briefing + auto-nags).")
     except Exception as e:
         logger.warning(f"Scheduler failed to start: {e}. Bot will run without scheduled messages.")
+
+    # Handle SIGTERM from Railway so old instance stops polling immediately
+    def handle_sigterm(signum, frame):
+        logger.info("SIGTERM received — shutting down polling...")
+        os._exit(0)
+
+    signal.signal(signal.SIGTERM, handle_sigterm)
 
     logger.info("Bot started. Listening for messages...")
     app.run_polling(drop_pending_updates=True)
