@@ -1274,11 +1274,15 @@ TOOLS = [
         "smoker": {"type": "boolean"}, "term": {"type": "string"},
         "amount": {"type": "integer"}, "health": {"type": "string"},
     }, ["age", "gender", "smoker", "term", "amount"]),
-    _tool("get_disability_quote", "Look up Edge Benefits disability insurance quotes.", {
-        "age": {"type": "integer"}, "gender": {"type": "string"},
-        "occupation": {"type": "string"}, "income": {"type": "integer"},
-        "benefit": {"type": "integer"}, "wait_days": {"type": "string"},
-        "benefit_period": {"type": "string"}, "coverage_type": {"type": "string"},
+    _tool("get_disability_quote", "Look up Edge Benefits disability insurance quotes. Returns injury-only rates.", {
+        "age": {"type": "integer", "description": "Age of the person"},
+        "gender": {"type": "string", "description": "M or F"},
+        "occupation": {"type": "string", "description": "Job title (e.g. office worker, nurse, teacher)"},
+        "income": {"type": "integer", "description": "Annual income in dollars (e.g. 50000, NOT monthly)"},
+        "benefit": {"type": "integer", "description": "Desired monthly benefit amount in dollars (e.g. 3000 for $3,000/mo). 0 = auto-calculate max eligible."},
+        "wait_days": {"type": "string", "description": "Waiting period: 0, 30, or 112 days. Default 30."},
+        "benefit_period": {"type": "string", "description": "Benefit period: 2 (2yr), 5 (5yr), or 70 (to age 70). Default 5."},
+        "coverage_type": {"type": "string", "description": "24hour or non-occupational. Default 24hour."},
     }, ["age", "gender", "occupation", "income"]),
 ]
 
@@ -1332,6 +1336,7 @@ After completing an action, you can ask ONE useful follow-up if important contex
 
 DISABILITY QUOTES:
 Calculate age from DOB relative to today. If occupation not found, try a similar title automatically (e.g. "administrative assistant" = "secretary" = "office worker"). Show all 3 benefit periods if Marc asks.
+IMPORTANT: "benefit" means monthly benefit amount (e.g. "3k benefit" = $3,000/mo benefit, NOT $3,000 income). "income" is always annual. If Marc says "give me multiple prices" or "all benefit periods", call the tool multiple times with different benefit_period values (2, 5, 70).
 
 TERM LIFE QUOTES:
 Call get_term_quote with age, gender, smoker status, term, and amount.
