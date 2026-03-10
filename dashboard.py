@@ -688,173 +688,214 @@ def dashboard():
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Calm Money — Pipeline Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
+:root {{
+    --bg: #0a0e17;
+    --surface: #111827;
+    --surface-2: #1a2332;
+    --surface-3: #1f2937;
+    --border: #2a3544;
+    --text: #e2e8f0;
+    --text-muted: #64748b;
+    --text-dim: #475569;
+    --accent: #10b981;
+    --accent-glow: rgba(16, 185, 129, 0.15);
+    --blue: #3b82f6;
+    --blue-glow: rgba(59, 130, 246, 0.15);
+    --gold: #f59e0b;
+    --gold-glow: rgba(245, 158, 11, 0.15);
+    --purple: #8b5cf6;
+    --purple-glow: rgba(139, 92, 246, 0.15);
+    --red: #ef4444;
+    --red-glow: rgba(239, 68, 68, 0.15);
+    --teal: #14b8a6;
+}}
 * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-body {{ font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: #f0f2f5; color: #2c3e50; }}
+body {{ font-family: 'DM Sans', -apple-system, sans-serif; background: var(--bg); color: var(--text); }}
 
 .header {{
-    background: linear-gradient(135deg, #0f1b2d 0%, #1a2744 100%);
-    padding: 24px 32px;
-    color: white;
+    background: var(--surface);
+    padding: 20px 32px;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    border-bottom: 1px solid var(--border);
 }}
-.header h1 {{ font-size: 24px; font-weight: 700; }}
-.header h1 span {{ color: #1abc9c; }}
-.header .updated {{ font-size: 13px; color: #7f8c8d; }}
+.header h1 {{ font-size: 20px; font-weight: 700; letter-spacing: -0.3px; color: var(--text); }}
+.header h1 span {{ color: var(--accent); }}
+.header .updated {{ font-size: 12px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; font-size: 11px; }}
 
-.container {{ max-width: 1400px; margin: 0 auto; padding: 24px; }}
+.container {{ max-width: 1440px; margin: 0 auto; padding: 24px; }}
 
+/* ── KPI Cards ── */
 .kpi-grid {{
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 16px;
-    margin-bottom: 24px;
+    gap: 12px;
+    margin-bottom: 20px;
 }}
 .kpi-card {{
-    background: white;
-    border-radius: 12px;
-    padding: 20px 24px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-    border-top: 4px solid #1abc9c;
+    background: var(--surface);
+    border-radius: 10px;
+    padding: 18px 20px;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    transition: border-color 0.2s, box-shadow 0.2s;
 }}
-.kpi-card.blue {{ border-top-color: #3498db; }}
-.kpi-card.green {{ border-top-color: #27ae60; }}
-.kpi-card.purple {{ border-top-color: #8e44ad; }}
-.kpi-card.red {{ border-top-color: #e74c3c; }}
-.kpi-card.gold {{ border-top-color: #f1c40f; }}
-.kpi-label {{ font-size: 11px; text-transform: uppercase; color: #7f8c8d; font-weight: 600; letter-spacing: 0.5px; }}
-.kpi-value {{ font-size: 32px; font-weight: 700; margin-top: 4px; color: #0f1b2d; }}
+.kpi-card:hover {{ box-shadow: 0 0 20px var(--accent-glow); }}
+.kpi-card.blue {{ border-left-color: var(--blue); }}
+.kpi-card.blue:hover {{ box-shadow: 0 0 20px var(--blue-glow); }}
+.kpi-card.green {{ border-left-color: var(--accent); }}
+.kpi-card.green:hover {{ box-shadow: 0 0 20px var(--accent-glow); }}
+.kpi-card.purple {{ border-left-color: var(--purple); }}
+.kpi-card.purple:hover {{ box-shadow: 0 0 20px var(--purple-glow); }}
+.kpi-card.red {{ border-left-color: var(--red); }}
+.kpi-card.red:hover {{ box-shadow: 0 0 20px var(--red-glow); }}
+.kpi-card.gold {{ border-left-color: var(--gold); }}
+.kpi-card.gold:hover {{ box-shadow: 0 0 20px var(--gold-glow); }}
+.kpi-label {{ font-size: 10px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; letter-spacing: 1px; }}
+.kpi-value {{ font-size: 28px; font-weight: 700; margin-top: 4px; color: var(--text); font-family: 'JetBrains Mono', monospace; letter-spacing: -0.5px; }}
 
+/* ── Sections ── */
 .section {{
-    background: white;
-    border-radius: 12px;
+    background: var(--surface);
+    border-radius: 10px;
     padding: 24px;
-    margin-bottom: 24px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    margin-bottom: 20px;
+    border: 1px solid var(--border);
 }}
 .section h2 {{
-    font-size: 16px;
-    font-weight: 700;
-    color: #0f1b2d;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
     margin-bottom: 16px;
-    padding-bottom: 8px;
-    border-bottom: 2px solid #f0f2f5;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }}
-.section h2 .count {{ color: #7f8c8d; font-weight: 400; }}
+.section h2 .count {{ color: var(--text-muted); font-weight: 400; }}
 
+/* ── Charts ── */
 .chart-grid {{
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
-    gap: 24px;
-    margin-bottom: 24px;
+    gap: 16px;
+    margin-bottom: 20px;
 }}
 .chart-card {{
-    background: white;
-    border-radius: 12px;
+    background: var(--surface);
+    border-radius: 10px;
     padding: 20px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    border: 1px solid var(--border);
 }}
-.chart-card h3 {{ font-size: 14px; font-weight: 600; color: #0f1b2d; margin-bottom: 12px; }}
+.chart-card h3 {{ font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; }}
 
+/* ── Tables ── */
 table {{ width: 100%; border-collapse: collapse; font-size: 13px; }}
-th {{ text-align: left; padding: 10px 12px; background: #f8f9fa; color: #7f8c8d; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid #e9ecef; }}
-td {{ padding: 10px 12px; border-bottom: 1px solid #f0f2f5; }}
-tr:hover {{ background: #f8f9fa; }}
+th {{ text-align: left; padding: 10px 12px; background: var(--surface-2); color: var(--text-muted); font-weight: 600; font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px; border-bottom: 1px solid var(--border); }}
+td {{ padding: 10px 12px; border-bottom: 1px solid var(--border); color: var(--text); }}
+tr:hover {{ background: var(--surface-2); }}
 
 .badge {{
     display: inline-block;
     padding: 3px 10px;
-    border-radius: 12px;
-    font-size: 11px;
+    border-radius: 4px;
+    font-size: 10px;
     font-weight: 600;
     color: white;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
 }}
-.name-cell {{ font-weight: 600; color: #0f1b2d; }}
-.money {{ font-family: 'SF Mono', 'Consolas', monospace; text-align: right; }}
-.notes {{ color: #7f8c8d; font-size: 12px; max-width: 200px; }}
-.overdue {{ color: #e74c3c; font-weight: 600; }}
+.name-cell {{ font-weight: 600; color: var(--text); }}
+.money {{ font-family: 'JetBrains Mono', monospace; text-align: right; font-size: 12px; }}
+.notes {{ color: var(--text-muted); font-size: 12px; max-width: 200px; }}
+.overdue {{ color: var(--red); font-weight: 600; }}
 
-.two-col {{ display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }}
+.two-col {{ display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }}
 
-.empty-state {{ text-align: center; padding: 40px; color: #7f8c8d; }}
-.empty-state p {{ margin-top: 8px; font-size: 14px; }}
+.empty-state {{ text-align: center; padding: 40px; color: var(--text-dim); }}
+.empty-state p {{ margin-top: 8px; font-size: 13px; }}
 
-.refresh-note {{ text-align: center; color: #7f8c8d; font-size: 12px; margin-top: 16px; padding: 12px; }}
+.refresh-note {{ text-align: center; color: var(--text-dim); font-size: 11px; margin-top: 16px; padding: 12px; }}
 
-.editable-row:hover {{ background: #edf7f6 !important; }}
+.editable-row:hover {{ background: var(--surface-3) !important; cursor: pointer; }}
 
-/* Tabs */
+/* ── Tabs ── */
 .tab-nav {{
     display: flex;
     gap: 0;
-    background: white;
-    border-radius: 12px 12px 0 0;
+    background: var(--surface);
+    border-radius: 10px 10px 0 0;
     margin-bottom: 0;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    border: 1px solid var(--border);
+    border-bottom: none;
     overflow: hidden;
 }}
 .tab-btn {{
     flex: 1;
     padding: 14px 20px;
     border: none;
-    background: white;
-    font-size: 13px;
+    background: transparent;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px;
     font-weight: 600;
-    color: #7f8c8d;
+    color: var(--text-muted);
     cursor: pointer;
-    border-bottom: 3px solid transparent;
+    border-bottom: 2px solid transparent;
     transition: all 0.2s;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.8px;
 }}
-.tab-btn:hover {{ background: #f8f9fa; color: #2c3e50; }}
-.tab-btn.active {{ color: #1abc9c; border-bottom-color: #1abc9c; background: #f0faf8; }}
+.tab-btn:hover {{ background: var(--surface-2); color: var(--text); }}
+.tab-btn.active {{ color: var(--accent); border-bottom-color: var(--accent); background: var(--surface-2); }}
 .tab-content {{ display: none; }}
 .tab-content.active {{ display: block; }}
 
-/* Progress bars */
+/* ── Progress bars ── */
 .progress-bar-container {{
-    background: #f0f2f5;
-    border-radius: 8px;
-    height: 24px;
+    background: var(--surface-3);
+    border-radius: 6px;
+    height: 22px;
     overflow: hidden;
     position: relative;
     margin: 8px 0;
 }}
 .progress-bar-fill {{
     height: 100%;
-    border-radius: 8px;
-    transition: width 0.5s ease;
+    border-radius: 6px;
+    transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
     display: flex;
     align-items: center;
     padding-left: 8px;
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 600;
     color: white;
-    min-width: 40px;
+    min-width: 36px;
+    font-family: 'JetBrains Mono', monospace;
 }}
-.progress-bar-fill.green {{ background: linear-gradient(90deg, #27ae60, #2ecc71); }}
-.progress-bar-fill.red {{ background: linear-gradient(90deg, #e74c3c, #e67e22); }}
-.progress-bar-fill.blue {{ background: linear-gradient(90deg, #2980b9, #3498db); }}
-.progress-bar-fill.teal {{ background: linear-gradient(90deg, #16a085, #1abc9c); }}
+.progress-bar-fill.green {{ background: linear-gradient(90deg, #059669, #10b981); }}
+.progress-bar-fill.red {{ background: linear-gradient(90deg, #dc2626, #ef4444); }}
+.progress-bar-fill.blue {{ background: linear-gradient(90deg, #2563eb, #3b82f6); }}
+.progress-bar-fill.teal {{ background: linear-gradient(90deg, #0d9488, #14b8a6); }}
 
 .pace-indicator {{
     display: inline-block;
     padding: 3px 10px;
-    border-radius: 12px;
-    font-size: 11px;
+    border-radius: 4px;
+    font-size: 10px;
     font-weight: 600;
+    font-family: 'JetBrains Mono', monospace;
 }}
-.pace-ahead {{ background: #d5f5e3; color: #27ae60; }}
-.pace-behind {{ background: #fadbd8; color: #e74c3c; }}
+.pace-ahead {{ background: rgba(16,185,129,0.15); color: var(--accent); }}
+.pace-behind {{ background: rgba(239,68,68,0.15); color: var(--red); }}
 
 .target-card {{
-    background: white;
-    border-radius: 12px;
+    background: var(--surface);
+    border-radius: 10px;
     padding: 24px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    border: 1px solid var(--border);
     margin-bottom: 16px;
 }}
 .target-header {{
@@ -864,30 +905,32 @@ tr:hover {{ background: #f8f9fa; }}
     margin-bottom: 12px;
 }}
 .target-header h3 {{
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 700;
-    color: #0f1b2d;
+    color: var(--text);
 }}
 .target-meta {{
     display: flex;
     justify-content: space-between;
-    font-size: 12px;
-    color: #7f8c8d;
+    font-size: 11px;
+    color: var(--text-muted);
     margin-top: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
 }}
 
-/* Funnel */
+/* ── Funnel ── */
 .funnel-stage {{
     display: flex;
     align-items: center;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
     gap: 12px;
 }}
 .funnel-label {{
     width: 140px;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
-    color: #2c3e50;
+    color: var(--text);
     text-align: right;
 }}
 .funnel-bar-wrap {{
@@ -897,86 +940,81 @@ tr:hover {{ background: #f8f9fa; }}
     gap: 8px;
 }}
 .funnel-bar {{
-    height: 28px;
-    border-radius: 6px;
+    height: 26px;
+    border-radius: 4px;
     display: flex;
     align-items: center;
     padding-left: 10px;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
     color: white;
-    min-width: 30px;
-    transition: width 0.5s ease;
+    min-width: 28px;
+    transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+    font-family: 'JetBrains Mono', monospace;
 }}
-.funnel-rate {{
-    font-size: 11px;
-    color: #7f8c8d;
-    white-space: nowrap;
-}}
-.funnel-velocity {{
-    font-size: 11px;
-    color: #95a5a6;
-    min-width: 60px;
-}}
+.funnel-rate {{ font-size: 10px; color: var(--text-muted); white-space: nowrap; font-family: 'JetBrains Mono', monospace; }}
+.funnel-velocity {{ font-size: 10px; color: var(--text-dim); min-width: 60px; font-family: 'JetBrains Mono', monospace; }}
 
-/* Scoreboard */
+/* ── Scoreboard ── */
 .score-grid {{
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 16px;
-    margin-bottom: 24px;
+    gap: 12px;
+    margin-bottom: 20px;
 }}
 .score-card {{
-    background: white;
-    border-radius: 12px;
+    background: var(--surface);
+    border-radius: 10px;
     padding: 20px;
     text-align: center;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-    border-top: 4px solid #1abc9c;
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--accent);
 }}
-.score-card.fire {{ border-top-color: #e74c3c; }}
+.score-card.fire {{ border-top-color: var(--red); }}
 .score-card h4 {{
-    font-size: 11px;
+    font-size: 10px;
     text-transform: uppercase;
-    color: #7f8c8d;
-    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    letter-spacing: 1px;
     margin-bottom: 8px;
 }}
 .score-big {{
-    font-size: 36px;
+    font-size: 32px;
     font-weight: 700;
-    color: #0f1b2d;
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
 }}
 .score-target {{
-    font-size: 12px;
-    color: #7f8c8d;
+    font-size: 11px;
+    color: var(--text-muted);
     margin-top: 4px;
 }}
 .streak-badge {{
     display: inline-block;
-    background: linear-gradient(135deg, #e74c3c, #f39c12);
+    background: linear-gradient(135deg, var(--red), var(--gold));
     color: white;
     padding: 6px 16px;
-    border-radius: 20px;
-    font-size: 14px;
+    border-radius: 4px;
+    font-size: 13px;
     font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
 }}
 
-.btn {{ display: inline-block; padding: 8px 20px; border-radius: 8px; font-size: 13px; font-weight: 600; border: none; cursor: pointer; }}
-.btn-primary {{ background: #1abc9c; color: white; }}
-.btn-primary:hover {{ background: #16a085; }}
-.btn-danger {{ background: #e74c3c; color: white; }}
-.btn-danger:hover {{ background: #c0392b; }}
-.btn-secondary {{ background: #bdc3c7; color: #2c3e50; }}
+.btn {{ display: inline-block; padding: 8px 20px; border-radius: 6px; font-size: 12px; font-weight: 600; border: none; cursor: pointer; font-family: 'DM Sans', sans-serif; letter-spacing: 0.3px; }}
+.btn-primary {{ background: var(--accent); color: #000; }}
+.btn-primary:hover {{ background: #059669; }}
+.btn-danger {{ background: var(--red); color: white; }}
+.btn-danger:hover {{ background: #dc2626; }}
+.btn-secondary {{ background: var(--surface-3); color: var(--text); border: 1px solid var(--border); }}
 
-.modal-overlay {{ display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; }}
+.modal-overlay {{ display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); z-index: 1000; justify-content: center; align-items: center; }}
 .modal-overlay.active {{ display: flex; }}
-.modal {{ background: white; border-radius: 16px; padding: 32px; width: 500px; max-width: 90vw; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }}
-.modal h2 {{ font-size: 18px; margin-bottom: 20px; color: #0f1b2d; }}
-.modal label {{ display: block; font-size: 11px; font-weight: 600; text-transform: uppercase; color: #7f8c8d; margin-bottom: 4px; margin-top: 12px; letter-spacing: 0.5px; }}
-.modal input, .modal select, .modal textarea {{ width: 100%; padding: 8px 12px; border: 1px solid #dde1e6; border-radius: 8px; font-size: 14px; font-family: inherit; }}
+.modal {{ background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 32px; width: 500px; max-width: 90vw; max-height: 90vh; overflow-y: auto; box-shadow: 0 24px 80px rgba(0,0,0,0.5); }}
+.modal h2 {{ font-size: 16px; margin-bottom: 20px; color: var(--text); }}
+.modal label {{ display: block; font-size: 10px; font-weight: 600; text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px; margin-top: 12px; letter-spacing: 0.8px; }}
+.modal input, .modal select, .modal textarea {{ width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; font-family: 'DM Sans', sans-serif; background: var(--surface-2); color: var(--text); }}
 .modal textarea {{ resize: vertical; min-height: 60px; }}
-.modal select {{ background: white; }}
+.modal select {{ background: var(--surface-2); color: var(--text); }}
 .modal .form-row {{ display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }}
 .modal .actions {{ display: flex; gap: 8px; margin-top: 24px; justify-content: flex-end; }}
 .modal .actions .left {{ margin-right: auto; }}
@@ -1173,7 +1211,7 @@ tr:hover {{ background: #f8f9fa; }}
         <div class="target-card">
             <div class="target-header">
                 <h3>Year Progress</h3>
-                <span style="font-size:12px;color:#7f8c8d">{days_elapsed} of {days_total} days ({pct_year:.0f}%)</span>
+                <span style="font-size:12px;color:var(--text-muted)">{days_elapsed} of {days_total} days ({pct_year:.0f}%)</span>
             </div>
             <div class="progress-bar-container">
                 <div class="progress-bar-fill teal" style="width:{pct_year:.0f}%">{pct_year:.0f}%</div>
@@ -1185,7 +1223,7 @@ tr:hover {{ background: #f8f9fa; }}
             <table>
                 <tr><th>Stage</th><th>Deals</th><th>Prob</th><th>Premium</th><th>Wtd Premium</th><th>AUM</th><th>Wtd AUM</th><th>FYC</th><th>Wtd FYC</th></tr>
                 {''.join(f'<tr><td><span class="badge" style="background:{STAGE_COLORS.get(s, "#BDC3C7")}">{_esc(s)}</span></td><td>{stage_counts.get(s, 0)}</td><td>{int(stage_probability.get(s, 0.1)*100)}%</td><td class="money">{fmt_money(stage_revenue.get(s, 0))}</td><td class="money">{fmt_money(stage_revenue.get(s, 0) * stage_probability.get(s, 0.1))}</td><td class="money">{fmt_money(sum(parse_money(p["aum"]) for p in active if p["stage"]==s))}</td><td class="money">{fmt_money(sum(parse_money(p["aum"]) for p in active if p["stage"]==s) * stage_probability.get(s, 0.1))}</td><td class="money">{fmt_money(stage_fyc.get(s, 0))}</td><td class="money">{fmt_money(stage_fyc.get(s, 0) * stage_probability.get(s, 0.1))}</td></tr>' for s in stage_order[:-1] if stage_counts.get(s, 0) > 0)}
-                <tr style="font-weight:700;border-top:2px solid #2c3e50"><td>Total Weighted</td><td></td><td></td><td></td><td class="money">{fmt_money(weighted_revenue)}</td><td></td><td class="money">{fmt_money(weighted_aum)}</td><td></td><td class="money">{fmt_money(weighted_fyc)}</td></tr>
+                <tr style="font-weight:700;border-top:2px solid var(--border)"><td>Total Weighted</td><td></td><td></td><td></td><td class="money">{fmt_money(weighted_revenue)}</td><td></td><td class="money">{fmt_money(weighted_aum)}</td><td></td><td class="money">{fmt_money(weighted_fyc)}</td></tr>
             </table>
         </div>
 
@@ -1223,7 +1261,7 @@ tr:hover {{ background: #f8f9fa; }}
     <div class="tab-content" id="tab-scoreboard" style="margin-top:24px">
 
         <div style="text-align:center;margin-bottom:24px">
-            {f'<div class="streak-badge">🔥 {streak} Day Streak</div>' if streak > 0 else '<div style="color:#7f8c8d;font-size:14px">No streak yet — make a call to start one!</div>'}
+            {f'<div class="streak-badge">🔥 {streak} Day Streak</div>' if streak > 0 else '<div style="color:var(--text-muted);font-size:14px">No streak yet — make a call to start one!</div>'}
         </div>
 
         <div class="score-grid">
@@ -1266,12 +1304,12 @@ tr:hover {{ background: #f8f9fa; }}
                     <tr><td>Calls</td><td>{calls_today}</td><td>{calls_week}</td><td>{DAILY_CALLS_TARGET}/day</td></tr>
                     <tr><td>Emails</td><td>{emails_today}</td><td>{emails_week}</td><td>{DAILY_EMAILS_TARGET}/day</td></tr>
                     <tr><td>Meetings</td><td>{meetings_today}</td><td>{meetings_week}</td><td>{WEEKLY_MEETINGS_TARGET}/week</td></tr>
-                    <tr style="font-weight:700;border-top:2px solid #2c3e50"><td>Total Activities</td><td>{activities_today}</td><td>{activities_week}</td><td></td></tr>
+                    <tr style="font-weight:700;border-top:2px solid var(--border)"><td>Total Activities</td><td>{activities_today}</td><td>{activities_week}</td><td></td></tr>
                 </table>
             </div>
             <div class="section">
                 <h2>Insurance Book Progress</h2>
-                {'<div style="text-align:center;padding:20px"><div class="score-big" style="font-size:48px">' + str(len([b for b in book_entries if b["status"].lower() not in ("not called","")])) + '<span style="font-size:20px;color:#7f8c8d">/' + str(len(book_entries)) + '</span></div><div style="color:#7f8c8d;margin-top:4px">Contacts Called</div><div class="progress-bar-container" style="margin-top:12px"><div class="progress-bar-fill teal" style="width:' + str(min(len([b for b in book_entries if b["status"].lower() not in ("not called","")]) / max(1, len(book_entries)) * 100, 100)) + '%">' + str(int(len([b for b in book_entries if b["status"].lower() not in ("not called","")]) / max(1, len(book_entries)) * 100)) + '%</div></div><div class="target-meta" style="margin-top:8px"><span>Booked: ' + str(len([b for b in book_entries if b["status"].lower()=="booked meeting"])) + '</span><span>Not Interested: ' + str(len([b for b in book_entries if b["status"].lower()=="not interested"])) + '</span><span>Callbacks: ' + str(len([b for b in book_entries if b["status"].lower()=="callback"])) + '</span></div></div>' if book_entries else '<div class="empty-state"><p>Upload an insurance book CSV to track progress.</p></div>'}
+                {'<div style="text-align:center;padding:20px"><div class="score-big" style="font-size:48px">' + str(len([b for b in book_entries if b["status"].lower() not in ("not called","")])) + '<span style="font-size:20px;color:var(--text-muted)">/' + str(len(book_entries)) + '</span></div><div style="color:var(--text-muted);margin-top:4px">Contacts Called</div><div class="progress-bar-container" style="margin-top:12px"><div class="progress-bar-fill teal" style="width:' + str(min(len([b for b in book_entries if b["status"].lower() not in ("not called","")]) / max(1, len(book_entries)) * 100, 100)) + '%">' + str(int(len([b for b in book_entries if b["status"].lower() not in ("not called","")]) / max(1, len(book_entries)) * 100)) + '%</div></div><div class="target-meta" style="margin-top:8px"><span>Booked: ' + str(len([b for b in book_entries if b["status"].lower()=="booked meeting"])) + '</span><span>Not Interested: ' + str(len([b for b in book_entries if b["status"].lower()=="not interested"])) + '</span><span>Callbacks: ' + str(len([b for b in book_entries if b["status"].lower()=="callback"])) + '</span></div></div>' if book_entries else '<div class="empty-state"><p>Upload an insurance book CSV to track progress.</p></div>'}
             </div>
         </div>
 
@@ -1352,7 +1390,10 @@ function showTab(name) {{
     if (name === 'funnel' && !window._funnelInit) initFunnelCharts();
 }}
 
-const chartColors = ['#1abc9c','#3498db','#8e44ad','#e67e22','#f39c12','#2980b9','#e74c3c','#27ae60','#95a5a6','#2c3e50'];
+// Dark mode chart defaults
+Chart.defaults.color = '#94a3b8';
+Chart.defaults.borderColor = '#2a3544';
+const chartColors = ['#10b981','#3b82f6','#8b5cf6','#f59e0b','#ef4444','#14b8a6','#ec4899','#06b6d4','#64748b','#f97316'];
 
 new Chart(document.getElementById('stageChart'), {{
     type: 'doughnut',
@@ -1484,14 +1525,14 @@ function initForecastCharts() {{
                 {{
                     label: 'Won Premium',
                     data: {monthly_rev_values},
-                    backgroundColor: '#1abc9c',
+                    backgroundColor: '#10b981',
                     borderRadius: 6,
                 }},
                 {{
                     label: 'Monthly Target',
                     data: {monthly_target_line},
                     type: 'line',
-                    borderColor: '#e74c3c',
+                    borderColor: '#ef4444',
                     borderDash: [5, 5],
                     borderWidth: 2,
                     pointRadius: 0,
@@ -1528,7 +1569,7 @@ function initFunnelCharts() {{
             datasets: [{{
                 label: 'Avg Days in Stage',
                 data: velocityData,
-                backgroundColor: velocityData.map(d => d > 14 ? '#e74c3c' : d > 7 ? '#f39c12' : '#27ae60'),
+                backgroundColor: velocityData.map(d => d > 14 ? '#ef4444' : d > 7 ? '#f59e0b' : '#10b981'),
                 borderRadius: 6,
             }}]
         }},
