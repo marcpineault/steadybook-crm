@@ -1,3 +1,4 @@
+import asyncio
 import os
 import json
 import logging
@@ -1430,21 +1431,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-def main():
-    # Initialize SQLite database
-    db.init_db()
-
-    # One-time migration from Excel (skips if DB already has data)
-    excel_path = os.path.join(DATA_DIR, "pipeline.xlsx") if DATA_DIR else "pipeline.xlsx"
-    if os.path.exists(excel_path):
-        result = db.migrate_from_excel(excel_path)
-        logger.info(f"Migration check: {result}")
-
-    # Start web dashboard in background thread
-    from dashboard import start_dashboard_thread
-    start_dashboard_thread()
-    logger.info("Web dashboard started.")
-
+def build_application():
+    """Build the Telegram Application with all handlers (shared by main and webhook)."""
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", start))
@@ -1462,31 +1450,113 @@ def main():
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    # Error handler to suppress 409 Conflict spam during redeploys
     async def error_handler(update, context):
-        if "Conflict" in str(context.error):
-            return  # ignore 409s during redeploy overlap
         logger.error(f"Bot error: {context.error}")
 
     app.add_error_handler(error_handler)
+    return app
+
+
+# Global references for webhook mode
+telegram_app = None
+bot_event_loop = None
+
+
+def init_bot():
+    """Initialize the bot in webhook mode. Called once at startup."""
+    global telegram_app, bot_event_loop
+
+    # Initialize SQLite database
+    db.init_db()
+
+    # One-time migration from Excel (skips if DB already has data)
+    excel_path = os.path.join(DATA_DIR, "pipeline.xlsx") if DATA_DIR else "pipeline.xlsx"
+    if os.path.exists(excel_path):
+        result = db.migrate_from_excel(excel_path)
+        logger.info(f"Migration check: {result}")
+
+    # Build the application
+    telegram_app = build_application()
+
+    # Create a dedicated event loop for the bot in a background thread
+    bot_event_loop = asyncio.new_event_loop()
+
+    def run_loop():
+        asyncio.set_event_loop(bot_event_loop)
+        bot_event_loop.run_forever()
+
+    loop_thread = threading.Thread(target=run_loop, daemon=True)
+    loop_thread.start()
+
+    # Initialize the application and set webhook
+    async def setup():
+        await telegram_app.initialize()
+        await telegram_app.start()
+
+        # Set webhook URL — Railway provides RAILWAY_PUBLIC_DOMAIN
+        domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "")
+        if domain:
+            webhook_url = f"https://{domain}/webhook"
+            await telegram_app.bot.set_webhook(
+                url=webhook_url,
+                drop_pending_updates=True,
+            )
+            logger.info(f"Webhook set: {webhook_url}")
+        else:
+            logger.warning("RAILWAY_PUBLIC_DOMAIN not set — webhook not configured")
+
+    future = asyncio.run_coroutine_threadsafe(setup(), bot_event_loop)
+    future.result(timeout=30)  # wait for setup to complete
 
     # Start scheduler for morning briefings and auto-nags
     try:
         from scheduler import start_scheduler
-        start_scheduler(app)
+        start_scheduler(telegram_app, event_loop=bot_event_loop)
         logger.info("Scheduler started (morning briefing + auto-nags).")
     except Exception as e:
         logger.warning(f"Scheduler failed to start: {e}. Bot will run without scheduled messages.")
 
-    # Handle SIGTERM from Railway so old instance stops polling immediately
+    logger.info("Bot initialized in webhook mode.")
+
+
+def process_webhook_update(update_data: dict):
+    """Process an incoming webhook update from Telegram."""
+    if telegram_app is None or bot_event_loop is None:
+        logger.error("Bot not initialized")
+        return
+
+    async def _process():
+        update = Update.de_json(update_data, telegram_app.bot)
+        await telegram_app.process_update(update)
+
+    future = asyncio.run_coroutine_threadsafe(_process(), bot_event_loop)
+    try:
+        future.result(timeout=60)
+    except Exception as e:
+        logger.error(f"Error processing update: {e}")
+
+
+def main():
+    """Start the bot + dashboard (webhook mode)."""
+    from dashboard import app as flask_app, register_webhook
+
+    # Initialize bot (sets up webhook with Telegram)
+    init_bot()
+
+    # Register webhook route on Flask app
+    register_webhook(flask_app)
+
+    # Handle SIGTERM from Railway for clean shutdown
     def handle_sigterm(signum, frame):
-        logger.info("SIGTERM received — shutting down polling...")
+        logger.info("SIGTERM received — shutting down...")
         os._exit(0)
 
     signal.signal(signal.SIGTERM, handle_sigterm)
 
-    logger.info("Bot started. Listening for messages...")
-    app.run_polling(drop_pending_updates=True)
+    # Run Flask as the main process (serves dashboard + webhook)
+    port = int(os.environ.get("PORT", 8080))
+    logger.info(f"Bot started (webhook mode). Dashboard on port {port}.")
+    flask_app.run(host="0.0.0.0", port=port)
 
 
 if __name__ == "__main__":

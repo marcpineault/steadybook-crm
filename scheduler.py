@@ -428,12 +428,13 @@ async def weekly_report():
 
 # ── Scheduler entry point ──
 
-def start_scheduler(telegram_app):
+def start_scheduler(telegram_app, event_loop=None):
     """
     Start the scheduler with the Telegram application.
 
     Args:
         telegram_app: The python-telegram-bot Application object.
+        event_loop: Optional asyncio event loop to use for async jobs.
     """
     global _bot
     _bot = telegram_app.bot
@@ -442,7 +443,10 @@ def start_scheduler(telegram_app):
         logger.warning("TELEGRAM_CHAT_ID not set — scheduler will not send messages.")
         return
 
-    scheduler = AsyncIOScheduler(timezone=ET)
+    kwargs = {"timezone": ET}
+    if event_loop:
+        kwargs["event_loop"] = event_loop
+    scheduler = AsyncIOScheduler(**kwargs)
 
     # Morning briefing at 8:00 AM ET every day
     scheduler.add_job(

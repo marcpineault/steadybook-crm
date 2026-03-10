@@ -1379,6 +1379,16 @@ function initFunnelCharts() {{
     return Response(html, mimetype="text/html")
 
 
+def register_webhook(flask_app):
+    """Register the Telegram webhook route on the Flask app."""
+    @flask_app.route("/webhook", methods=["POST"])
+    def webhook():
+        from bot import process_webhook_update
+        update_data = request.get_json(force=True)
+        process_webhook_update(update_data)
+        return "ok"
+
+
 def run_dashboard():
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
