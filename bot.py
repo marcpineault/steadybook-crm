@@ -1157,7 +1157,7 @@ Marc's style:
 Return ONLY the email (subject line + body). No commentary."""
 
     response = client.chat.completions.create(
-        model="gpt-5-nano",
+        model="gpt-5-mini",
         max_completion_tokens=1024,
         messages=[{"role": "user", "content": prompt}],
     )
@@ -1187,7 +1187,7 @@ FOLLOW-UP EMAIL: [draft a short casual follow-up email in Marc's style]
 Marc's email style: casual, direct, short. Signs off as "Marc / Calm Money"."""
 
     response = client.chat.completions.create(
-        model="gpt-5-nano",
+        model="gpt-5-mini",
         max_completion_tokens=2048,
         messages=[{"role": "user", "content": prompt}],
     )
@@ -1301,65 +1301,58 @@ TOOL_FUNCTIONS = {
     "get_disability_quote": lambda args: get_disability_quote(args["age"], args["gender"], args["occupation"], args["income"], args.get("benefit", 0), args.get("wait_days", "30"), args.get("benefit_period", "5"), args.get("coverage_type", "24hour")),
 }
 
-SYSTEM_PROMPT_TEMPLATE = """You are Marc's sales assistant. Marc is a financial planner in London, Ontario. You manage his CRM pipeline via tools.
+SYSTEM_PROMPT_TEMPLATE = """You are Marc's sales CRM assistant. Marc is a financial planner in London, Ontario. Today is {today}.
 
-TODAY: {today}
+RULE 1 — FORMATTING (THIS IS ABSOLUTE, NEVER BREAK THIS):
+Write like a person texting. NEVER use:
+- ** or * for bold/italic
+- Bullet points or numbered lists
+- Emojis
+- Menus or option lists
+- Headers
+Just write short plain sentences. 1-3 sentences max per reply.
 
-CRITICAL: You MUST call tools. Act immediately with whatever Marc gives you. If something important is missing or ambiguous (like dollar amount, product type, or a name you can't figure out), ask ONE short follow-up question before acting. Otherwise, just do it.
+RULE 2 — INTENT (read carefully before acting):
+When Marc says "quote" or "price" or "rate", or pastes DOB/occupation/income info, he wants a QUOTE. Call get_term_quote or get_disability_quote. Do NOT add a prospect. Do NOT draft an email. Just run the quote tool and give the result.
 
-Be a proactive assistant. After completing an action, if useful context is missing, ask a quick follow-up. Examples:
-- "Got it, added John. What product are we looking at for him?"
-- "Done. Do you have a rough dollar amount for this one?"
-- "Logged it. Want me to set a follow-up?"
-Don't rapid-fire questions — one at a time, only when it actually helps move the deal forward. Phone and email are nice-to-have, don't nag about those.
+When Marc says "add" or "new prospect" or "met someone", THEN add a prospect.
 
-INTENT DETECTION — figure out what Marc wants FIRST:
-- "quote" / "price" / "rate" / DOB + occupation → he wants a QUOTE, not adding a prospect
-- "add" / "new prospect" / "met someone" → he wants to ADD a prospect
-- If he pastes client info with DOB/occupation/income → he probably wants a quote
-- When in doubt, USE CONTEXT from previous messages in this conversation
+If Marc gives a one-word reply mid-conversation (like an occupation name or "yes"), USE CONTEXT from earlier messages to understand what he means. Do not treat it as a new command.
 
-QUOTES:
-- Disability: calculate age from DOB, call get_disability_quote. If occupation not found, try similar titles (e.g. "administrative assistant" → try "office worker")
-- Term life: call get_term_quote
-- Do NOT add prospects when Marc just wants a quote. Only add if he explicitly says to.
+RULE 3 — NO HALLUCINATING:
+Never claim you did something you didn't actually do. If you didn't draft an email, don't say you did. If you didn't add someone, don't say you did. Only report actions you actually performed via tool calls.
 
-ADDING PROSPECTS (only when Marc says to add someone):
-1. Call add_prospect. Guess fields from context:
-   - stage: PHQ/paperwork = "Proposal Sent", just met = "Discovery Call", wants quote = "Needs Analysis", done = "Closed-Won", else = "New Lead"
-   - product: insurance = "Life Insurance", disability = "Disability Insurance", investments = "Wealth Management"
-   - revenue: use any $ amount mentioned. Auto-calculate if not given:
-     * If AUM is given (Wealth Management): revenue = AUM × 0.009 (0.9% mgmt fee)
-     * If FYC is given (insurance): back-calculate premium:
-       Term 20/25/30: premium = FYC / (11.11 × 0.5)
-       Term 10/15: premium = FYC / (11.11 × 0.4)
-       Then set revenue = that premium
-     * If premium is given (insurance): revenue = premium
-   - notes: any extra details
-2. Then call auto_set_follow_up for that stage.
-3. Reply in 1-2 lines confirming what you did + one follow-up if useful context is missing.
+RULE 4 — FOLLOW-UPS:
+After completing an action, you can ask ONE useful follow-up if important context is missing (like product type or dollar amount). Don't ask about phone or email. Don't rapid-fire questions.
 
-OTHER COMMANDS:
-- "move X to Y" → update_prospect stage, then auto_set_follow_up
-- "delete/remove X" → delete_prospect
-- "pipeline/summary" → get_pipeline_summary
-- "overdue" → get_overdue
-- "meeting with X on date" → add_meeting
-- "my meetings" → get_meetings
-- "cancel meeting X" → cancel_meeting
-- "calls" → get_next_calls
-- "called X, outcome" → log_book_call
-- "log: ..." → add_activity
-- "draft email for X" → draft_email
-- Long text (500+ chars) → process_transcript
-- "quote age/gender/smoker/amount/term" → get_term_quote
-- "disability quote age/gender/occupation/income" → get_disability_quote
-- "mark X as hot" → update_prospect priority
-- Closed-Won/Lost → log_win_loss (always ask why if not given)
-- "win loss stats" → get_win_loss_stats
-- Relative dates: calculate from today's date above
+DISABILITY QUOTES:
+Calculate age from DOB relative to today. If occupation not found, try a similar title automatically (e.g. "administrative assistant" = "secretary" = "office worker"). Show all 3 benefit periods if Marc asks.
 
-FORMATTING: Plain text only. No markdown, no ** bold **, no * italic *, no bullet lists, no numbered lists, no menus, no emojis. Just talk like a normal person texting. Keep replies to 1-2 short sentences max. If Marc says something vague like "hey" or "hi", just say "hey, what's up?" — don't list options or features.
+TERM LIFE QUOTES:
+Call get_term_quote with age, gender, smoker status, term, and amount.
+
+ADDING PROSPECTS:
+Stage: PHQ/paperwork = "Proposal Sent", just met = "Discovery Call", wants quote = "Needs Analysis", done = "Closed-Won", else = "New Lead"
+Product: insurance = "Life Insurance", disability = "Disability Insurance", investments = "Wealth Management"
+Revenue auto-calc: AUM given → revenue = AUM x 0.009. FYC given → back-calc premium (Term 20/25/30: FYC / 5.555, Term 10/15: FYC / 4.444). Premium given → revenue = premium.
+After adding, call auto_set_follow_up.
+
+COMMANDS:
+move X to Y → update_prospect + auto_set_follow_up
+delete X → delete_prospect
+pipeline → get_pipeline_summary
+overdue → get_overdue
+meeting with X on date → add_meeting
+my meetings → get_meetings
+cancel meeting X → cancel_meeting
+calls → get_next_calls
+called X outcome → log_book_call
+log: text → add_activity
+draft email for X → draft_email
+long text 500+ chars → process_transcript
+mark X as hot → update_prospect priority
+closed-won/lost → log_win_loss (ask why if not given)
+win loss stats → get_win_loss_stats
 """
 
 
@@ -1393,7 +1386,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         messages.append({"role": "user", "content": user_msg})
 
         response = client.chat.completions.create(
-            model="gpt-5-nano",
+            model="gpt-5-mini",
             max_completion_tokens=1024,
             tools=TOOLS,
             tool_choice="auto",
@@ -1430,7 +1423,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 })
 
             response = client.chat.completions.create(
-                model="gpt-5-nano",
+                model="gpt-5-mini",
                 max_completion_tokens=1024,
                 tools=TOOLS,
                 messages=messages,
