@@ -1097,7 +1097,7 @@ Return ONLY the email (subject line + body). No commentary."""
 
     response = client.chat.completions.create(
         model="gpt-5-nano",
-        max_tokens=1024,
+        max_completion_tokens=1024,
         messages=[{"role": "user", "content": prompt}],
     )
 
@@ -1127,7 +1127,7 @@ Marc's email style: casual, direct, short. Signs off as "Marc / Calm Money"."""
 
     response = client.chat.completions.create(
         model="gpt-5-nano",
-        max_tokens=2048,
+        max_completion_tokens=2048,
         messages=[{"role": "user", "content": prompt}],
     )
 
@@ -1295,23 +1295,34 @@ def build_system_prompt():
     return SYSTEM_PROMPT_TEMPLATE.format(today=date.today().strftime("%Y-%m-%d"))
 
 
+# Conversation history per chat (keeps last N exchanges for context)
+MAX_HISTORY = 20  # max user+assistant message pairs to keep
+_chat_histories = {}  # chat_id -> list of message dicts
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle incoming Telegram messages."""
     user_msg = update.message.text
     if not user_msg:
         return
 
+    chat_id = update.effective_chat.id
     logger.info(f"Received: {user_msg}")
 
     try:
-        messages = [
-            {"role": "system", "content": build_system_prompt()},
-            {"role": "user", "content": user_msg},
-        ]
+        # Get or create conversation history for this chat
+        if chat_id not in _chat_histories:
+            _chat_histories[chat_id] = []
+        history = _chat_histories[chat_id]
+
+        # Build messages: system prompt + history + new message
+        messages = [{"role": "system", "content": build_system_prompt()}]
+        messages.extend(history)
+        messages.append({"role": "user", "content": user_msg})
 
         response = client.chat.completions.create(
             model="gpt-5-nano",
-            max_tokens=1024,
+            max_completion_tokens=1024,
             tools=TOOLS,
             tool_choice="auto",
             messages=messages,
@@ -1348,13 +1359,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             response = client.chat.completions.create(
                 model="gpt-5-nano",
-                max_tokens=1024,
+                max_completion_tokens=1024,
                 tools=TOOLS,
                 messages=messages,
             )
             msg = response.choices[0].message
 
         reply = msg.content or "Done!"
+
+        # Save to conversation history (user message + final assistant reply only)
+        history.append({"role": "user", "content": user_msg})
+        history.append({"role": "assistant", "content": reply})
+
+        # Trim history to keep last N exchanges
+        if len(history) > MAX_HISTORY * 2:
+            _chat_histories[chat_id] = history[-(MAX_HISTORY * 2):]
 
         await update.message.reply_text(reply)
         logger.info(f"Replied: {reply[:100]}")
