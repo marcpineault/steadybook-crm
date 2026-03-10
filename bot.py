@@ -715,27 +715,21 @@ def get_disability_quote(age: int, gender: str, occupation: str, income: int,
     lines.append("")
 
     if inj_rate:
-        lines.append(f"  Injury Only:      ${inj_rate:.2f}/mo")
-    if ill_rate:
-        lines.append(f"  Illness Only:     ${ill_rate:.2f}/mo")
-    if inj_rate and ill_rate:
-        lines.append(f"  Injury + Illness: ${inj_rate + ill_rate:.2f}/mo")
+        lines.append(f"  Injury Only: ${inj_rate:.2f}/mo")
+    else:
+        lines.append(f"  Injury rate not found for this combination.")
 
-    if not inj_rate and not ill_rate:
-        lines.append(f"  Rate not found for this combination.")
-
-    # Show comparison table for different benefit amounts
+    # Show comparison table for different benefit amounts (injury only)
     lines.append("")
-    lines.append("Other benefit amounts (Injury+Illness):")
+    lines.append("Other benefit amounts (Injury Only):")
     for alt in EDGE_BENEFITS:
         if alt == benefit:
             continue
         if alt > max_benefit:
             break
         alt_inj = rates.get(f"DIPR-{risk_class}-{alt}-{sex_code}-{wait_days}-{benefit_period}-{cov_code}-0")
-        alt_ill = rates.get(f"DIPR_ILL-{risk_class}-{alt}-{age_band}-{sex_code}-{wait_days}-{benefit_period}")
-        if alt_inj and alt_ill:
-            lines.append(f"  ${alt:,}/mo: ${alt_inj + alt_ill:.2f}/mo")
+        if alt_inj:
+            lines.append(f"  ${alt:,}/mo: ${alt_inj:.2f}/mo")
 
     lines.append("")
     lines.append("Insured by Co-operators Life Insurance Company via Edge Benefits.")
