@@ -478,12 +478,32 @@ _rate_cache = None
 _edge_cache = None
 
 
+def _find_file(filename):
+    """Find a data file, checking DATA_DIR first then current directory."""
+    if DATA_DIR:
+        data_path = os.path.join(DATA_DIR, filename)
+        if Path(data_path).exists():
+            return data_path
+    if Path(filename).exists():
+        return filename
+    return None
+
+
 def _load_rates():
     global _rate_cache
-    if _rate_cache is None and Path(RATE_FILE).exists():
-        with open(RATE_FILE, "r") as f:
-            _rate_cache = json.load(f)
+    if _rate_cache is None:
+        path = _find_file(RATE_FILE)
+        if path:
+            with open(path, "r") as f:
+                _rate_cache = json.load(f)
     return _rate_cache or {}
+
+
+def reload_rates():
+    """Force reload rates from disk (called after scraping)."""
+    global _rate_cache
+    _rate_cache = None
+    return _load_rates()
 
 
 def _load_edge_rates():
@@ -1534,6 +1554,61 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ── Free-form message handler (still works for everything else) ──
 
+# ── /scrape command — run term life rate scraper from Railway ──
+
+_scrape_running = False
+
+async def cmd_scrape(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Trigger Co-operators rate scraper in background."""
+    global _scrape_running
+    if _scrape_running:
+        await update.message.reply_text("Scraper is already running. I'll message you when it's done.")
+        return
+
+    await update.message.reply_text("Starting Co-operators rate scraper. This will take a while — I'll message you when it's done.")
+    _scrape_running = True
+
+    import threading
+
+    def _run_scrape():
+        global _scrape_running
+        try:
+            from scrape_rates import scrape_rates
+            result = scrape_rates(callback=lambda msg: logger.info(f"Scraper: {msg}"))
+
+            # Send result back via Telegram
+            import asyncio
+            loop = asyncio.new_event_loop()
+            if result.get("blocked"):
+                msg = f"Scraper stopped — blocked by term4sale.ca. Got {result['total']} total rates ({result['new']} new this run)."
+            else:
+                msg = f"Scraper done! {result['total']} total rates, {result['new']} new this run."
+
+            # Reload rates cache so bot picks up new data
+            reload_rates()
+
+            loop.run_until_complete(context.bot.send_message(chat_id=update.effective_chat.id, text=msg))
+            loop.close()
+        except Exception as e:
+            logger.error(f"Scraper error: {e}")
+            try:
+                import asyncio
+                loop = asyncio.new_event_loop()
+                loop.run_until_complete(context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text=f"Scraper failed: {str(e)[:200]}"
+                ))
+                loop.close()
+            except Exception:
+                pass
+        finally:
+            _scrape_running = False
+
+    threading.Thread(target=_run_scrape, daemon=True).start()
+
+
+# ── Free-form message handler ──
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle free-form text messages."""
     user_msg = update.message.text
@@ -1778,6 +1853,7 @@ def main():
     app.add_handler(CommandHandler("meetings", cmd_meetings))
     app.add_handler(CommandHandler("calls", cmd_calls))
     app.add_handler(CommandHandler("stats", cmd_stats))
+    app.add_handler(CommandHandler("scrape", cmd_scrape))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
