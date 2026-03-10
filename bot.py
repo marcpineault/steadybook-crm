@@ -1435,6 +1435,14 @@ def main():
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
+    # Error handler to suppress 409 Conflict spam during redeploys
+    async def error_handler(update, context):
+        if "Conflict" in str(context.error):
+            return  # ignore 409s during redeploy overlap
+        logger.error(f"Bot error: {context.error}")
+
+    app.add_error_handler(error_handler)
+
     # Start scheduler for morning briefings and auto-nags
     try:
         from scheduler import start_scheduler
@@ -1444,7 +1452,7 @@ def main():
         logger.warning(f"Scheduler failed to start: {e}. Bot will run without scheduled messages.")
 
     logger.info("Bot started. Listening for messages...")
-    app.run_polling()
+    app.run_polling(drop_pending_updates=True)
 
 
 if __name__ == "__main__":
