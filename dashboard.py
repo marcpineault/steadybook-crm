@@ -1,5 +1,6 @@
 import html as _html
 import os
+import re
 import threading
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -237,6 +238,26 @@ def api_list_prospects():
     return jsonify(prospects)
 
 
+def calc_fyc(premium, product):
+    """Calculate First Year Commission from premium and product term.
+    Term 20/25/30: Premium * 11.11 * 0.5
+    Term 10/15:    Premium * 11.11 * 0.4
+    """
+    prem = parse_money(premium) if not isinstance(premium, (int, float)) else premium
+    if prem <= 0:
+        return 0.0
+    # Extract term number from product string like "Term 20", "Versatile Term 30", etc.
+    term_match = re.search(r'(\d+)', str(product or ""))
+    if not term_match:
+        return 0.0
+    term = int(term_match.group(1))
+    if term in (20, 25, 30):
+        return prem * 11.11 * 0.5
+    elif term in (10, 15):
+        return prem * 11.11 * 0.4
+    return 0.0
+
+
 def parse_money(val):
     """Parse money values like '200k', '1.5M', '$500,000' into float."""
     try:
@@ -317,6 +338,10 @@ def dashboard():
         except ValueError:
             pass
 
+    # FYC calculations
+    won_fyc = sum(calc_fyc(p["revenue"], p["product"]) for p in won)
+    active_fyc = sum(calc_fyc(p["revenue"], p["product"]) for p in active)
+
     # Forecast totals include baselines
     forecast_revenue = won_revenue + BASELINE_PREMIUM
     forecast_aum = won_aum_pipeline + BASELINE_AUM
@@ -347,6 +372,7 @@ def dashboard():
     }
     weighted_revenue = 0
     weighted_aum = 0
+    weighted_fyc = 0
     for p in active:
         prob = stage_probability.get(p["stage"], 0.10)
         try:
@@ -357,9 +383,11 @@ def dashboard():
             weighted_aum += parse_money(p["aum"]) * prob
         except ValueError:
             pass
+        weighted_fyc += calc_fyc(p["revenue"], p["product"]) * prob
 
     projected_revenue = forecast_revenue + weighted_revenue
     projected_aum = forecast_aum + weighted_aum
+    projected_fyc = won_fyc + weighted_fyc
 
     # Monthly revenue tracking (won deals by month)
     monthly_revenue = {}
@@ -557,6 +585,7 @@ def dashboard():
     # Stage counts for chart
     stage_counts = {}
     stage_revenue = {}
+    stage_fyc = {}
     for p in prospects:
         s = p["stage"]
         if s:
@@ -565,6 +594,7 @@ def dashboard():
                 stage_revenue[s] = stage_revenue.get(s, 0) + parse_money(p["revenue"])
             except ValueError:
                 pass
+            stage_fyc[s] = stage_fyc.get(s, 0) + calc_fyc(p["revenue"], p["product"])
 
     # Source counts
     source_counts = {}
@@ -1059,7 +1089,7 @@ tr:hover {{ background: #f8f9fa; }}
     <!-- ═══ TAB 2: REVENUE FORECAST ═══ -->
     <div class="tab-content" id="tab-forecast" style="margin-top:24px">
 
-        <div class="kpi-grid" style="grid-template-columns: repeat(4, 1fr)">
+        <div class="kpi-grid" style="grid-template-columns: repeat(3, 1fr)">
             <div class="kpi-card green">
                 <div class="kpi-label">Total Premium YTD</div>
                 <div class="kpi-value">{fmt_money(forecast_revenue)}</div>
@@ -1068,6 +1098,12 @@ tr:hover {{ background: #f8f9fa; }}
                 <div class="kpi-label">Total AUM</div>
                 <div class="kpi-value">{fmt_money(forecast_aum)}</div>
             </div>
+            <div class="kpi-card gold">
+                <div class="kpi-label">FYC (Won)</div>
+                <div class="kpi-value">{fmt_money(won_fyc)}</div>
+            </div>
+        </div>
+        <div class="kpi-grid" style="grid-template-columns: repeat(3, 1fr); margin-top:12px">
             <div class="kpi-card purple">
                 <div class="kpi-label">Projected Premium</div>
                 <div class="kpi-value">{fmt_money(projected_revenue)}</div>
@@ -1075,6 +1111,10 @@ tr:hover {{ background: #f8f9fa; }}
             <div class="kpi-card">
                 <div class="kpi-label">Projected AUM</div>
                 <div class="kpi-value">{fmt_money(projected_aum)}</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Projected FYC</div>
+                <div class="kpi-value">{fmt_money(projected_fyc)}</div>
             </div>
         </div>
 
@@ -1133,9 +1173,9 @@ tr:hover {{ background: #f8f9fa; }}
         <div class="section">
             <h2>Pipeline Weighted Forecast</h2>
             <table>
-                <tr><th>Stage</th><th>Deals</th><th>Probability</th><th>Raw Revenue</th><th>Weighted</th><th>Raw AUM</th><th>Weighted AUM</th></tr>
-                {''.join(f'<tr><td><span class="badge" style="background:{STAGE_COLORS.get(s, "#BDC3C7")}">{_esc(s)}</span></td><td>{stage_counts.get(s, 0)}</td><td>{int(stage_probability.get(s, 0.1)*100)}%</td><td class="money">{fmt_money(stage_revenue.get(s, 0))}</td><td class="money">{fmt_money(stage_revenue.get(s, 0) * stage_probability.get(s, 0.1))}</td><td class="money">{fmt_money(sum(parse_money(p["aum"]) for p in active if p["stage"]==s))}</td><td class="money">{fmt_money(sum(parse_money(p["aum"]) for p in active if p["stage"]==s) * stage_probability.get(s, 0.1))}</td></tr>' for s in stage_order[:-1] if stage_counts.get(s, 0) > 0)}
-                <tr style="font-weight:700;border-top:2px solid #2c3e50"><td>Total Weighted</td><td></td><td></td><td></td><td class="money">{fmt_money(weighted_revenue)}</td><td></td><td class="money">{fmt_money(weighted_aum)}</td></tr>
+                <tr><th>Stage</th><th>Deals</th><th>Prob</th><th>Premium</th><th>Wtd Premium</th><th>AUM</th><th>Wtd AUM</th><th>FYC</th><th>Wtd FYC</th></tr>
+                {''.join(f'<tr><td><span class="badge" style="background:{STAGE_COLORS.get(s, "#BDC3C7")}">{_esc(s)}</span></td><td>{stage_counts.get(s, 0)}</td><td>{int(stage_probability.get(s, 0.1)*100)}%</td><td class="money">{fmt_money(stage_revenue.get(s, 0))}</td><td class="money">{fmt_money(stage_revenue.get(s, 0) * stage_probability.get(s, 0.1))}</td><td class="money">{fmt_money(sum(parse_money(p["aum"]) for p in active if p["stage"]==s))}</td><td class="money">{fmt_money(sum(parse_money(p["aum"]) for p in active if p["stage"]==s) * stage_probability.get(s, 0.1))}</td><td class="money">{fmt_money(stage_fyc.get(s, 0))}</td><td class="money">{fmt_money(stage_fyc.get(s, 0) * stage_probability.get(s, 0.1))}</td></tr>' for s in stage_order[:-1] if stage_counts.get(s, 0) > 0)}
+                <tr style="font-weight:700;border-top:2px solid #2c3e50"><td>Total Weighted</td><td></td><td></td><td></td><td class="money">{fmt_money(weighted_revenue)}</td><td></td><td class="money">{fmt_money(weighted_aum)}</td><td></td><td class="money">{fmt_money(weighted_fyc)}</td></tr>
             </table>
         </div>
 
