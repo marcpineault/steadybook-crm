@@ -56,6 +56,26 @@ def add_activity(data: dict) -> str:
     return db.add_activity(data)
 
 
+def get_activities(date_filter: str = "", prospect: str = "") -> str:
+    """Get logged activities, optionally filtered by date or prospect."""
+    activities = db.read_activities(limit=50)
+    if date_filter:
+        activities = [a for a in activities if date_filter in str(a.get("date", ""))]
+    if prospect:
+        activities = [a for a in activities if prospect.lower() in str(a.get("prospect", "")).lower()]
+    if not activities:
+        return "No activities found."
+    lines = [f"Activity Log ({len(activities)} entries):"]
+    for a in activities:
+        line = f"{a.get('date', '?')} - {a.get('prospect', '?')}: {a.get('action', '?')}"
+        if a.get("outcome"):
+            line += f" -> {a['outcome']}"
+        if a.get("next_step"):
+            line += f" | Next: {a['next_step']}"
+        lines.append(line)
+    return "\n".join(lines)
+
+
 def get_overdue():
     """Get prospects with overdue follow-ups."""
     prospects = read_pipeline()
@@ -861,6 +881,10 @@ TOOLS = [
         "prospect": {"type": "string"}, "action": {"type": "string"},
         "outcome": {"type": "string"}, "next_step": {"type": "string"}, "notes": {"type": "string"},
     }, ["prospect", "action"]),
+    _tool("get_activities", "Get logged activities from the Activity Log. Use to show what's been done.", {
+        "date_filter": {"type": "string", "description": "Filter by date (YYYY-MM-DD or partial)"},
+        "prospect": {"type": "string", "description": "Filter by prospect name"},
+    }, []),
     _tool("get_overdue", "Get prospects with overdue follow-ups.", {}, []),
     _tool("get_pipeline_summary", "Get pipeline summary: active deals, value, stages, overdue.", {}, []),
     _tool("add_meeting", "Schedule a meeting with a prospect.", {
@@ -923,6 +947,7 @@ TOOL_FUNCTIONS = {
     "update_prospect": lambda args: update_prospect(args["name"], args.get("updates") or {k: v for k, v in args.items() if k != "name"}),
     "delete_prospect": lambda args: delete_prospect(args["name"]),
     "add_activity": lambda args: add_activity(args),
+    "get_activities": lambda args: get_activities(args.get("date_filter", ""), args.get("prospect", "")),
     "get_overdue": lambda _: get_overdue(),
     "get_pipeline_summary": lambda _: get_pipeline_summary(),
     "add_meeting": lambda args: add_meeting(args),
