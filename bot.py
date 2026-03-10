@@ -38,8 +38,9 @@ else:
 
 client = OpenAI(api_key=OPENAI_KEY)
 
-# Thread lock for Excel file access (bot + dashboard + scheduler share same file)
-pipeline_lock = threading.Lock()
+# Reentrant lock for Excel file access (bot + dashboard + scheduler share same file)
+# RLock allows the same thread to acquire it multiple times (e.g. log_book_call -> add_prospect)
+pipeline_lock = threading.RLock()
 
 # ── Styling constants ──
 TEAL = "1ABC9C"
@@ -824,7 +825,18 @@ def get_meetings(date_filter: str = "") -> str:
     if not meetings:
         return "No meetings scheduled."
 
-    return json.dumps(meetings, default=str)
+    lines = [f"Meetings ({len(meetings)}):"]
+    for m in meetings:
+        line = f"{m['date']}"
+        if m["time"]:
+            line += f" {m['time']}"
+        line += f" - {m['prospect']}"
+        if m["type"]:
+            line += f" ({m['type']})"
+        if m["prep_notes"]:
+            line += f" | {m['prep_notes']}"
+        lines.append(line)
+    return "\n".join(lines)
 
 
 def cancel_meeting(prospect: str) -> str:
@@ -955,7 +967,13 @@ def log_book_call(name: str, outcome: str, notes: str = "", retry_days: int = 3)
         ws.cell(row=target_row, column=5, value=outcome)
 
     if notes:
-        ws.cell(row=target_row, column=7, value=notes)
+        existing_notes = ws.cell(row=target_row, column=7).value or ""
+        today_str = date.today().strftime("%m/%d")
+        new_note = f"[{today_str}] {notes}"
+        if existing_notes:
+            ws.cell(row=target_row, column=7, value=f"{existing_notes} | {new_note}")
+        else:
+            ws.cell(row=target_row, column=7, value=new_note)
 
     wb.save(PIPELINE_PATH)
     wb.close()

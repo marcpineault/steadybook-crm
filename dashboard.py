@@ -34,6 +34,15 @@ def read_data():
     if not Path(PIPELINE_PATH).exists():
         return [], [], [], []
 
+    lock = _get_lock()
+    lock.acquire()
+    try:
+        return _read_data_inner()
+    finally:
+        lock.release()
+
+
+def _read_data_inner():
     wb = openpyxl.load_workbook(PIPELINE_PATH, data_only=True)
 
     # Pipeline
@@ -244,7 +253,7 @@ def fmt_money_full(val):
 @app.route("/")
 def dashboard():
     prospects, activities, meetings, book_entries = read_data()
-    today = date.today()
+    today = datetime.now()
 
     active = [p for p in prospects if p["stage"] not in ("Closed-Won", "Closed-Lost", "")]
     won = [p for p in prospects if p["stage"] == "Closed-Won"]
