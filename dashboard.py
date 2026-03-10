@@ -121,37 +121,43 @@ PIPELINE_COLS = {
 }
 
 
+def _get_lock():
+    from bot import pipeline_lock
+    return pipeline_lock
+
+
 @app.route("/api/prospect", methods=["POST"])
 def api_add_prospect():
     data = request.json
     if not data or not data.get("name"):
         return jsonify({"error": "Name required"}), 400
 
-    wb = openpyxl.load_workbook(PIPELINE_PATH)
-    ws = wb["Pipeline"]
+    with _get_lock():
+        wb = openpyxl.load_workbook(PIPELINE_PATH)
+        ws = wb["Pipeline"]
 
-    target_row = None
-    for r in range(DATA_START, DATA_START + MAX_ROWS):
-        if not ws.cell(row=r, column=1).value:
-            target_row = r
-            break
+        target_row = None
+        for r in range(DATA_START, DATA_START + MAX_ROWS):
+            if not ws.cell(row=r, column=1).value:
+                target_row = r
+                break
 
-    if not target_row:
+        if not target_row:
+            wb.close()
+            return jsonify({"error": "Pipeline full"}), 400
+
+        for field, col in PIPELINE_COLS.items():
+            val = data.get(field, "")
+            if val:
+                ws.cell(row=target_row, column=col, value=val)
+
+        if not data.get("first_contact"):
+            ws.cell(row=target_row, column=10, value=date.today().strftime("%Y-%m-%d"))
+        if not data.get("stage"):
+            ws.cell(row=target_row, column=6, value="New Lead")
+
+        wb.save(PIPELINE_PATH)
         wb.close()
-        return jsonify({"error": "Pipeline full"}), 400
-
-    for field, col in PIPELINE_COLS.items():
-        val = data.get(field, "")
-        if val:
-            ws.cell(row=target_row, column=col, value=val)
-
-    if not data.get("first_contact"):
-        ws.cell(row=target_row, column=10, value=date.today().strftime("%Y-%m-%d"))
-    if not data.get("stage"):
-        ws.cell(row=target_row, column=6, value="New Lead")
-
-    wb.save(PIPELINE_PATH)
-    wb.close()
     return jsonify({"ok": True, "row": target_row})
 
 
@@ -161,50 +167,52 @@ def api_update_prospect(name):
     if not data:
         return jsonify({"error": "No data"}), 400
 
-    wb = openpyxl.load_workbook(PIPELINE_PATH)
-    ws = wb["Pipeline"]
+    with _get_lock():
+        wb = openpyxl.load_workbook(PIPELINE_PATH)
+        ws = wb["Pipeline"]
 
-    found_row = None
-    for r in range(DATA_START, DATA_START + MAX_ROWS):
-        cell_val = ws.cell(row=r, column=1).value
-        if cell_val and str(cell_val).strip().lower() == name.strip().lower():
-            found_row = r
-            break
+        found_row = None
+        for r in range(DATA_START, DATA_START + MAX_ROWS):
+            cell_val = ws.cell(row=r, column=1).value
+            if cell_val and str(cell_val).strip().lower() == name.strip().lower():
+                found_row = r
+                break
 
-    if not found_row:
+        if not found_row:
+            wb.close()
+            return jsonify({"error": f"Prospect '{name}' not found"}), 404
+
+        for field, col in PIPELINE_COLS.items():
+            if field in data:
+                ws.cell(row=found_row, column=col, value=data[field])
+
+        wb.save(PIPELINE_PATH)
         wb.close()
-        return jsonify({"error": f"Prospect '{name}' not found"}), 404
-
-    for field, col in PIPELINE_COLS.items():
-        if field in data:
-            ws.cell(row=found_row, column=col, value=data[field])
-
-    wb.save(PIPELINE_PATH)
-    wb.close()
     return jsonify({"ok": True})
 
 
 @app.route("/api/prospect/<name>", methods=["DELETE"])
 def api_delete_prospect(name):
-    wb = openpyxl.load_workbook(PIPELINE_PATH)
-    ws = wb["Pipeline"]
+    with _get_lock():
+        wb = openpyxl.load_workbook(PIPELINE_PATH)
+        ws = wb["Pipeline"]
 
-    found_row = None
-    for r in range(DATA_START, DATA_START + MAX_ROWS):
-        cell_val = ws.cell(row=r, column=1).value
-        if cell_val and str(cell_val).strip().lower() == name.strip().lower():
-            found_row = r
-            break
+        found_row = None
+        for r in range(DATA_START, DATA_START + MAX_ROWS):
+            cell_val = ws.cell(row=r, column=1).value
+            if cell_val and str(cell_val).strip().lower() == name.strip().lower():
+                found_row = r
+                break
 
-    if not found_row:
+        if not found_row:
+            wb.close()
+            return jsonify({"error": f"Prospect '{name}' not found"}), 404
+
+        for col in range(1, 14):
+            ws.cell(row=found_row, column=col, value=None)
+
+        wb.save(PIPELINE_PATH)
         wb.close()
-        return jsonify({"error": f"Prospect '{name}' not found"}), 404
-
-    for col in range(1, 14):
-        ws.cell(row=found_row, column=col, value=None)
-
-    wb.save(PIPELINE_PATH)
-    wb.close()
     return jsonify({"ok": True})
 
 

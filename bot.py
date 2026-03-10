@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import threading
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -36,6 +37,9 @@ else:
     PIPELINE_PATH = os.environ.get("PIPELINE_PATH", "pipeline.xlsx")
 
 client = OpenAI(api_key=OPENAI_KEY)
+
+# Thread lock for Excel file access (bot + dashboard + scheduler share same file)
+pipeline_lock = threading.Lock()
 
 # ── Styling constants ──
 TEAL = "1ABC9C"
@@ -1001,6 +1005,9 @@ def get_book_stats() -> str:
     called = total - not_called
     conversion = f"{booked/called*100:.1f}%" if called > 0 else "0%"
 
+    if total == 0:
+        return "Insurance book is empty."
+
     return (
         f"Insurance Book Stats:\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
@@ -1011,7 +1018,7 @@ def get_book_stats() -> str:
         f"Meetings booked: {booked}\n"
         f"Not interested: {not_interested}\n"
         f"Conversion rate: {conversion}\n"
-        f"Progress: {called}/{total} ({called/total*100:.0f}%)" if total > 0 else "Insurance book is empty."
+        f"Progress: {called}/{total} ({called/total*100:.0f}%)"
     )
 
 
@@ -1187,9 +1194,9 @@ TOOL_FUNCTIONS = {
     "get_disability_quote": lambda args: get_disability_quote(args["age"], args["gender"], args["occupation"], args["income"], args.get("benefit", 0), args.get("wait_days", "30"), args.get("benefit_period", "5"), args.get("coverage_type", "24hour")),
 }
 
-SYSTEM_PROMPT = """You are Marc's sales assistant. Marc is a financial planner in London, Ontario. You manage his CRM pipeline via tools.
+SYSTEM_PROMPT_TEMPLATE = """You are Marc's sales assistant. Marc is a financial planner in London, Ontario. You manage his CRM pipeline via tools.
 
-TODAY: """ + date.today().strftime("%Y-%m-%d") + """
+TODAY: {today}
 
 CRITICAL: You MUST call tools. NEVER ask questions. NEVER ask for more info. Act immediately with whatever Marc gives you.
 
@@ -1226,6 +1233,10 @@ FORMATTING: Plain text only. No markdown, no ** bold **, no bullet lists, no men
 """
 
 
+def build_system_prompt():
+    return SYSTEM_PROMPT_TEMPLATE.format(today=date.today().strftime("%Y-%m-%d"))
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle incoming Telegram messages."""
     user_msg = update.message.text
@@ -1236,7 +1247,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": build_system_prompt()},
             {"role": "user", "content": user_msg},
         ]
 
@@ -1253,8 +1264,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not msg.tool_calls:
             logger.warning(f"NO TOOL CALLED. Model replied with text only: {msg.content[:200] if msg.content else '(empty)'}")
 
-        # Process tool calls in a loop
-        while msg.tool_calls:
+        # Process tool calls in a loop (max 8 rounds to prevent infinite loops)
+        tool_rounds = 0
+        while msg.tool_calls and tool_rounds < 8:
+            tool_rounds += 1
             messages.append(msg)
 
             for tool_call in msg.tool_calls:
@@ -1264,7 +1277,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 func = TOOL_FUNCTIONS.get(tool_name)
                 if func:
-                    result = func(tool_input)
+                    with pipeline_lock:
+                        result = func(tool_input)
                 else:
                     result = f"Unknown tool: {tool_name}"
 
@@ -1296,11 +1310,12 @@ async def export(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send the pipeline Excel file to the user."""
     try:
         if Path(PIPELINE_PATH).exists():
-            await update.message.reply_document(
-                document=open(PIPELINE_PATH, "rb"),
-                filename=f"CalmMoney_Pipeline_{date.today().strftime('%Y-%m-%d')}.xlsx",
-                caption="Here's your current pipeline file."
-            )
+            with open(PIPELINE_PATH, "rb") as f:
+                await update.message.reply_document(
+                    document=f,
+                    filename=f"CalmMoney_Pipeline_{date.today().strftime('%Y-%m-%d')}.xlsx",
+                    caption="Here's your current pipeline file."
+                )
         else:
             await update.message.reply_text("Pipeline file not found.")
     except Exception as e:
@@ -1320,7 +1335,10 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             file = await doc.get_file()
             file_bytes = await file.download_as_bytearray()
-            text = file_bytes.decode('utf-8')
+            try:
+                text = file_bytes.decode('utf-8-sig')
+            except UnicodeDecodeError:
+                text = file_bytes.decode('latin-1')
             reader = csv.reader(io.StringIO(text))
             rows = list(reader)
 
