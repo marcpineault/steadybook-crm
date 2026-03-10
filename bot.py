@@ -1025,6 +1025,20 @@ async def _llm_respond(update, messages, tools=None):
             else:
                 result = f"Unknown tool: {tool_name}"
 
+            # Check for cross-sell trigger on Closed-Won
+            if tool_name == "update_prospect" and isinstance(tool_input, dict):
+                updates = tool_input.get("updates", {})
+                if isinstance(updates, dict) and "stage" in updates:
+                    import scoring
+                    stage_val = updates.get("stage", "")
+                    if "closed-won" in str(stage_val).lower() or "won" in str(stage_val).lower():
+                        prospect_name = tool_input.get("name", "")
+                        prospect = db.get_prospect_by_name(prospect_name)
+                        if prospect:
+                            suggestions = scoring.get_cross_sell_suggestions(prospect.get("product", ""))
+                            if suggestions:
+                                result += f"\n\nCross-sell: {prospect['name']} has {prospect.get('product', '?')}. Suggest {', '.join(suggestions[:2])} in 30 days."
+
             messages.append({
                 "role": "tool",
                 "tool_call_id": tool_call.id,
@@ -1159,6 +1173,27 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(result)
     except Exception as e:
         await update.message.reply_text(f"Error: {str(e)[:200]}")
+
+
+async def cmd_priority(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show ranked call list with scores and actions."""
+    import scoring
+    ranked = scoring.get_ranked_call_list(10)
+    if not ranked:
+        await update.message.reply_text("No active deals in pipeline.")
+        return
+
+    lines = ["YOUR CALL LIST (ranked by score):", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━", ""]
+    for i, p in enumerate(ranked, 1):
+        reasons_str = " | ".join(p.get("reasons", [])[:2])
+        lines.append(f"{i}. {p['name']} — score: {p['score']}")
+        lines.append(f"   Stage: {p.get('stage', '?')} | {p.get('priority', '?')}")
+        if reasons_str:
+            lines.append(f"   Why: {reasons_str}")
+        lines.append(f"   Do: {p.get('action', 'Follow up')}")
+        lines.append("")
+
+    await update.message.reply_text("\n".join(lines))
 
 
 # ── Free-form message handler (still works for everything else) ──
@@ -1353,6 +1388,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/add — add a prospect\n"
         "  /add John Smith, 300k AUM, wealth management, hot, referral\n\n"
         "/pipeline — see your deals\n"
+        "/priority — ranked call list with scores\n"
         "/overdue — who needs follow-up\n"
         "/meetings — view meetings\n"
         "/calls — next prospects to call\n"
@@ -1394,6 +1430,8 @@ def main():
     app.add_handler(CommandHandler("meetings", cmd_meetings))
     app.add_handler(CommandHandler("calls", cmd_calls))
     app.add_handler(CommandHandler("stats", cmd_stats))
+    app.add_handler(CommandHandler("priority", cmd_priority))
+    app.add_handler(CommandHandler("p", cmd_priority))  # shortcut
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 

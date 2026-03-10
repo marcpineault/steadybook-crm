@@ -138,93 +138,76 @@ def _read_insurance_calls():
 # ── Morning Briefing ──
 
 async def morning_briefing():
-    """Send the daily morning briefing at 8:00 AM ET."""
+    """Send the daily Money Moves briefing at 8:00 AM ET."""
     if not _bot or not CHAT_ID:
-        logger.warning("Bot or CHAT_ID not configured, skipping morning briefing.")
         return
+
+    import scoring
 
     today = date.today()
-    lines = [f"Good morning, Marc! Here's your briefing for {today.strftime('%A, %B %d')}.\n"]
+    lines = [f"MONEY MOVES — {today.strftime('%A, %B %d')}", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━", ""]
 
-    try:
-        prospects = _read_prospects()
-    except Exception as e:
-        logger.error(f"Error reading pipeline: {e}")
-        await _bot.send_message(chat_id=CHAT_ID, text=f"Morning briefing error reading pipeline: {e}")
-        return
-
-    active = [p for p in prospects if p["stage"] not in ("Closed-Won", "Closed-Lost", "")]
-
-    # ── Follow-ups due today ──
-    due_today = []
-    for p in active:
-        fu = p["_next_followup_date"]
-        if fu == today:
-            notes_snippet = p["notes"][:80] + "..." if len(p["notes"]) > 80 else p["notes"]
-            due_today.append(f"  - {p['name']} [{p['priority']}] — {notes_snippet or 'no notes'}")
-
-    if due_today:
-        lines.append(f"FOLLOW-UPS DUE TODAY ({len(due_today)}):")
-        lines.extend(due_today)
+    # Top 5 ranked call list
+    ranked = scoring.get_ranked_call_list(5)
+    if ranked:
+        lines.append("TOP CALLS TODAY:")
+        for i, p in enumerate(ranked, 1):
+            reasons_str = " | ".join(p.get("reasons", [])[:2])
+            lines.append(f"  {i}. {p['name']} (score: {p['score']})")
+            if reasons_str:
+                lines.append(f"     Why: {reasons_str}")
+            lines.append(f"     Do: {p.get('action', 'Follow up')}")
         lines.append("")
 
-    # ── Overdue follow-ups ──
-    overdue = []
-    for p in active:
-        fu = p["_next_followup_date"]
-        if fu and fu < today:
-            days_late = (today - fu).days
-            overdue.append((days_late, f"  - {p['name']} — {days_late} day{'s' if days_late != 1 else ''} late"))
+    # Cross-sell opportunities on recent wins (last 30 days)
+    prospects = db.read_pipeline()
+    active = [p for p in prospects if p.get("stage") not in ("Closed-Won", "Closed-Lost", "")]
+    won = [p for p in prospects if p.get("stage") == "Closed-Won"]
 
-    overdue.sort(key=lambda x: -x[0])  # most overdue first
-    if overdue:
-        lines.append(f"OVERDUE ({len(overdue)}):")
-        lines.extend([item[1] for item in overdue])
+    cross_sell_lines = []
+    for p in won:
+        fc = p.get("first_contact", "")
+        if fc and fc != "None":
+            try:
+                close_date = datetime.strptime(fc.split(" ")[0], "%Y-%m-%d").date()
+                if (today - close_date).days <= 30:
+                    suggestions = scoring.get_cross_sell_suggestions(p.get("product", ""))
+                    if suggestions:
+                        cross_sell_lines.append(f"  {p['name']} has {p.get('product', '?')} — suggest {', '.join(suggestions[:2])}")
+            except (ValueError, IndexError):
+                pass
+
+    if cross_sell_lines:
+        lines.append("CROSS-SELL OPPORTUNITIES:")
+        lines.extend(cross_sell_lines)
         lines.append("")
 
-    # ── Meetings today ──
-    try:
-        meetings = _read_meetings_today()
-        if meetings:
-            lines.append(f"MEETINGS TODAY ({len(meetings)}):")
-            for m in meetings:
-                status_tag = f" [{m['status']}]" if m["status"] else ""
-                prep = f" | Prep: {m['prep_notes']}" if m["prep_notes"] else ""
-                lines.append(f"  - {m['time']} — {m['prospect']} ({m['type']}){status_tag}{prep}")
-            lines.append("")
-    except Exception as e:
-        logger.warning(f"Could not read Meetings sheet: {e}")
+    # Referral nudges
+    referral_candidates = scoring.get_referral_candidates()
+    if referral_candidates:
+        lines.append("REFERRAL OPPORTUNITIES:")
+        for c in referral_candidates:
+            lines.append(f"  Ask {c['name']} for a referral ({c['days_since_close']}d since close)")
+        lines.append("")
 
-    # ── Insurance book calls ──
-    try:
-        calls = _read_insurance_calls()
-        if calls:
-            lines.append(f"INSURANCE BOOK CALLS ({len(calls)}):")
-            for c in calls:
-                notes_bit = f" | {c['notes']}" if c["notes"] else ""
-                lines.append(f"  - {c['name']} — {c['phone']}{notes_bit}")
-            lines.append("")
-    except Exception as e:
-        logger.warning(f"Could not read Insurance Book sheet: {e}")
+    # Meetings today
+    meetings = _read_meetings_today()
+    if meetings:
+        lines.append(f"MEETINGS TODAY ({len(meetings)}):")
+        for m in meetings:
+            lines.append(f"  {m.get('time', '?')} — {m.get('prospect', '?')} ({m.get('type', '?')})")
+        lines.append("")
 
-    # ── Pipeline snapshot ──
-    total_aum = 0
-    for p in active:
-        try:
-            total_aum += float(p["aum"] or 0)
-        except (ValueError, TypeError):
-            pass
+    # Pipeline snapshot
+    total_aum = sum(float(p.get("aum") or 0) for p in active)
+    total_rev = sum(float(p.get("revenue") or 0) for p in active)
     hot_count = len([p for p in active if (p.get("priority") or "").lower() == "hot"])
-
-    lines.append("PIPELINE SNAPSHOT:")
-    lines.append(f"  Active: {len(active)} | Value: ${total_aum:,.0f} | Hot: {hot_count}")
-
-    if not due_today and not overdue:
-        lines.append("\nCalendar is clear of follow-ups. Good day to prospect!")
+    lines.append("PIPELINE:")
+    lines.append(f"  Active: {len(active)} | AUM: ${total_aum:,.0f} | Premium: ${total_rev:,.0f} | Hot: {hot_count}")
 
     msg = "\n".join(lines)
     await _bot.send_message(chat_id=CHAT_ID, text=msg)
-    logger.info("Morning briefing sent.")
+    logger.info("Morning briefing (Money Moves) sent.")
 
 
 # ── Auto-Nag System ──
