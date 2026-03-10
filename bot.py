@@ -590,7 +590,7 @@ def get_disability_quote(age: int, gender: str, occupation: str, income: int,
         rate_key = f"OCCR-RATE-{occ_code}"
         risk_class = rates.get(rate_key)
 
-    # Fuzzy match
+    # Fuzzy match — try substring match
     if not risk_class:
         matches = [(k, v) for k, v in occupations.items() if occ_lower in k.lower()]
         if matches:
@@ -599,8 +599,30 @@ def get_disability_quote(age: int, gender: str, occupation: str, income: int,
             risk_class = rates.get(rate_key)
             occ_lower = matches[0][0]
 
+    # Try matching by word overlap — prefer entries with more matching words
     if not risk_class:
-        return f"Occupation '{occupation}' not found in Edge Benefits database. Try a different title."
+        words = [w for w in occ_lower.split() if len(w) >= 4]
+        if words:
+            scored = []
+            for k, v in occupations.items():
+                k_lower = k.lower()
+                score = sum(1 for w in words if w in k_lower)
+                if score > 0:
+                    scored.append((score, k, v))
+            if scored:
+                scored.sort(key=lambda x: -x[0])
+                best = scored[0]
+                occ_code = str(best[2])
+                rate_key = f"OCCR-RATE-{occ_code}"
+                risk_class = rates.get(rate_key)
+                occ_lower = best[1]
+
+    if not risk_class:
+        # Suggest close matches
+        suggestions = [k for k in occupations.keys() if any(w in k.lower() for w in occ_lower.split() if len(w) >= 4)][:5]
+        if suggestions:
+            return f"Occupation '{occupation}' not found. Try one of these: {', '.join(suggestions)}"
+        return f"Occupation '{occupation}' not found in Edge Benefits database. Try a more general title like 'office worker' or 'clerk'."
 
     if risk_class in ("UI", "IC"):
         return f"Occupation '{occupation}' is rated '{risk_class}' (uninsurable/individual consideration) by Edge Benefits."
@@ -1252,8 +1274,19 @@ Be a proactive assistant. After completing an action, if useful context is missi
 - "Logged it. Want me to set a follow-up?"
 Don't rapid-fire questions — one at a time, only when it actually helps move the deal forward. Phone and email are nice-to-have, don't nag about those.
 
-When Marc mentions a person:
-1. Call add_prospect immediately. Guess fields from context:
+INTENT DETECTION — figure out what Marc wants FIRST:
+- "quote" / "price" / "rate" / DOB + occupation → he wants a QUOTE, not adding a prospect
+- "add" / "new prospect" / "met someone" → he wants to ADD a prospect
+- If he pastes client info with DOB/occupation/income → he probably wants a quote
+- When in doubt, USE CONTEXT from previous messages in this conversation
+
+QUOTES:
+- Disability: calculate age from DOB, call get_disability_quote. If occupation not found, try similar titles (e.g. "administrative assistant" → try "office worker")
+- Term life: call get_term_quote
+- Do NOT add prospects when Marc just wants a quote. Only add if he explicitly says to.
+
+ADDING PROSPECTS (only when Marc says to add someone):
+1. Call add_prospect. Guess fields from context:
    - stage: PHQ/paperwork = "Proposal Sent", just met = "Discovery Call", wants quote = "Needs Analysis", done = "Closed-Won", else = "New Lead"
    - product: insurance = "Life Insurance", disability = "Disability Insurance", investments = "Wealth Management"
    - revenue: use any $ amount mentioned. Auto-calculate if not given:
@@ -1267,7 +1300,7 @@ When Marc mentions a person:
 2. Then call auto_set_follow_up for that stage.
 3. Reply in 1-2 lines confirming what you did + one follow-up if useful context is missing.
 
-Other commands:
+OTHER COMMANDS:
 - "move X to Y" → update_prospect stage, then auto_set_follow_up
 - "delete/remove X" → delete_prospect
 - "pipeline/summary" → get_pipeline_summary
@@ -1287,7 +1320,7 @@ Other commands:
 - "win loss stats" → get_win_loss_stats
 - Relative dates: calculate from today's date above
 
-FORMATTING: Plain text only. No markdown, no ** bold **, no bullet lists, no menus. Just talk like a normal person texting. Keep replies to 1-2 short sentences max. If Marc says something vague like "hey" or "hi", just say "hey, what's up?" — don't list options.
+FORMATTING: Plain text only. No markdown, no ** bold **, no * italic *, no bullet lists, no numbered lists, no menus, no emojis. Just talk like a normal person texting. Keep replies to 1-2 short sentences max. If Marc says something vague like "hey" or "hi", just say "hey, what's up?" — don't list options or features.
 """
 
 
