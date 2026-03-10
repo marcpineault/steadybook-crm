@@ -898,7 +898,7 @@ tr:hover {{ background: #f8f9fa; }}
 
     <div class="section">
         <h2 style="display:flex;justify-content:space-between;align-items:center">Active Pipeline <span class="count">({len(active)} deals)</span> <button class="btn btn-primary" onclick="openAdd()">+ Add Prospect</button></h2>
-        {'<table><tr><th>Prospect</th><th>Priority</th><th>Stage</th><th>Product</th><th>AUM/Premium</th><th>Revenue</th><th>Follow-Up</th><th>Notes</th></tr>' + prospect_rows + '</table>' if active else '<div class="empty-state"><p>No active deals yet. Text your Telegram bot to add prospects.</p></div>'}
+        {'<table><tr><th>Prospect</th><th>Priority</th><th>Stage</th><th>Product</th><th>AUM</th><th>Premium</th><th>Follow-Up</th><th>Notes</th></tr>' + prospect_rows + '</table>' if active else '<div class="empty-state"><p>No active deals yet. Text your Telegram bot to add prospects.</p></div>'}
     </div>
 
     <div class="two-col">
@@ -1158,8 +1158,8 @@ tr:hover {{ background: #f8f9fa; }}
         <div><label>Next Follow-Up</label><input id="fFollowup" type="date"></div>
     </div>
     <div class="form-row">
-        <div><label>AUM / Premium</label><input id="fAum" type="text" placeholder="e.g. 500000"></div>
-        <div><label>Revenue</label><input id="fRevenue" type="text" placeholder="e.g. 5000"></div>
+        <div><label>AUM</label><input id="fAum" type="text" placeholder="e.g. 500000"></div>
+        <div><label>Premium</label><input id="fRevenue" type="text" placeholder="e.g. 5000"></div>
     </div>
     <label>Notes</label>
     <textarea id="fNotes"></textarea>
