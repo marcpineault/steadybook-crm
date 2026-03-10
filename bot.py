@@ -472,38 +472,8 @@ def get_win_loss_stats() -> str:
 
 # ── Quote Helper ──
 
-RATE_FILE = "cooperators_rates.json"
 EDGE_RATE_FILE = "edge_benefits_rates.json"
-_rate_cache = None
 _edge_cache = None
-
-
-def _find_file(filename):
-    """Find a data file, checking DATA_DIR first then current directory."""
-    if DATA_DIR:
-        data_path = os.path.join(DATA_DIR, filename)
-        if Path(data_path).exists():
-            return data_path
-    if Path(filename).exists():
-        return filename
-    return None
-
-
-def _load_rates():
-    global _rate_cache
-    if _rate_cache is None:
-        path = _find_file(RATE_FILE)
-        if path:
-            with open(path, "r") as f:
-                _rate_cache = json.load(f)
-    return _rate_cache or {}
-
-
-def reload_rates():
-    """Force reload rates from disk (called after scraping)."""
-    global _rate_cache
-    _rate_cache = None
-    return _load_rates()
 
 
 def _load_edge_rates():
@@ -514,61 +484,77 @@ def _load_edge_rates():
     return _edge_cache or {}
 
 
-RATE_AMOUNTS = [100000, 250000, 500000, 750000, 1000000]
+TERM_MAP = {"10": "3", "15": "4", "20": "5", "25": "6", "30": "7"}
 
 
-def _closest_amount(amount: int) -> int:
-    return min(RATE_AMOUNTS, key=lambda x: abs(x - amount))
+def _fetch_term4sale(age, sex, smoke, term_str, face):
+    """Hit term4sale.ca API live for Co-operators rates."""
+    import requests
+    birth_year = 2026 - age
+    cat_code = TERM_MAP.get(term_str)
+    if not cat_code:
+        return None
+
+    params = {
+        "requestType": "request", "ModeUsed": "M", "SortOverride1": "A",
+        "ErrOnMissingZipCode": "ON", "State": "0", "ZipCode": "N6A1A1",
+        "BirthMonth": "6", "BirthDay": "15", "BirthYear": str(birth_year),
+        "Sex": sex, "Smoker": smoke, "Health": "R",
+        "NewCategory": cat_code, "FaceAmount": str(face), "CompRating": "4",
+    }
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "Referer": "https://www.term4sale.ca/",
+        "Accept": "application/json, text/javascript, */*; q=0.01",
+        "X-Requested-With": "XMLHttpRequest",
+    }
+
+    try:
+        resp = requests.get("https://www.term4sale.ca/apit4sc/compulifeapi/api.php/",
+                           params=params, headers=headers, timeout=10)
+        if "scraping" in resp.text.lower() and len(resp.text) < 50:
+            return None
+        data = resp.json()
+        results = data.get("Compulife_ComparisonResults", {}).get("Compulife_Results", [])
+        for r in results:
+            if "Co-operators" in r.get("Compulife_company", ""):
+                return {
+                    "annual": r["Compulife_premiumAnnual"].strip(),
+                    "monthly": r["Compulife_premiumM"].strip(),
+                    "product": r["Compulife_product"].strip(),
+                }
+    except Exception:
+        pass
+    return None
 
 
 def get_term_quote(age: int, gender: str, smoker: bool, term: str, amount: int, health: str = "regular") -> str:
-    """Look up Co-operators term life insurance rates."""
+    """Look up Co-operators term life insurance rates via live API."""
     sex = "M" if gender.lower().startswith("m") else "F"
     smoke = "Y" if smoker else "N"
-    face = _closest_amount(amount)
     term_str = str(term).strip()
+    sex_name = "Male" if sex == "M" else "Female"
+    smoke_name = "Smoker" if smoker else "Non-Smoker"
 
-    rates = _load_rates()
-    key = f"{age}_{sex}_{smoke}_{term_str}_{face}"
+    # Try live API
+    r = _fetch_term4sale(age, sex, smoke, term_str, amount)
 
-    if key in rates:
-        r = rates[key]
-        sex_name = "Male" if sex == "M" else "Female"
-        smoke_name = "Smoker" if smoker else "Non-Smoker"
+    if r:
         lines = [
             f"CO-OPERATORS QUOTE — {r.get('product', 'Versatile Term ' + term_str)}",
             f"━━━━━━━━━━━━━━━━",
-            f"  {age}{sex_name[0]} {smoke_name}, ${face:,} coverage",
+            f"  {age}{sex_name[0]} {smoke_name}, ${amount:,} coverage",
             f"  Annual: ${r['annual']}/yr",
             f"  Monthly: ${r['monthly']}/mo",
             "",
             f"Health class: Regular (standard rates)",
         ]
-
-        # Also show nearby amounts if available
-        other_lines = []
-        for alt_face in RATE_AMOUNTS:
-            if alt_face == face:
-                continue
-            alt_key = f"{age}_{sex}_{smoke}_{term_str}_{alt_face}"
-            if alt_key in rates:
-                ar = rates[alt_key]
-                other_lines.append(f"  ${alt_face:,}: ${ar['annual']}/yr (${ar['monthly']}/mo)")
-
-        if other_lines:
-            lines.append("\nOther coverage amounts:")
-            lines.extend(other_lines)
-
         return "\n".join(lines)
     else:
-        # Rate not in table — give lookup instructions
-        sex_name = "Male" if sex == "M" else "Female"
-        smoke_name = "Smoker" if smoker else "Non-Smoker"
         return (
-            f"Rate not found for {age}{sex_name[0]} {smoke_name}, ${amount:,} Term {term_str}.\n"
-            f"Check term4sale.ca → N6A 1A1, {age}{sex_name[0]}, {smoke_name}, Regular, "
-            f"${amount:,}, Term {term_str}\n"
-            f"Co-operators product: Versatile Term {term_str}"
+            f"Couldn't get live rate for {age}{sex_name[0]} {smoke_name}, ${amount:,} Term {term_str}.\n"
+            f"API may be temporarily unavailable. Check term4sale.ca manually.\n"
+            f"Postal: N6A 1A1, Regular health, Co-operators Versatile Term {term_str}"
         )
 
 
@@ -1554,59 +1540,6 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ── Free-form message handler (still works for everything else) ──
 
-# ── /scrape command — run term life rate scraper from Railway ──
-
-_scrape_running = False
-
-async def cmd_scrape(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Trigger Co-operators rate scraper in background."""
-    global _scrape_running
-    if _scrape_running:
-        await update.message.reply_text("Scraper is already running. I'll message you when it's done.")
-        return
-
-    await update.message.reply_text("Starting Co-operators rate scraper. This will take a while — I'll message you when it's done.")
-    _scrape_running = True
-
-    import threading
-
-    def _run_scrape():
-        global _scrape_running
-        try:
-            from scrape_rates import scrape_rates
-            result = scrape_rates(callback=lambda msg: logger.info(f"Scraper: {msg}"))
-
-            # Send result back via Telegram
-            import asyncio
-            loop = asyncio.new_event_loop()
-            if result.get("blocked"):
-                msg = f"Scraper stopped — blocked by term4sale.ca. Got {result['total']} total rates ({result['new']} new this run)."
-            else:
-                msg = f"Scraper done! {result['total']} total rates, {result['new']} new this run."
-
-            # Reload rates cache so bot picks up new data
-            reload_rates()
-
-            loop.run_until_complete(context.bot.send_message(chat_id=update.effective_chat.id, text=msg))
-            loop.close()
-        except Exception as e:
-            logger.error(f"Scraper error: {e}")
-            try:
-                import asyncio
-                loop = asyncio.new_event_loop()
-                loop.run_until_complete(context.bot.send_message(
-                    chat_id=update.effective_chat.id,
-                    text=f"Scraper failed: {str(e)[:200]}"
-                ))
-                loop.close()
-            except Exception:
-                pass
-        finally:
-            _scrape_running = False
-
-    threading.Thread(target=_run_scrape, daemon=True).start()
-
-
 # ── Free-form message handler ──
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1853,7 +1786,6 @@ def main():
     app.add_handler(CommandHandler("meetings", cmd_meetings))
     app.add_handler(CommandHandler("calls", cmd_calls))
     app.add_handler(CommandHandler("stats", cmd_stats))
-    app.add_handler(CommandHandler("scrape", cmd_scrape))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
