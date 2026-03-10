@@ -580,9 +580,47 @@ def get_disability_quote(age: int, gender: str, occupation: str, income: int,
     rates = data.get("rates", data)
     occupations = data.get("occupations", {})
 
+    # Common occupation aliases → Edge Benefits database titles
+    OCC_ALIASES = {
+        "administrative assistant": "office worker (general clerical duties only)",
+        "admin assistant": "office worker (general clerical duties only)",
+        "admin": "office worker (general clerical duties only)",
+        "secretary": "office worker (general clerical duties only)",
+        "receptionist": "office worker (general clerical duties only)",
+        "office admin": "office worker (general clerical duties only)",
+        "office administrator": "office worker (general clerical duties only)",
+        "office clerk": "office worker (general clerical duties only)",
+        "clerical": "office worker (general clerical duties only)",
+        "financial advisor": "insurance - financial planner (more than 2 years experience)",
+        "financial planner": "insurance - financial planner (more than 2 years experience)",
+        "financial consultant": "insurance - financial planner (more than 2 years experience)",
+        "insurance agent": "insurance - financial planner (more than 2 years experience)",
+        "insurance broker": "insurance - financial planner (more than 2 years experience)",
+        "teacher": "education - teacher (permanent)",
+        "nurse": "registered nurse (rn)",
+        "engineer": "engineer - professional (office and consulting duties only)",
+        "lawyer": "lawyer/attorney",
+        "doctor": "physician/surgeon",
+        "dentist": "dentist",
+        "pharmacist": "pharmacist",
+        "realtor": "real estate agent/broker",
+        "real estate agent": "real estate agent/broker",
+        "construction worker": "construction - general labourer",
+        "electrician": "electrician - licensed",
+        "plumber": "plumber/pipefitter",
+        "truck driver": "truck driver (long haul)",
+        "programmer": "computer programmer/analyst/operator/consultant",
+        "software developer": "computer programmer/analyst/operator/consultant",
+        "it professional": "computer programmer/analyst/operator/consultant",
+    }
+
     # Determine risk class from occupation
     occ_lower = occupation.lower().strip()
     risk_class = None
+
+    # Check aliases first
+    if occ_lower in OCC_ALIASES:
+        occ_lower = OCC_ALIASES[occ_lower]
 
     # Direct lookup
     if occ_lower in occupations:
@@ -639,10 +677,11 @@ def get_disability_quote(age: int, gender: str, occupation: str, income: int,
     cov_code = "0" if coverage_type == "24hour" else "1"
     gender_label = "Male" if sex_code == "0" else "Female"
 
+    matched_title = occ_lower if occ_lower != occupation.lower().strip() else occupation.title()
     lines = [
         f"EDGE BENEFITS DISABILITY QUOTE",
         f"━━━━━━━━━━━━━━━━",
-        f"  {age}{gender_label[0]}, {occupation.title()}",
+        f"  {age}{gender_label[0]}, {matched_title}",
         f"  Risk Class: {risk_class} | Income: ${income:,}/yr",
         f"  Max eligible benefit: ${max_benefit:,}/mo",
         "",
