@@ -3,8 +3,10 @@ import threading
 from datetime import date, datetime
 from pathlib import Path
 
+import json
+
 import openpyxl
-from flask import Flask, Response
+from flask import Flask, Response, request, jsonify
 
 PIPELINE_PATH = os.environ.get("PIPELINE_PATH", "pipeline.xlsx")
 
@@ -107,6 +109,107 @@ def read_data():
     return prospects, activities, meetings, book_entries
 
 
+PIPELINE_COLS = {
+    "name": 1, "phone": 2, "email": 3, "source": 4,
+    "priority": 5, "stage": 6, "product": 7,
+    "aum": 8, "revenue": 9, "first_contact": 10,
+    "next_followup": 11, "notes": 13,
+}
+
+
+@app.route("/api/prospect", methods=["POST"])
+def api_add_prospect():
+    data = request.json
+    if not data or not data.get("name"):
+        return jsonify({"error": "Name required"}), 400
+
+    wb = openpyxl.load_workbook(PIPELINE_PATH)
+    ws = wb["Pipeline"]
+
+    target_row = None
+    for r in range(DATA_START, DATA_START + MAX_ROWS):
+        if not ws.cell(row=r, column=1).value:
+            target_row = r
+            break
+
+    if not target_row:
+        wb.close()
+        return jsonify({"error": "Pipeline full"}), 400
+
+    for field, col in PIPELINE_COLS.items():
+        val = data.get(field, "")
+        if val:
+            ws.cell(row=target_row, column=col, value=val)
+
+    if not data.get("first_contact"):
+        ws.cell(row=target_row, column=10, value=date.today().strftime("%Y-%m-%d"))
+    if not data.get("stage"):
+        ws.cell(row=target_row, column=6, value="New Lead")
+
+    wb.save(PIPELINE_PATH)
+    wb.close()
+    return jsonify({"ok": True, "row": target_row})
+
+
+@app.route("/api/prospect/<name>", methods=["PUT"])
+def api_update_prospect(name):
+    data = request.json
+    if not data:
+        return jsonify({"error": "No data"}), 400
+
+    wb = openpyxl.load_workbook(PIPELINE_PATH)
+    ws = wb["Pipeline"]
+
+    found_row = None
+    for r in range(DATA_START, DATA_START + MAX_ROWS):
+        cell_val = ws.cell(row=r, column=1).value
+        if cell_val and str(cell_val).strip().lower() == name.strip().lower():
+            found_row = r
+            break
+
+    if not found_row:
+        wb.close()
+        return jsonify({"error": f"Prospect '{name}' not found"}), 404
+
+    for field, col in PIPELINE_COLS.items():
+        if field in data:
+            ws.cell(row=found_row, column=col, value=data[field])
+
+    wb.save(PIPELINE_PATH)
+    wb.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/prospect/<name>", methods=["DELETE"])
+def api_delete_prospect(name):
+    wb = openpyxl.load_workbook(PIPELINE_PATH)
+    ws = wb["Pipeline"]
+
+    found_row = None
+    for r in range(DATA_START, DATA_START + MAX_ROWS):
+        cell_val = ws.cell(row=r, column=1).value
+        if cell_val and str(cell_val).strip().lower() == name.strip().lower():
+            found_row = r
+            break
+
+    if not found_row:
+        wb.close()
+        return jsonify({"error": f"Prospect '{name}' not found"}), 404
+
+    for col in range(1, 14):
+        ws.cell(row=found_row, column=col, value=None)
+
+    wb.save(PIPELINE_PATH)
+    wb.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/prospects")
+def api_list_prospects():
+    prospects, _, _, _ = read_data()
+    return jsonify(prospects)
+
+
 def fmt_money(val):
     try:
         v = float(str(val).replace("$", "").replace(",", ""))
@@ -191,7 +294,8 @@ def dashboard():
         fu_class = "overdue" if is_overdue else ""
         fu_display = p["next_followup"].split(" ")[0] if p["next_followup"] and p["next_followup"] != "None" else ""
 
-        prospect_rows += f"""<tr>
+        p_json = json.dumps(p).replace("'", "&#39;").replace('"', "&quot;")
+        prospect_rows += f"""<tr class="editable-row" onclick='openEdit({p_json})' style="cursor:pointer">
             <td class="name-cell">{p["name"]}</td>
             <td><span class="badge" style="background:{pri_bg}">{p["priority"]}</span></td>
             <td><span class="badge" style="background:{stage_bg};color:{stage_fg}">{p["stage"]}</span></td>
@@ -352,6 +456,29 @@ tr:hover {{ background: #f8f9fa; }}
 
 .refresh-note {{ text-align: center; color: #7f8c8d; font-size: 12px; margin-top: 16px; padding: 12px; }}
 
+.editable-row:hover {{ background: #edf7f6 !important; }}
+
+.btn {{ display: inline-block; padding: 8px 20px; border-radius: 8px; font-size: 13px; font-weight: 600; border: none; cursor: pointer; }}
+.btn-primary {{ background: #1abc9c; color: white; }}
+.btn-primary:hover {{ background: #16a085; }}
+.btn-danger {{ background: #e74c3c; color: white; }}
+.btn-danger:hover {{ background: #c0392b; }}
+.btn-secondary {{ background: #bdc3c7; color: #2c3e50; }}
+
+.modal-overlay {{ display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; }}
+.modal-overlay.active {{ display: flex; }}
+.modal {{ background: white; border-radius: 16px; padding: 32px; width: 500px; max-width: 90vw; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }}
+.modal h2 {{ font-size: 18px; margin-bottom: 20px; color: #0f1b2d; }}
+.modal label {{ display: block; font-size: 11px; font-weight: 600; text-transform: uppercase; color: #7f8c8d; margin-bottom: 4px; margin-top: 12px; letter-spacing: 0.5px; }}
+.modal input, .modal select, .modal textarea {{ width: 100%; padding: 8px 12px; border: 1px solid #dde1e6; border-radius: 8px; font-size: 14px; font-family: inherit; }}
+.modal textarea {{ resize: vertical; min-height: 60px; }}
+.modal select {{ background: white; }}
+.modal .form-row {{ display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }}
+.modal .actions {{ display: flex; gap: 8px; margin-top: 24px; justify-content: flex-end; }}
+.modal .actions .left {{ margin-right: auto; }}
+
+.add-btn {{ margin-bottom: 16px; float: right; }}
+
 @media (max-width: 900px) {{
     .chart-grid {{ grid-template-columns: 1fr; }}
     .two-col {{ grid-template-columns: 1fr; }}
@@ -415,7 +542,7 @@ tr:hover {{ background: #f8f9fa; }}
     {'<div class="section"><h2>Overdue Follow-Ups <span class="count">(' + str(len(overdue)) + ')</span></h2><table><tr><th>Prospect</th><th>Was Due</th><th>Status</th><th>Phone</th></tr>' + overdue_rows + '</table></div>' if overdue else ''}
 
     <div class="section">
-        <h2>Active Pipeline <span class="count">({len(active)} deals)</span></h2>
+        <h2 style="display:flex;justify-content:space-between;align-items:center">Active Pipeline <span class="count">({len(active)} deals)</span> <button class="btn btn-primary" onclick="openAdd()">+ Add Prospect</button></h2>
         {'<table><tr><th>Prospect</th><th>Priority</th><th>Stage</th><th>Product</th><th>AUM/Premium</th><th>Revenue</th><th>Follow-Up</th><th>Notes</th></tr>' + prospect_rows + '</table>' if active else '<div class="empty-state"><p>No active deals yet. Text your Telegram bot to add prospects.</p></div>'}
     </div>
 
@@ -441,8 +568,69 @@ tr:hover {{ background: #f8f9fa; }}
         </div>
     </div>
 
-    <div class="refresh-note">Data updates when you refresh the page. All changes come from your Telegram bot.</div>
+    <div class="refresh-note">Click any prospect row to edit. Changes save to your pipeline instantly.</div>
 
+</div>
+
+<!-- Edit Modal -->
+<div class="modal-overlay" id="editModal">
+<div class="modal">
+    <h2 id="modalTitle">Edit Prospect</h2>
+    <input type="hidden" id="origName">
+    <div class="form-row">
+        <div><label>Name</label><input id="fName" type="text"></div>
+        <div><label>Phone</label><input id="fPhone" type="text"></div>
+    </div>
+    <div class="form-row">
+        <div><label>Email</label><input id="fEmail" type="text"></div>
+        <div><label>Source</label>
+            <select id="fSource">
+                <option value="">—</option>
+                <option>Referral</option><option>Website</option><option>Social Media</option>
+                <option>Seminar</option><option>Cold Outreach</option><option>LinkedIn</option>
+                <option>Podcast</option><option>Networking</option><option>Centre of Influence</option><option>Other</option>
+            </select>
+        </div>
+    </div>
+    <div class="form-row">
+        <div><label>Priority</label>
+            <select id="fPriority">
+                <option value="">—</option>
+                <option>Hot</option><option>Warm</option><option>Cold</option>
+            </select>
+        </div>
+        <div><label>Stage</label>
+            <select id="fStage">
+                <option value="">—</option>
+                <option>New Lead</option><option>Contacted</option><option>Discovery Call</option>
+                <option>Needs Analysis</option><option>Plan Presentation</option><option>Proposal Sent</option>
+                <option>Negotiation</option><option>Closed-Won</option><option>Closed-Lost</option><option>Nurture</option>
+            </select>
+        </div>
+    </div>
+    <div class="form-row">
+        <div><label>Product</label>
+            <select id="fProduct">
+                <option value="">—</option>
+                <option>Life Insurance</option><option>Wealth Management</option><option>Life Insurance + Wealth</option>
+                <option>Disability Insurance</option><option>Critical Illness</option><option>Group Benefits</option>
+                <option>Estate Planning</option><option>Other</option>
+            </select>
+        </div>
+        <div><label>Next Follow-Up</label><input id="fFollowup" type="date"></div>
+    </div>
+    <div class="form-row">
+        <div><label>AUM / Premium</label><input id="fAum" type="text" placeholder="e.g. 500000"></div>
+        <div><label>Revenue</label><input id="fRevenue" type="text" placeholder="e.g. 5000"></div>
+    </div>
+    <label>Notes</label>
+    <textarea id="fNotes"></textarea>
+    <div class="actions">
+        <button class="btn btn-danger left" id="deleteBtn" onclick="deleteProspect()">Delete</button>
+        <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveProspect()">Save</button>
+    </div>
+</div>
 </div>
 
 <script>
@@ -473,6 +661,96 @@ new Chart(document.getElementById('productChart'), {{
         datasets: [{{ data: {product_values}, backgroundColor: chartColors }}]
     }},
     options: {{ responsive: true, plugins: {{ legend: {{ position: 'bottom', labels: {{ boxWidth: 12, padding: 8, font: {{ size: 11 }} }} }} }} }}
+}});
+
+// Modal logic
+let isAdding = false;
+
+function openEdit(p) {{
+    isAdding = false;
+    document.getElementById('modalTitle').textContent = 'Edit: ' + p.name;
+    document.getElementById('origName').value = p.name;
+    document.getElementById('fName').value = p.name;
+    document.getElementById('fPhone').value = p.phone || '';
+    document.getElementById('fEmail').value = p.email || '';
+    document.getElementById('fSource').value = p.source || '';
+    document.getElementById('fPriority').value = p.priority || '';
+    document.getElementById('fStage').value = p.stage || '';
+    document.getElementById('fProduct').value = p.product || '';
+    document.getElementById('fAum').value = p.aum || '';
+    document.getElementById('fRevenue').value = p.revenue || '';
+    document.getElementById('fNotes').value = p.notes || '';
+    let fu = p.next_followup || '';
+    if (fu && fu !== 'None') {{
+        fu = fu.split(' ')[0];
+        if (/^\d{{4}}-\d{{2}}-\d{{2}}$/.test(fu)) document.getElementById('fFollowup').value = fu;
+        else document.getElementById('fFollowup').value = '';
+    }} else document.getElementById('fFollowup').value = '';
+    document.getElementById('deleteBtn').style.display = 'inline-block';
+    document.getElementById('editModal').classList.add('active');
+}}
+
+function openAdd() {{
+    isAdding = true;
+    document.getElementById('modalTitle').textContent = 'Add Prospect';
+    document.getElementById('origName').value = '';
+    ['fName','fPhone','fEmail','fNotes','fAum','fRevenue','fFollowup'].forEach(id => document.getElementById(id).value = '');
+    ['fSource','fPriority','fProduct'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('fStage').value = 'New Lead';
+    document.getElementById('deleteBtn').style.display = 'none';
+    document.getElementById('editModal').classList.add('active');
+}}
+
+function closeModal() {{
+    document.getElementById('editModal').classList.remove('active');
+}}
+
+function getFormData() {{
+    return {{
+        name: document.getElementById('fName').value.trim(),
+        phone: document.getElementById('fPhone').value.trim(),
+        email: document.getElementById('fEmail').value.trim(),
+        source: document.getElementById('fSource').value,
+        priority: document.getElementById('fPriority').value,
+        stage: document.getElementById('fStage').value,
+        product: document.getElementById('fProduct').value,
+        aum: document.getElementById('fAum').value.trim(),
+        revenue: document.getElementById('fRevenue').value.trim(),
+        next_followup: document.getElementById('fFollowup').value,
+        notes: document.getElementById('fNotes').value.trim(),
+    }};
+}}
+
+async function saveProspect() {{
+    const data = getFormData();
+    if (!data.name) {{ alert('Name is required'); return; }}
+    try {{
+        let res;
+        if (isAdding) {{
+            res = await fetch('/api/prospect', {{ method: 'POST', headers: {{'Content-Type': 'application/json'}}, body: JSON.stringify(data) }});
+        }} else {{
+            const origName = document.getElementById('origName').value;
+            res = await fetch('/api/prospect/' + encodeURIComponent(origName), {{ method: 'PUT', headers: {{'Content-Type': 'application/json'}}, body: JSON.stringify(data) }});
+        }}
+        const result = await res.json();
+        if (result.ok) {{ closeModal(); location.reload(); }}
+        else alert(result.error || 'Error saving');
+    }} catch(e) {{ alert('Error: ' + e.message); }}
+}}
+
+async function deleteProspect() {{
+    const name = document.getElementById('origName').value;
+    if (!confirm('Delete ' + name + '?')) return;
+    try {{
+        const res = await fetch('/api/prospect/' + encodeURIComponent(name), {{ method: 'DELETE' }});
+        const result = await res.json();
+        if (result.ok) {{ closeModal(); location.reload(); }}
+        else alert(result.error || 'Error deleting');
+    }} catch(e) {{ alert('Error: ' + e.message); }}
+}}
+
+document.getElementById('editModal').addEventListener('click', function(e) {{
+    if (e.target === this) closeModal();
 }});
 </script>
 
