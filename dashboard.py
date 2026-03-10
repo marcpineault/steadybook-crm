@@ -1,3 +1,4 @@
+import html as _html
 import os
 import threading
 from datetime import date, datetime
@@ -7,6 +8,11 @@ import json
 
 import openpyxl
 from flask import Flask, Response, request, jsonify
+
+
+def _esc(val):
+    """Escape HTML to prevent XSS."""
+    return _html.escape(str(val)) if val else ""
 
 DATA_DIR = os.environ.get("DATA_DIR", "")
 if DATA_DIR:
@@ -317,36 +323,36 @@ def dashboard():
 
         p_json = json.dumps(p).replace("'", "&#39;").replace('"', "&quot;")
         prospect_rows += f"""<tr class="editable-row" onclick='openEdit({p_json})' style="cursor:pointer">
-            <td class="name-cell">{p["name"]}</td>
-            <td><span class="badge" style="background:{pri_bg}">{p["priority"]}</span></td>
-            <td><span class="badge" style="background:{stage_bg};color:{stage_fg}">{p["stage"]}</span></td>
-            <td>{p["product"]}</td>
+            <td class="name-cell">{_esc(p["name"])}</td>
+            <td><span class="badge" style="background:{pri_bg}">{_esc(p["priority"])}</span></td>
+            <td><span class="badge" style="background:{stage_bg};color:{stage_fg}">{_esc(p["stage"])}</span></td>
+            <td>{_esc(p["product"])}</td>
             <td class="money">{fmt_money_full(p["aum"])}</td>
             <td class="money">{fmt_money_full(p["revenue"])}</td>
-            <td class="{fu_class}">{fu_display}</td>
-            <td class="notes">{p["notes"][:60]}{'...' if len(p["notes"]) > 60 else ''}</td>
+            <td class="{fu_class}">{_esc(fu_display)}</td>
+            <td class="notes">{_esc(p["notes"][:60])}{'...' if len(p["notes"]) > 60 else ''}</td>
         </tr>"""
 
     # Won deals rows
     won_rows = ""
     for p in won:
         won_rows += f"""<tr>
-            <td class="name-cell">{p["name"]}</td>
-            <td>{p["product"]}</td>
+            <td class="name-cell">{_esc(p["name"])}</td>
+            <td>{_esc(p["product"])}</td>
             <td class="money">{fmt_money_full(p["aum"])}</td>
             <td class="money">{fmt_money_full(p["revenue"])}</td>
-            <td>{p["source"]}</td>
+            <td>{_esc(p["source"])}</td>
         </tr>"""
 
     # Activity rows (last 10)
     activity_rows = ""
     for a in activities[:10]:
         activity_rows += f"""<tr>
-            <td>{a["date"].split(" ")[0]}</td>
-            <td>{a["prospect"]}</td>
-            <td>{a["action"]}</td>
-            <td>{a["outcome"]}</td>
-            <td>{a["next_step"]}</td>
+            <td>{_esc(a["date"].split(" ")[0])}</td>
+            <td>{_esc(a["prospect"])}</td>
+            <td>{_esc(a["action"])}</td>
+            <td>{_esc(a["outcome"])}</td>
+            <td>{_esc(a["next_step"])}</td>
         </tr>"""
 
     # Overdue rows
@@ -358,10 +364,10 @@ def dashboard():
         except (ValueError, IndexError):
             days_late = "?"
         overdue_rows += f"""<tr>
-            <td class="name-cell">{p["name"]}</td>
-            <td>{fu}</td>
+            <td class="name-cell">{_esc(p["name"])}</td>
+            <td>{_esc(fu)}</td>
             <td class="overdue">{days_late} days late</td>
-            <td>{p["phone"]}</td>
+            <td>{_esc(p["phone"])}</td>
         </tr>"""
 
     # Chart data as JSON-like strings for inline JS
@@ -581,11 +587,11 @@ tr:hover {{ background: #f8f9fa; }}
     <div class="two-col">
         <div class="section">
             <h2>Upcoming Meetings <span class="count">({len([m for m in meetings if m['status'] != 'Cancelled'])})</span></h2>
-            {'<table><tr><th>Date</th><th>Time</th><th>Prospect</th><th>Type</th><th>Status</th><th>Prep</th></tr>' + ''.join(f'<tr><td>{m["date"]}</td><td>{m["time"]}</td><td class="name-cell">{m["prospect"]}</td><td>{m["type"]}</td><td><span class="badge" style="background:{"#27ae60" if m["status"]=="Completed" else "#e74c3c" if m["status"]=="Cancelled" else "#3498db"}">{m["status"]}</span></td><td class="notes">{m["prep_notes"][:50]}{"..." if len(m["prep_notes"])>50 else ""}</td></tr>' for m in meetings if m['status'] != 'Cancelled') + '</table>' if meetings else '<div class="empty-state"><p>No meetings scheduled. Text the bot to add one.</p></div>'}
+            {'<table><tr><th>Date</th><th>Time</th><th>Prospect</th><th>Type</th><th>Status</th><th>Prep</th></tr>' + ''.join(f'<tr><td>{_esc(m["date"])}</td><td>{_esc(m["time"])}</td><td class="name-cell">{_esc(m["prospect"])}</td><td>{_esc(m["type"])}</td><td><span class="badge" style="background:{"#27ae60" if m["status"]=="Completed" else "#e74c3c" if m["status"]=="Cancelled" else "#3498db"}">{_esc(m["status"])}</span></td><td class="notes">{_esc(m["prep_notes"][:50])}{"..." if len(m["prep_notes"])>50 else ""}</td></tr>' for m in meetings if m['status'] != 'Cancelled') + '</table>' if meetings else '<div class="empty-state"><p>No meetings scheduled. Text the bot to add one.</p></div>'}
         </div>
         <div class="section">
             <h2>Insurance Book <span class="count">({len(book_entries)} contacts)</span></h2>
-            {'<div style="display:flex;gap:24px;margin-bottom:16px"><div class="kpi-card" style="flex:1;padding:12px 16px"><div class="kpi-label">Called</div><div class="kpi-value" style="font-size:24px">' + str(len([b for b in book_entries if b["status"].lower() not in ("not called","")])) + '</div></div><div class="kpi-card green" style="flex:1;padding:12px 16px"><div class="kpi-label">Booked</div><div class="kpi-value" style="font-size:24px">' + str(len([b for b in book_entries if b["status"].lower()=="booked meeting"])) + '</div></div><div class="kpi-card blue" style="flex:1;padding:12px 16px"><div class="kpi-label">Remaining</div><div class="kpi-value" style="font-size:24px">' + str(len([b for b in book_entries if b["status"].lower() in ("not called","")])) + '</div></div></div><table><tr><th>Name</th><th>Phone</th><th>Status</th><th>Last Called</th><th>Notes</th></tr>' + ''.join(f'<tr><td class="name-cell">{b["name"]}</td><td>{b["phone"]}</td><td><span class="badge" style="background:{"#27ae60" if b["status"].lower()=="booked meeting" else "#e74c3c" if b["status"].lower()=="not interested" else "#f39c12" if b["status"].lower() in ("callback","no answer") else "#3498db"}">{b["status"]}</span></td><td>{b["last_called"].split(" ")[0] if b["last_called"] and b["last_called"]!="None" else ""}</td><td class="notes">{b["notes"][:40]}{"..." if len(b["notes"])>40 else ""}</td></tr>' for b in book_entries[:20]) + '</table>' if book_entries else '<div class="empty-state"><p>No insurance book uploaded. Send a CSV via Telegram.</p></div>'}
+            {'<div style="display:flex;gap:24px;margin-bottom:16px"><div class="kpi-card" style="flex:1;padding:12px 16px"><div class="kpi-label">Called</div><div class="kpi-value" style="font-size:24px">' + str(len([b for b in book_entries if b["status"].lower() not in ("not called","")])) + '</div></div><div class="kpi-card green" style="flex:1;padding:12px 16px"><div class="kpi-label">Booked</div><div class="kpi-value" style="font-size:24px">' + str(len([b for b in book_entries if b["status"].lower()=="booked meeting"])) + '</div></div><div class="kpi-card blue" style="flex:1;padding:12px 16px"><div class="kpi-label">Remaining</div><div class="kpi-value" style="font-size:24px">' + str(len([b for b in book_entries if b["status"].lower() in ("not called","")])) + '</div></div></div><table><tr><th>Name</th><th>Phone</th><th>Status</th><th>Last Called</th><th>Notes</th></tr>' + ''.join(f'<tr><td class="name-cell">{_esc(b["name"])}</td><td>{_esc(b["phone"])}</td><td><span class="badge" style="background:{"#27ae60" if b["status"].lower()=="booked meeting" else "#e74c3c" if b["status"].lower()=="not interested" else "#f39c12" if b["status"].lower() in ("callback","no answer") else "#3498db"}">{_esc(b["status"])}</span></td><td>{_esc(b["last_called"].split(" ")[0] if b["last_called"] and b["last_called"]!="None" else "")}</td><td class="notes">{_esc(b["notes"][:40])}{"..." if len(b["notes"])>40 else ""}</td></tr>' for b in book_entries[:20]) + '</table>' if book_entries else '<div class="empty-state"><p>No insurance book uploaded. Send a CSV via Telegram.</p></div>'}
         </div>
     </div>
 

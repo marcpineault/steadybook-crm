@@ -477,65 +477,69 @@ async def weekly_report():
     hot_count = len([p for p in active if p["priority"].lower() == "hot"])
 
     # Activity log this week
+    # Read all raw data inside lock, compute stats outside
+    raw_activities = []
+    raw_book = []
+    raw_wl = []
     with _get_lock():
         wb = openpyxl.load_workbook(PIPELINE_PATH, data_only=True)
-        week_activities = 0
-        calls_made = 0
-        emails_sent = 0
-        meetings_held = 0
         if "Activity Log" in wb.sheetnames:
             log_ws = wb["Activity Log"]
             for r in range(3, 200):
                 d = log_ws.cell(row=r, column=1).value
-                if not d:
-                    continue
-                activity_date = _parse_date(d)
-                if activity_date and activity_date >= week_start:
-                    week_activities += 1
-                    action = _cell(log_ws, r, 3).lower()
-                    if "call" in action or "phone" in action:
-                        calls_made += 1
-                    if "email" in action:
-                        emails_sent += 1
-                    if "meeting" in action or "discovery" in action or "presentation" in action:
-                        meetings_held += 1
+                if d:
+                    raw_activities.append((_parse_date(d), _cell(log_ws, r, 3).lower()))
 
-        # Insurance book stats this week
-        book_calls_week = 0
-        book_booked = 0
         if "Insurance Book" in wb.sheetnames:
             bs = wb["Insurance Book"]
             for r in range(INSURANCE_DATA_START, INSURANCE_DATA_START + 200):
                 name = bs.cell(row=r, column=INSURANCE_COLS["name"]).value
-                if not name:
-                    continue
-                last_called = _parse_date(bs.cell(row=r, column=INSURANCE_COLS["last_called"]).value)
-                if last_called and last_called >= week_start:
-                    book_calls_week += 1
-                status = _cell(bs, r, INSURANCE_COLS["status"]).lower()
-                if status == "booked meeting":
-                    lc = _parse_date(bs.cell(row=r, column=INSURANCE_COLS["last_called"]).value)
-                    if lc and lc >= week_start:
-                        book_booked += 1
+                if name:
+                    raw_book.append((
+                        _parse_date(bs.cell(row=r, column=INSURANCE_COLS["last_called"]).value),
+                        _cell(bs, r, INSURANCE_COLS["status"]).lower(),
+                    ))
 
-        # Win/loss this week
-        wins_week = 0
-        losses_week = 0
         if "Win Loss Log" in wb.sheetnames:
             wl = wb["Win Loss Log"]
             for r in range(3, 103):
                 d = wl.cell(row=r, column=1).value
-                if not d:
-                    continue
-                wl_date = _parse_date(d)
-                outcome = _cell(wl, r, 3).lower()
-                if wl_date and wl_date >= week_start:
-                    if outcome in ("won", "closed-won"):
-                        wins_week += 1
-                    elif outcome in ("lost", "closed-lost"):
-                        losses_week += 1
+                if d:
+                    raw_wl.append((_parse_date(d), _cell(wl, r, 3).lower()))
 
         wb.close()
+
+    # Compute stats outside the lock
+    week_activities = 0
+    calls_made = 0
+    emails_sent = 0
+    meetings_held = 0
+    for activity_date, action in raw_activities:
+        if activity_date and activity_date >= week_start:
+            week_activities += 1
+            if "call" in action or "phone" in action:
+                calls_made += 1
+            if "email" in action:
+                emails_sent += 1
+            if "meeting" in action or "discovery" in action or "presentation" in action:
+                meetings_held += 1
+
+    book_calls_week = 0
+    book_booked = 0
+    for last_called, status in raw_book:
+        if last_called and last_called >= week_start:
+            book_calls_week += 1
+            if status == "booked meeting":
+                book_booked += 1
+
+    wins_week = 0
+    losses_week = 0
+    for wl_date, outcome in raw_wl:
+        if wl_date and wl_date >= week_start:
+            if outcome in ("won", "closed-won"):
+                wins_week += 1
+            elif outcome in ("lost", "closed-lost"):
+                losses_week += 1
 
     # Overdue count
     overdue_count = 0

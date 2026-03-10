@@ -757,6 +757,18 @@ def init_extra_sheets():
 def add_meeting(data: dict) -> str:
     """Add a meeting to the Meetings sheet."""
     init_extra_sheets()
+
+    # Pre-fetch pipeline data before opening write handle to avoid double-open
+    prep_notes_auto = ""
+    if data.get("prospect") and not data.get("prep_notes"):
+        prospects = read_pipeline()
+        for p in prospects:
+            if data["prospect"].lower() in p["name"].lower():
+                prep_notes_auto = f"{p['product']} | {p['stage']}"
+                if p["notes"]:
+                    prep_notes_auto += f" | {p['notes'][:100]}"
+                break
+
     wb = openpyxl.load_workbook(PIPELINE_PATH)
     ws = wb["Meetings"]
 
@@ -778,16 +790,8 @@ def add_meeting(data: dict) -> str:
     if not data.get("status"):
         ws.cell(row=target_row, column=6, value="Scheduled")
 
-    # Auto-fill prep notes from pipeline
-    if data.get("prospect") and not data.get("prep_notes"):
-        prospects = read_pipeline()
-        for p in prospects:
-            if data["prospect"].lower() in p["name"].lower():
-                notes = f"{p['product']} | {p['stage']}"
-                if p["notes"]:
-                    notes += f" | {p['notes'][:100]}"
-                ws.cell(row=target_row, column=5, value=notes)
-                break
+    if prep_notes_auto and not data.get("prep_notes"):
+        ws.cell(row=target_row, column=5, value=prep_notes_auto)
 
     wb.save(PIPELINE_PATH)
     wb.close()
@@ -952,11 +956,20 @@ def log_book_call(name: str, outcome: str, notes: str = "", retry_days: int = 3)
     elif "meeting" in outcome.lower() or "booked" in outcome.lower():
         ws.cell(row=target_row, column=5, value="Booked Meeting")
         result_msg += ". Added to pipeline as New Lead."
+        # Write notes before saving
+        if notes:
+            existing_notes = ws.cell(row=target_row, column=7).value or ""
+            note_date = date.today().strftime("%m/%d")
+            new_note = f"[{note_date}] {notes}"
+            if existing_notes:
+                ws.cell(row=target_row, column=7, value=f"{existing_notes} | {new_note}")
+            else:
+                ws.cell(row=target_row, column=7, value=new_note)
         # Also add to pipeline
         phone = str(ws.cell(row=target_row, column=2).value or "")
         wb.save(PIPELINE_PATH)
         wb.close()
-        add_prospect({"name": str(matched_name), "phone": phone, "source": "Insurance Book", "stage": "New Lead", "priority": "Warm"})
+        add_prospect({"name": str(matched_name), "phone": phone, "source": "Insurance Book", "stage": "New Lead", "priority": "Warm", "notes": notes or ""})
         return result_msg
     elif "callback" in outcome.lower():
         ws.cell(row=target_row, column=5, value="Callback")
@@ -998,6 +1011,7 @@ def get_book_stats() -> str:
     booked = 0
     callback = 0
     client = 0
+    other = 0
 
     for r in range(3, 503):
         name = ws.cell(row=r, column=1).value
@@ -1017,27 +1031,36 @@ def get_book_stats() -> str:
             callback += 1
         elif status == "Client":
             client += 1
+        else:
+            other += 1
 
     wb.close()
-
-    called = total - not_called
-    conversion = f"{booked/called*100:.1f}%" if called > 0 else "0%"
 
     if total == 0:
         return "Insurance book is empty."
 
-    return (
-        f"Insurance Book Stats:\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"Total in book: {total}\n"
-        f"Called: {called} | Remaining: {not_called}\n"
-        f"No answer (retry queued): {no_answer}\n"
-        f"Callbacks pending: {callback}\n"
-        f"Meetings booked: {booked}\n"
-        f"Not interested: {not_interested}\n"
-        f"Conversion rate: {conversion}\n"
-        f"Progress: {called}/{total} ({called/total*100:.0f}%)"
-    )
+    # Exclude pre-existing clients and not-called from "called" count
+    called = total - not_called - client
+    conversion = f"{booked/called*100:.1f}%" if called > 0 else "0%"
+
+    lines = [
+        f"Insurance Book Stats:",
+        f"━━━━━━━━━━━━━━━━━━━━",
+        f"Total in book: {total}",
+        f"Called: {called} | Remaining: {not_called}",
+        f"No answer (retry queued): {no_answer}",
+        f"Callbacks pending: {callback}",
+        f"Meetings booked: {booked}",
+        f"Not interested: {not_interested}",
+    ]
+    if client:
+        lines.append(f"Existing clients: {client}")
+    if other:
+        lines.append(f"Other: {other}")
+    lines.append(f"Conversion rate: {conversion}")
+    lines.append(f"Progress: {called}/{total - client} ({called/(total - client)*100:.0f}%)" if total > client else f"Progress: 0/0")
+
+    return "\n".join(lines)
 
 
 # ── Email drafting helper ──
@@ -1373,9 +1396,11 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 for c in range(1, 9):
                     ws.cell(row=r, column=c, value=None)
 
-            # Import — try to map columns intelligently
-            header = [h.lower().strip() for h in rows[0]] if rows else []
-            data_rows = rows[1:] if len(rows) > 1 else rows
+            # Import — detect if first row is a header or data
+            first_row_lower = [str(c).lower().strip() for c in rows[0]] if rows else []
+            has_header = any(kw in " ".join(first_row_lower) for kw in ("name", "phone", "tel", "address", "client", "first", "last", "email", "date"))
+            header = first_row_lower if has_header else []
+            data_rows = rows[1:] if has_header else rows
 
             count = 0
             for i, row in enumerate(data_rows):
