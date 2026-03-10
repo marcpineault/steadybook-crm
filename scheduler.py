@@ -22,9 +22,16 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 logger = logging.getLogger(__name__)
 
-PIPELINE_PATH = os.environ.get("PIPELINE_PATH", "pipeline.xlsx")
+DATA_DIR = os.environ.get("DATA_DIR", "")
+if DATA_DIR:
+    PIPELINE_PATH = os.path.join(DATA_DIR, "pipeline.xlsx")
+else:
+    PIPELINE_PATH = os.environ.get("PIPELINE_PATH", "pipeline.xlsx")
 CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
-NAG_STATE_FILE = "nag_state.json"
+if DATA_DIR:
+    NAG_STATE_FILE = os.path.join(DATA_DIR, "nag_state.json")
+else:
+    NAG_STATE_FILE = "nag_state.json"
 ET = pytz.timezone("America/Toronto")
 
 # Pipeline sheet layout

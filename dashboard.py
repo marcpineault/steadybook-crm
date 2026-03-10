@@ -8,7 +8,11 @@ import json
 import openpyxl
 from flask import Flask, Response, request, jsonify
 
-PIPELINE_PATH = os.environ.get("PIPELINE_PATH", "pipeline.xlsx")
+DATA_DIR = os.environ.get("DATA_DIR", "")
+if DATA_DIR:
+    PIPELINE_PATH = os.path.join(DATA_DIR, "pipeline.xlsx")
+else:
+    PIPELINE_PATH = os.environ.get("PIPELINE_PATH", "pipeline.xlsx")
 
 app = Flask(__name__)
 
@@ -683,7 +687,7 @@ function openEdit(p) {{
     let fu = p.next_followup || '';
     if (fu && fu !== 'None') {{
         fu = fu.split(' ')[0];
-        if (/^\d{{4}}-\d{{2}}-\d{{2}}$/.test(fu)) document.getElementById('fFollowup').value = fu;
+        if (/^\\d{{4}}-\\d{{2}}-\\d{{2}}$/.test(fu)) document.getElementById('fFollowup').value = fu;
         else document.getElementById('fFollowup').value = '';
     }} else document.getElementById('fFollowup').value = '';
     document.getElementById('deleteBtn').style.display = 'inline-block';
