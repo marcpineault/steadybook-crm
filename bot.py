@@ -918,7 +918,7 @@ TOOLS = [
 TOOL_FUNCTIONS = {
     "read_pipeline": lambda _: json.dumps(read_pipeline(), default=str),
     "add_prospect": lambda args: add_prospect(args),
-    "update_prospect": lambda args: update_prospect(args["name"], args["updates"]),
+    "update_prospect": lambda args: update_prospect(args["name"], args.get("updates") or {k: v for k, v in args.items() if k != "name"}),
     "delete_prospect": lambda args: delete_prospect(args["name"]),
     "add_activity": lambda args: add_activity(args),
     "get_overdue": lambda _: get_overdue(),
@@ -1027,7 +1027,7 @@ async def _llm_respond(update, messages, tools=None):
 
             # Check for cross-sell trigger on Closed-Won
             if tool_name == "update_prospect" and isinstance(tool_input, dict):
-                updates = tool_input.get("updates", {})
+                updates = tool_input.get("updates") or {k: v for k, v in tool_input.items() if k != "name"}
                 if isinstance(updates, dict) and "stage" in updates:
                     import scoring
                     stage_val = updates.get("stage", "")
