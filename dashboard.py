@@ -3,11 +3,10 @@ import os
 import re
 import threading
 from datetime import date, datetime, timedelta
-from pathlib import Path
 
 import json
 
-import openpyxl
+import db
 from flask import Flask, Response, request, jsonify
 
 
@@ -15,16 +14,7 @@ def _esc(val):
     """Escape HTML to prevent XSS."""
     return _html.escape(str(val)) if val else ""
 
-DATA_DIR = os.environ.get("DATA_DIR", "")
-if DATA_DIR:
-    PIPELINE_PATH = os.path.join(DATA_DIR, "pipeline.xlsx")
-else:
-    PIPELINE_PATH = os.environ.get("PIPELINE_PATH", "pipeline.xlsx")
-
 app = Flask(__name__)
-
-DATA_START = 5
-MAX_ROWS = 80
 
 STAGE_COLORS = {
     "New Lead": "#BDC3C7", "Contacted": "#3498DB", "Discovery Call": "#8E44AD",
@@ -38,108 +28,11 @@ STAGE_TEXT = {
 
 
 def read_data():
-    if not Path(PIPELINE_PATH).exists():
-        return [], [], [], []
-
-    lock = _get_lock()
-    lock.acquire()
-    try:
-        return _read_data_inner()
-    finally:
-        lock.release()
-
-
-def _read_data_inner():
-    wb = openpyxl.load_workbook(PIPELINE_PATH, data_only=True)
-
-    # Pipeline
-    ws = wb["Pipeline"]
-    prospects = []
-    for r in range(DATA_START, DATA_START + MAX_ROWS):
-        name = ws.cell(row=r, column=1).value
-        if not name:
-            continue
-        prospects.append({
-            "name": str(name),
-            "phone": str(ws.cell(row=r, column=2).value or ""),
-            "email": str(ws.cell(row=r, column=3).value or ""),
-            "source": str(ws.cell(row=r, column=4).value or ""),
-            "priority": str(ws.cell(row=r, column=5).value or ""),
-            "stage": str(ws.cell(row=r, column=6).value or ""),
-            "product": str(ws.cell(row=r, column=7).value or ""),
-            "aum": ws.cell(row=r, column=8).value or 0,
-            "revenue": ws.cell(row=r, column=9).value or 0,
-            "first_contact": str(ws.cell(row=r, column=10).value or ""),
-            "next_followup": str(ws.cell(row=r, column=11).value or ""),
-            "notes": str(ws.cell(row=r, column=13).value or ""),
-        })
-
-    # Activity log
-    log_ws = wb["Activity Log"]
-    activities = []
-    for r in range(3, 103):
-        d = log_ws.cell(row=r, column=1).value
-        if not d:
-            continue
-        activities.append({
-            "date": str(d),
-            "prospect": str(log_ws.cell(row=r, column=2).value or ""),
-            "action": str(log_ws.cell(row=r, column=3).value or ""),
-            "outcome": str(log_ws.cell(row=r, column=4).value or ""),
-            "next_step": str(log_ws.cell(row=r, column=5).value or ""),
-        })
-
-    # Meetings
-    meetings = []
-    if "Meetings" in wb.sheetnames:
-        ms = wb["Meetings"]
-        for r in range(3, 103):
-            d = ms.cell(row=r, column=1).value
-            if not d:
-                continue
-            meetings.append({
-                "date": str(d).split(" ")[0] if d else "",
-                "time": str(ms.cell(row=r, column=2).value or ""),
-                "prospect": str(ms.cell(row=r, column=3).value or ""),
-                "type": str(ms.cell(row=r, column=4).value or ""),
-                "prep_notes": str(ms.cell(row=r, column=5).value or ""),
-                "status": str(ms.cell(row=r, column=6).value or "Scheduled"),
-            })
-
-    # Insurance Book
-    book_entries = []
-    if "Insurance Book" in wb.sheetnames:
-        bs = wb["Insurance Book"]
-        for r in range(3, 203):
-            name = bs.cell(row=r, column=1).value
-            if not name:
-                continue
-            book_entries.append({
-                "name": str(name),
-                "phone": str(bs.cell(row=r, column=2).value or ""),
-                "address": str(bs.cell(row=r, column=3).value or ""),
-                "policy_start": str(bs.cell(row=r, column=4).value or ""),
-                "status": str(bs.cell(row=r, column=5).value or "Not Called"),
-                "last_called": str(bs.cell(row=r, column=6).value or ""),
-                "notes": str(bs.cell(row=r, column=7).value or ""),
-                "retry_date": str(bs.cell(row=r, column=8).value or ""),
-            })
-
-    wb.close()
+    prospects = db.read_pipeline()
+    activities = db.read_activities()
+    meetings = db.read_meetings()
+    book_entries = db.read_insurance_book()
     return prospects, activities, meetings, book_entries
-
-
-PIPELINE_COLS = {
-    "name": 1, "phone": 2, "email": 3, "source": 4,
-    "priority": 5, "stage": 6, "product": 7,
-    "aum": 8, "revenue": 9, "first_contact": 10,
-    "next_followup": 11, "notes": 13,
-}
-
-
-def _get_lock():
-    from bot import pipeline_lock
-    return pipeline_lock
 
 
 @app.route("/api/prospect", methods=["POST"])
@@ -147,34 +40,8 @@ def api_add_prospect():
     data = request.json
     if not data or not data.get("name"):
         return jsonify({"error": "Name required"}), 400
-
-    with _get_lock():
-        wb = openpyxl.load_workbook(PIPELINE_PATH)
-        ws = wb["Pipeline"]
-
-        target_row = None
-        for r in range(DATA_START, DATA_START + MAX_ROWS):
-            if not ws.cell(row=r, column=1).value:
-                target_row = r
-                break
-
-        if not target_row:
-            wb.close()
-            return jsonify({"error": "Pipeline full"}), 400
-
-        for field, col in PIPELINE_COLS.items():
-            val = data.get(field, "")
-            if val:
-                ws.cell(row=target_row, column=col, value=val)
-
-        if not data.get("first_contact"):
-            ws.cell(row=target_row, column=10, value=date.today().strftime("%Y-%m-%d"))
-        if not data.get("stage"):
-            ws.cell(row=target_row, column=6, value="New Lead")
-
-        wb.save(PIPELINE_PATH)
-        wb.close()
-    return jsonify({"ok": True, "row": target_row})
+    result = db.add_prospect(data)
+    return jsonify({"ok": True, "message": result})
 
 
 @app.route("/api/prospect/<name>", methods=["PUT"])
@@ -182,78 +49,18 @@ def api_update_prospect(name):
     data = request.json
     if not data:
         return jsonify({"error": "No data"}), 400
-
-    with _get_lock():
-        wb = openpyxl.load_workbook(PIPELINE_PATH)
-        ws = wb["Pipeline"]
-
-        found_row = None
-        for r in range(DATA_START, DATA_START + MAX_ROWS):
-            cell_val = ws.cell(row=r, column=1).value
-            if cell_val and str(cell_val).strip().lower() == name.strip().lower():
-                found_row = r
-                break
-
-        if not found_row:
-            wb.close()
-            return jsonify({"error": f"Prospect '{name}' not found"}), 404
-
-        for field, col in PIPELINE_COLS.items():
-            if field in data:
-                val = data[field]
-                # Don't overwrite existing data with empty strings
-                if val == "" or val is None:
-                    continue
-                # Try to preserve numeric types for AUM/revenue
-                if field in ("aum", "revenue"):
-                    try:
-                        val = float(str(val).replace("$", "").replace(",", ""))
-                        if val == int(val):
-                            val = int(val)
-                    except (ValueError, TypeError):
-                        pass
-                ws.cell(row=found_row, column=col, value=val)
-
-        wb.save(PIPELINE_PATH)
-        wb.close()
-    return jsonify({"ok": True})
+    result = db.update_prospect(name, data)
+    if "not found" in result.lower():
+        return jsonify({"error": result}), 404
+    return jsonify({"ok": True, "message": result})
 
 
 @app.route("/api/prospect/<name>", methods=["DELETE"])
 def api_delete_prospect(name):
-    with _get_lock():
-        wb = openpyxl.load_workbook(PIPELINE_PATH)
-        ws = wb["Pipeline"]
-
-        found_row = None
-        for r in range(DATA_START, DATA_START + MAX_ROWS):
-            cell_val = ws.cell(row=r, column=1).value
-            if cell_val and str(cell_val).strip().lower() == name.strip().lower():
-                found_row = r
-                break
-
-        if not found_row:
-            wb.close()
-            return jsonify({"error": f"Prospect '{name}' not found"}), 404
-
-        # Shift all rows below up to close the gap
-        last_row = found_row
-        for r in range(found_row + 1, DATA_START + MAX_ROWS):
-            if not ws.cell(row=r, column=1).value:
-                break
-            last_row = r
-
-        for r in range(found_row, last_row):
-            for col in range(1, 14):
-                ws.cell(row=r, column=col, value=ws.cell(row=r + 1, column=col).value)
-
-        # Clear the last row
-        for col in range(1, 14):
-            ws.cell(row=last_row, column=col, value=None)
-
-        wb.save(PIPELINE_PATH)
-        wb.close()
-    return jsonify({"ok": True})
+    result = db.delete_prospect(name)
+    if "not found" in result.lower():
+        return jsonify({"error": result}), 404
+    return jsonify({"ok": True, "message": result})
 
 
 @app.route("/api/prospects")
