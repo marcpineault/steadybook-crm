@@ -1222,7 +1222,7 @@ Other commands:
 - "win loss stats" → get_win_loss_stats
 - Relative dates: calculate from today's date above
 
-Be casual, short, friendly. Use $ for money.
+FORMATTING: Plain text only. No markdown, no ** bold **, no bullet lists, no menus. Just talk like a normal person texting. Keep replies to 1-2 short sentences max. If Marc says something vague like "hey" or "hi", just say "hey, what's up?" — don't list options.
 """
 
 
