@@ -7,8 +7,7 @@ from pathlib import Path
 
 import requests
 from openai import OpenAI
-import openpyxl
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+import db
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
@@ -21,225 +20,38 @@ logger = logging.getLogger(__name__)
 TELEGRAM_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 OPENAI_KEY = os.environ["OPENAI_API_KEY"]
 
-# Use persistent volume path if available (Railway volume mounted at /data)
-# Falls back to local file for development
+# DATA_DIR kept for migration path reference
 DATA_DIR = os.environ.get("DATA_DIR", "")
-if DATA_DIR:
-    os.makedirs(DATA_DIR, exist_ok=True)
-    PIPELINE_PATH = os.path.join(DATA_DIR, "pipeline.xlsx")
-    # Copy template pipeline on first deploy only
-    if not os.path.exists(PIPELINE_PATH) and os.path.exists("pipeline.xlsx"):
-        import shutil
-        shutil.copy2("pipeline.xlsx", PIPELINE_PATH)
-        logger.info(f"Copied template pipeline.xlsx to {PIPELINE_PATH}")
-    else:
-        logger.info(f"Using existing pipeline at {PIPELINE_PATH}")
-else:
-    PIPELINE_PATH = os.environ.get("PIPELINE_PATH", "pipeline.xlsx")
 
 client = OpenAI(api_key=OPENAI_KEY)
 
-# Reentrant lock for Excel file access (bot + dashboard + scheduler share same file)
-# RLock allows the same thread to acquire it multiple times (e.g. log_book_call -> add_prospect)
+# DEPRECATED — kept for scheduler import compat
 pipeline_lock = threading.RLock()
-
-# ── Styling constants ──
-TEAL = "1ABC9C"
-NAVY = "0F1B2D"
-WHITE = "FFFFFF"
-LIGHT_GRAY = "F0F2F5"
-MED_GRAY = "DDE1E6"
-TEXT_COLOR = "2C3E50"
-
-thin_border = Border(
-    left=Side(style='thin', color=MED_GRAY), right=Side(style='thin', color=MED_GRAY),
-    top=Side(style='thin', color=MED_GRAY), bottom=Side(style='thin', color=MED_GRAY),
-)
-
-# ── Pipeline Excel helpers ──
-
-DATA_START = 5  # row where data begins
-MAX_ROWS = 80   # max rows to scan
-
-PIPELINE_COLS = {
-    "name": 1, "phone": 2, "email": 3, "source": 4,
-    "priority": 5, "stage": 6, "product": 7,
-    "aum": 8, "revenue": 9, "first_contact": 10,
-    "next_followup": 11, "days_open": 12, "notes": 13,
-}
-
-LOG_COLS = {
-    "date": 1, "prospect": 2, "action": 3,
-    "outcome": 4, "next_step": 5, "notes": 6,
-}
 
 
 def read_pipeline():
-    """Read all prospects from pipeline."""
-    wb = openpyxl.load_workbook(PIPELINE_PATH)
-    ws = wb["Pipeline"]
-    prospects = []
-    for r in range(DATA_START, DATA_START + MAX_ROWS):
-        name = ws.cell(row=r, column=1).value
-        if not name:
-            continue
-        prospect = {"row": r}
-        for field, col in PIPELINE_COLS.items():
-            val = ws.cell(row=r, column=col).value
-            if val is not None:
-                prospect[field] = str(val)
-            else:
-                prospect[field] = ""
-        prospects.append(prospect)
-    wb.close()
-    return prospects
+    """Read all prospects from pipeline (via SQLite)."""
+    return db.read_pipeline()
 
 
 def add_prospect(data: dict) -> str:
-    """Add a new prospect to the first empty row."""
-    wb = openpyxl.load_workbook(PIPELINE_PATH)
-    ws = wb["Pipeline"]
-
-    # Find first empty row
-    target_row = None
-    for r in range(DATA_START, DATA_START + MAX_ROWS):
-        if not ws.cell(row=r, column=1).value:
-            target_row = r
-            break
-
-    if not target_row:
-        wb.close()
-        return "Pipeline is full! No empty rows available."
-
-    field_map = {
-        "name": 1, "phone": 2, "email": 3, "source": 4,
-        "priority": 5, "stage": 6, "product": 7,
-        "aum": 8, "revenue": 9, "first_contact": 10,
-        "next_followup": 11, "notes": 13,
-    }
-
-    for field, col in field_map.items():
-        if field in data and data[field]:
-            val = data[field]
-            if field == "aum" or field == "revenue":
-                try:
-                    val = float(str(val).replace("$", "").replace(",", ""))
-                except ValueError:
-                    pass
-            ws.cell(row=target_row, column=col, value=val)
-
-    # Default first_contact to today if not set
-    if not data.get("first_contact"):
-        ws.cell(row=target_row, column=10, value=date.today().strftime("%Y-%m-%d"))
-
-    # Default stage to New Lead if not set
-    if not data.get("stage"):
-        ws.cell(row=target_row, column=6, value="New Lead")
-
-    wb.save(PIPELINE_PATH)
-    wb.close()
-    return f"Added {data.get('name', 'prospect')} to pipeline (row {target_row})."
+    """Add a new prospect (via SQLite)."""
+    return db.add_prospect(data)
 
 
 def update_prospect(name: str, updates: dict) -> str:
-    """Update a prospect by name (partial match)."""
-    wb = openpyxl.load_workbook(PIPELINE_PATH)
-    ws = wb["Pipeline"]
-
-    target_row = None
-    matched_name = None
-    name_lower = name.lower()
-
-    for r in range(DATA_START, DATA_START + MAX_ROWS):
-        cell_val = ws.cell(row=r, column=1).value
-        if cell_val and name_lower in str(cell_val).lower():
-            target_row = r
-            matched_name = cell_val
-            break
-
-    if not target_row:
-        wb.close()
-        return f"Could not find prospect matching '{name}'."
-
-    field_map = {
-        "name": 1, "phone": 2, "email": 3, "source": 4,
-        "priority": 5, "stage": 6, "product": 7,
-        "aum": 8, "revenue": 9, "first_contact": 10,
-        "next_followup": 11, "notes": 13,
-    }
-
-    changes = []
-    for field, value in updates.items():
-        if field in field_map and value:
-            col = field_map[field]
-            if field in ("aum", "revenue"):
-                try:
-                    value = float(str(value).replace("$", "").replace(",", ""))
-                except ValueError:
-                    pass
-            ws.cell(row=target_row, column=col, value=value)
-            changes.append(f"{field} → {value}")
-
-    wb.save(PIPELINE_PATH)
-    wb.close()
-    return f"Updated {matched_name}: {', '.join(changes)}"
+    """Update a prospect by name (via SQLite)."""
+    return db.update_prospect(name, updates)
 
 
 def delete_prospect(name: str) -> str:
-    """Delete a prospect by name."""
-    wb = openpyxl.load_workbook(PIPELINE_PATH)
-    ws = wb["Pipeline"]
-
-    target_row = None
-    matched_name = None
-    name_lower = name.lower()
-
-    for r in range(DATA_START, DATA_START + MAX_ROWS):
-        cell_val = ws.cell(row=r, column=1).value
-        if cell_val and name_lower in str(cell_val).lower():
-            target_row = r
-            matched_name = cell_val
-            break
-
-    if not target_row:
-        wb.close()
-        return f"Could not find prospect matching '{name}'."
-
-    for col in range(1, 14):
-        ws.cell(row=target_row, column=col, value=None)
-
-    wb.save(PIPELINE_PATH)
-    wb.close()
-    return f"Deleted {matched_name} from pipeline."
+    """Delete a prospect by name (via SQLite)."""
+    return db.delete_prospect(name)
 
 
 def add_activity(data: dict) -> str:
-    """Add entry to Activity Log sheet."""
-    wb = openpyxl.load_workbook(PIPELINE_PATH)
-    ws = wb["Activity Log"]
-
-    target_row = None
-    for r in range(3, 103):
-        if not ws.cell(row=r, column=1).value:
-            target_row = r
-            break
-
-    if not target_row:
-        wb.close()
-        return "Activity log is full!"
-
-    field_map = {"date": 1, "prospect": 2, "action": 3, "outcome": 4, "next_step": 5, "notes": 6}
-
-    for field, col in field_map.items():
-        if field in data and data[field]:
-            ws.cell(row=target_row, column=col, value=data[field])
-
-    if not data.get("date"):
-        ws.cell(row=target_row, column=1, value=date.today().strftime("%Y-%m-%d"))
-
-    wb.save(PIPELINE_PATH)
-    wb.close()
-    return f"Logged activity for {data.get('prospect', 'unknown')}."
+    """Add entry to activity log (via SQLite)."""
+    return db.add_activity(data)
 
 
 def get_overdue():
@@ -324,109 +136,43 @@ def auto_set_follow_up(prospect_name: str, stage: str) -> str:
 # ── Win/Loss Analysis ──
 
 def log_win_loss(prospect_name: str, outcome: str, reason: str) -> str:
-    """Log why a deal was won or lost."""
-    wb = openpyxl.load_workbook(PIPELINE_PATH)
-
-    # Ensure Win/Loss sheet exists
-    if "Win Loss Log" not in wb.sheetnames:
-        ws = wb.create_sheet("Win Loss Log")
-        ws.merge_cells('A1:E1')
-        c = ws['A1']
-        c.value = "WIN / LOSS LOG"
-        c.font = Font(name='Aptos', size=18, bold=True, color=WHITE)
-        c.fill = PatternFill(start_color=NAVY, end_color=NAVY, fill_type='solid')
-        c.alignment = Alignment(horizontal='left', vertical='center', indent=1)
-        ws.row_dimensions[1].height = 50
-        headers = ["Date", "Prospect", "Outcome", "Reason", "Product"]
-        for i, h in enumerate(headers, 1):
-            cell = ws.cell(row=2, column=i, value=h)
-            cell.font = Font(name='Aptos', size=10, bold=True, color=WHITE)
-            cell.fill = PatternFill(start_color=TEAL, end_color=TEAL, fill_type='solid')
-            cell.alignment = Alignment(horizontal='center', vertical='center')
-            cell.border = thin_border
-        ws.column_dimensions['A'].width = 14
-        ws.column_dimensions['B'].width = 24
-        ws.column_dimensions['C'].width = 14
-        ws.column_dimensions['D'].width = 40
-        ws.column_dimensions['E'].width = 20
-        ws.freeze_panes = 'A3'
-    else:
-        ws = wb["Win Loss Log"]
-
-    # Find prospect's product from pipeline
-    ps = wb["Pipeline"]
-    product = ""
-    for r in range(DATA_START, DATA_START + MAX_ROWS):
-        cell_val = ps.cell(row=r, column=1).value
-        if cell_val and prospect_name.lower() in str(cell_val).lower():
-            product = str(ps.cell(row=r, column=7).value or "")
-            break
-
-    # Find first empty row
-    target_row = None
-    for r in range(3, 103):
-        if not ws.cell(row=r, column=1).value:
-            target_row = r
-            break
-
-    if not target_row:
-        wb.close()
-        return "Win/Loss log is full!"
-
-    ws.cell(row=target_row, column=1, value=date.today().strftime("%Y-%m-%d"))
-    ws.cell(row=target_row, column=2, value=prospect_name)
-    ws.cell(row=target_row, column=3, value=outcome)
-    ws.cell(row=target_row, column=4, value=reason)
-    ws.cell(row=target_row, column=5, value=product)
-
-    wb.save(PIPELINE_PATH)
-    wb.close()
-    return f"Logged {outcome} for {prospect_name}: {reason}"
+    """Log why a deal was won or lost (via SQLite)."""
+    p = db.get_prospect_by_name(prospect_name)
+    product = p.get("product", "") if p else ""
+    return db.log_win_loss(prospect_name, outcome, reason, product)
 
 
 def get_win_loss_stats() -> str:
     """Get win/loss analysis: patterns, reasons, conversion by product."""
-    wb = openpyxl.load_workbook(PIPELINE_PATH, data_only=True)
-    if "Win Loss Log" not in wb.sheetnames:
-        wb.close()
-        return "No win/loss data yet. Close some deals first!"
+    entries = db.get_win_loss_stats()
 
-    ws = wb["Win Loss Log"]
     wins = []
     losses = []
-    for r in range(3, 103):
-        outcome = ws.cell(row=r, column=3).value
+    for entry in entries:
+        outcome = entry.get("outcome", "")
         if not outcome:
             continue
-        entry = {
-            "date": str(ws.cell(row=r, column=1).value or ""),
-            "prospect": str(ws.cell(row=r, column=2).value or ""),
-            "reason": str(ws.cell(row=r, column=4).value or ""),
-            "product": str(ws.cell(row=r, column=5).value or ""),
-        }
         if outcome.lower() in ("won", "closed-won"):
             wins.append(entry)
         else:
             losses.append(entry)
 
-    wb.close()
-
     total = len(wins) + len(losses)
     if total == 0:
-        return "No win/loss data yet."
+        return "No win/loss data yet. Close some deals first!"
 
     win_rate = len(wins) / total * 100
 
     # Reason tallies
     win_reasons = {}
     for w in wins:
-        r = w["reason"]
+        r = w.get("reason", "")
         if r:
             win_reasons[r] = win_reasons.get(r, 0) + 1
 
     loss_reasons = {}
     for l in losses:
-        r = l["reason"]
+        r = l.get("reason", "")
         if r:
             loss_reasons[r] = loss_reasons.get(r, 0) + 1
 
@@ -434,10 +180,10 @@ def get_win_loss_stats() -> str:
     product_wins = {}
     product_losses = {}
     for w in wins:
-        p = w["product"] or "Unknown"
+        p = w.get("product") or "Unknown"
         product_wins[p] = product_wins.get(p, 0) + 1
     for l in losses:
-        p = l["product"] or "Unknown"
+        p = l.get("product") or "Unknown"
         product_losses[p] = product_losses.get(p, 0) + 1
 
     lines = [
@@ -788,136 +534,50 @@ def get_pipeline_summary():
     )
 
 
-# ── Ensure sheets exist ──
-
-def ensure_sheet(sheet_name, headers, col_widths=None):
-    """Create a sheet if it doesn't exist in the pipeline."""
-    with pipeline_lock:
-        _ensure_sheet_inner(sheet_name, headers, col_widths)
-
-
-def _ensure_sheet_inner(sheet_name, headers, col_widths=None):
-    wb = openpyxl.load_workbook(PIPELINE_PATH)
-    if sheet_name not in wb.sheetnames:
-        ws = wb.create_sheet(sheet_name)
-        # Title row
-        ws.merge_cells(f'A1:{chr(64+len(headers))}1')
-        c = ws['A1']
-        c.value = sheet_name.upper()
-        c.font = Font(name='Aptos', size=18, bold=True, color=WHITE)
-        c.fill = PatternFill(start_color=NAVY, end_color=NAVY, fill_type='solid')
-        c.alignment = Alignment(horizontal='left', vertical='center', indent=1)
-        ws.row_dimensions[1].height = 50
-        # Headers
-        for i, h in enumerate(headers, 1):
-            cell = ws.cell(row=2, column=i, value=h)
-            cell.font = Font(name='Aptos', size=10, bold=True, color=WHITE)
-            cell.fill = PatternFill(start_color=TEAL, end_color=TEAL, fill_type='solid')
-            cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
-            cell.border = thin_border
-            if col_widths and i <= len(col_widths):
-                ws.column_dimensions[chr(64+i)].width = col_widths[i-1]
-        ws.freeze_panes = 'A3'
-        wb.save(PIPELINE_PATH)
-    wb.close()
-
-
 def init_extra_sheets():
-    """Initialize Meetings and Insurance Book sheets if they don't exist."""
-    ensure_sheet("Meetings",
-                 ["Date", "Time", "Prospect", "Type", "Prep Notes", "Status"],
-                 [14, 10, 24, 18, 40, 14])
-    ensure_sheet("Insurance Book",
-                 ["Name", "Phone", "Address", "Policy Start", "Status", "Last Called", "Notes", "Retry Date"],
-                 [24, 16, 30, 14, 14, 14, 35, 14])
+    """No-op — tables are created by db.init_db()."""
+    pass
 
 
 # ── Meeting helpers ──
 
 def add_meeting(data: dict) -> str:
-    """Add a meeting to the Meetings sheet."""
-    init_extra_sheets()
-
-    # Pre-fetch pipeline data before opening write handle to avoid double-open
-    prep_notes_auto = ""
+    """Add a meeting (via SQLite)."""
+    # Auto-generate prep notes from pipeline if not provided
     if data.get("prospect") and not data.get("prep_notes"):
         prospects = read_pipeline()
         for p in prospects:
             if data["prospect"].lower() in p["name"].lower():
-                prep_notes_auto = f"{p['product']} | {p['stage']}"
-                if p["notes"]:
+                prep_notes_auto = f"{p.get('product', '')} | {p.get('stage', '')}"
+                if p.get("notes"):
                     prep_notes_auto += f" | {p['notes'][:100]}"
+                data["prep_notes"] = prep_notes_auto
                 break
 
-    wb = openpyxl.load_workbook(PIPELINE_PATH)
-    ws = wb["Meetings"]
-
-    target_row = None
-    for r in range(3, 103):
-        if not ws.cell(row=r, column=1).value:
-            target_row = r
-            break
-
-    if not target_row:
-        wb.close()
-        return "Meetings sheet is full!"
-
-    fields = {"date": 1, "time": 2, "prospect": 3, "type": 4, "prep_notes": 5, "status": 6}
-    for field, col in fields.items():
-        if field in data and data[field]:
-            ws.cell(row=target_row, column=col, value=data[field])
-
-    if not data.get("status"):
-        ws.cell(row=target_row, column=6, value="Scheduled")
-
-    if prep_notes_auto and not data.get("prep_notes"):
-        ws.cell(row=target_row, column=5, value=prep_notes_auto)
-
-    wb.save(PIPELINE_PATH)
-    wb.close()
-    return f"Meeting added: {data.get('prospect', '?')} on {data.get('date', '?')} at {data.get('time', '?')}"
+    return db.add_meeting(data)
 
 
 def get_meetings(date_filter: str = "") -> str:
     """Get upcoming meetings, optionally filtered by date."""
-    init_extra_sheets()
-    wb = openpyxl.load_workbook(PIPELINE_PATH)
-    ws = wb["Meetings"]
+    all_meetings = db.read_meetings()
 
-    meetings = []
-    for r in range(3, 103):
-        d = ws.cell(row=r, column=1).value
-        if not d:
-            continue
-        status = str(ws.cell(row=r, column=6).value or "Scheduled")
-        if status == "Cancelled":
-            continue
-        meetings.append({
-            "date": str(d),
-            "time": str(ws.cell(row=r, column=2).value or ""),
-            "prospect": str(ws.cell(row=r, column=3).value or ""),
-            "type": str(ws.cell(row=r, column=4).value or ""),
-            "prep_notes": str(ws.cell(row=r, column=5).value or ""),
-            "status": status,
-            "row": r,
-        })
-    wb.close()
+    meetings = [m for m in all_meetings if m.get("status", "Scheduled") != "Cancelled"]
 
     if date_filter:
-        meetings = [m for m in meetings if date_filter in m["date"]]
+        meetings = [m for m in meetings if date_filter in str(m.get("date", ""))]
 
     if not meetings:
         return "No meetings scheduled."
 
     lines = [f"Meetings ({len(meetings)}):"]
     for m in meetings:
-        line = f"{m['date']}"
-        if m["time"]:
+        line = f"{m.get('date', '')}"
+        if m.get("time"):
             line += f" {m['time']}"
-        line += f" - {m['prospect']}"
-        if m["type"]:
+        line += f" - {m.get('prospect', '')}"
+        if m.get("type"):
             line += f" ({m['type']})"
-        if m["prep_notes"]:
+        if m.get("prep_notes"):
             line += f" | {m['prep_notes']}"
         lines.append(line)
     return "\n".join(lines)
@@ -925,19 +585,11 @@ def get_meetings(date_filter: str = "") -> str:
 
 def cancel_meeting(prospect: str) -> str:
     """Cancel a meeting by prospect name."""
-    init_extra_sheets()
-    wb = openpyxl.load_workbook(PIPELINE_PATH)
-    ws = wb["Meetings"]
-
-    for r in range(3, 103):
-        name = ws.cell(row=r, column=3).value
-        if name and prospect.lower() in str(name).lower():
-            ws.cell(row=r, column=6, value="Cancelled")
-            wb.save(PIPELINE_PATH)
-            wb.close()
-            return f"Cancelled meeting with {name}."
-
-    wb.close()
+    all_meetings = db.read_meetings()
+    for m in all_meetings:
+        name = m.get("prospect", "")
+        if name and prospect.lower() in name.lower():
+            return db.update_meeting(m["id"], {"status": "Cancelled"})
     return f"No meeting found for '{prospect}'."
 
 
@@ -951,29 +603,21 @@ def upload_insurance_book(file_path: str) -> str:
 
 def get_next_calls(count: int = 5) -> str:
     """Get next prospects to call from the insurance book."""
-    init_extra_sheets()
-    wb = openpyxl.load_workbook(PIPELINE_PATH)
-
-    if "Insurance Book" not in wb.sheetnames:
-        wb.close()
+    all_entries = db.read_insurance_book()
+    if not all_entries:
         return "No insurance book uploaded yet. Send me the file."
 
-    ws = wb["Insurance Book"]
     today = date.today()
     calls = []
 
-    for r in range(3, 503):
-        name = ws.cell(row=r, column=1).value
-        if not name:
-            continue
-
-        status = str(ws.cell(row=r, column=5).value or "Not Called")
+    for entry in all_entries:
+        status = entry.get("status", "Not Called")
         if status in ("Not Interested", "Client", "Booked Meeting"):
             continue
 
         # Check retry date for "No Answer" / "Callback"
         if status in ("No Answer", "Callback"):
-            retry = ws.cell(row=r, column=8).value
+            retry = entry.get("retry_date")
             if retry:
                 try:
                     retry_date = datetime.strptime(str(retry).split(" ")[0], "%Y-%m-%d").date()
@@ -983,18 +627,16 @@ def get_next_calls(count: int = 5) -> str:
                     pass
 
         calls.append({
-            "row": r,
-            "name": str(name),
-            "phone": str(ws.cell(row=r, column=2).value or ""),
-            "address": str(ws.cell(row=r, column=3).value or ""),
-            "policy_start": str(ws.cell(row=r, column=4).value or ""),
-            "notes": str(ws.cell(row=r, column=7).value or ""),
+            "id": entry["id"],
+            "name": entry.get("name", ""),
+            "phone": entry.get("phone", ""),
+            "address": entry.get("address", ""),
+            "policy_start": entry.get("policy_start", ""),
+            "notes": entry.get("notes", ""),
         })
 
         if len(calls) >= count:
             break
-
-    wb.close()
 
     if not calls:
         return "No more calls in the book. You've been through everyone!"
@@ -1003,86 +645,69 @@ def get_next_calls(count: int = 5) -> str:
 
 
 def log_book_call(name: str, outcome: str, notes: str = "", retry_days: int = 3) -> str:
-    """Log a call outcome in the insurance book."""
-    init_extra_sheets()
-    wb = openpyxl.load_workbook(PIPELINE_PATH)
-    ws = wb["Insurance Book"]
+    """Log a call outcome in the insurance book (via SQLite)."""
+    all_entries = db.read_insurance_book()
 
-    target_row = None
-    matched_name = None
-    for r in range(3, 503):
-        cell_val = ws.cell(row=r, column=1).value
-        if cell_val and name.lower() in str(cell_val).lower():
-            target_row = r
-            matched_name = cell_val
+    # Find matching entry
+    matched = None
+    for entry in all_entries:
+        if entry.get("name") and name.lower() in entry["name"].lower():
+            matched = entry
             break
 
-    if not target_row:
-        wb.close()
+    if not matched:
         return f"Could not find '{name}' in the insurance book."
 
+    entry_id = matched["id"]
+    matched_name = matched["name"]
     today_str = date.today().strftime("%Y-%m-%d")
-    ws.cell(row=target_row, column=6, value=today_str)  # Last Called
 
+    updates = {"last_called": today_str}
     result_msg = f"Logged call with {matched_name}: {outcome}"
 
     if outcome.lower() in ("not interested", "declined", "remove"):
-        ws.cell(row=target_row, column=5, value="Not Interested")
+        updates["status"] = "Not Interested"
     elif outcome.lower() in ("no answer", "voicemail", "no pick up"):
-        ws.cell(row=target_row, column=5, value="No Answer")
+        updates["status"] = "No Answer"
         retry = (date.today() + timedelta(days=retry_days)).strftime("%Y-%m-%d")
-        ws.cell(row=target_row, column=8, value=retry)
+        updates["retry_date"] = retry
         result_msg += f". Retry in {retry_days} days."
     elif "meeting" in outcome.lower() or "booked" in outcome.lower():
-        ws.cell(row=target_row, column=5, value="Booked Meeting")
+        updates["status"] = "Booked Meeting"
         result_msg += ". Added to pipeline as New Lead."
-        # Write notes before saving
         if notes:
-            existing_notes = ws.cell(row=target_row, column=7).value or ""
+            existing_notes = matched.get("notes", "")
             note_date = date.today().strftime("%m/%d")
             new_note = f"[{note_date}] {notes}"
-            if existing_notes:
-                ws.cell(row=target_row, column=7, value=f"{existing_notes} | {new_note}")
-            else:
-                ws.cell(row=target_row, column=7, value=new_note)
+            updates["notes"] = f"{existing_notes} | {new_note}" if existing_notes else new_note
+        db.update_insurance_entry(entry_id, updates)
         # Also add to pipeline
-        phone = str(ws.cell(row=target_row, column=2).value or "")
-        wb.save(PIPELINE_PATH)
-        wb.close()
-        add_prospect({"name": str(matched_name), "phone": phone, "source": "Insurance Book", "stage": "New Lead", "priority": "Warm", "notes": notes or ""})
+        add_prospect({"name": matched_name, "phone": matched.get("phone", ""), "source": "Insurance Book", "stage": "New Lead", "priority": "Warm", "notes": notes or ""})
         return result_msg
     elif "callback" in outcome.lower():
-        ws.cell(row=target_row, column=5, value="Callback")
+        updates["status"] = "Callback"
         retry = (date.today() + timedelta(days=retry_days)).strftime("%Y-%m-%d")
-        ws.cell(row=target_row, column=8, value=retry)
+        updates["retry_date"] = retry
         result_msg += f". Callback set for {retry}."
     else:
-        ws.cell(row=target_row, column=5, value=outcome)
+        updates["status"] = outcome
 
     if notes:
-        existing_notes = ws.cell(row=target_row, column=7).value or ""
-        today_str = date.today().strftime("%m/%d")
-        new_note = f"[{today_str}] {notes}"
-        if existing_notes:
-            ws.cell(row=target_row, column=7, value=f"{existing_notes} | {new_note}")
-        else:
-            ws.cell(row=target_row, column=7, value=new_note)
+        existing_notes = matched.get("notes", "")
+        note_date = date.today().strftime("%m/%d")
+        new_note = f"[{note_date}] {notes}"
+        updates["notes"] = f"{existing_notes} | {new_note}" if existing_notes else new_note
 
-    wb.save(PIPELINE_PATH)
-    wb.close()
+    db.update_insurance_entry(entry_id, updates)
     return result_msg
 
 
 def get_book_stats() -> str:
     """Get insurance book calling stats."""
-    init_extra_sheets()
-    wb = openpyxl.load_workbook(PIPELINE_PATH)
+    all_entries = db.read_insurance_book()
 
-    if "Insurance Book" not in wb.sheetnames:
-        wb.close()
+    if not all_entries:
         return "No insurance book uploaded yet."
-
-    ws = wb["Insurance Book"]
 
     total = 0
     not_called = 0
@@ -1093,12 +718,9 @@ def get_book_stats() -> str:
     client = 0
     other = 0
 
-    for r in range(3, 503):
-        name = ws.cell(row=r, column=1).value
-        if not name:
-            continue
+    for entry in all_entries:
         total += 1
-        status = str(ws.cell(row=r, column=5).value or "Not Called")
+        status = entry.get("status", "Not Called")
         if status == "Not Called":
             not_called += 1
         elif status == "No Answer":
@@ -1113,8 +735,6 @@ def get_book_stats() -> str:
             client += 1
         else:
             other += 1
-
-    wb.close()
 
     if total == 0:
         return "Insurance book is empty."
@@ -1571,17 +1191,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def export(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Send the pipeline Excel file to the user."""
+    """Send the pipeline database file to the user."""
     try:
-        if Path(PIPELINE_PATH).exists():
-            with open(PIPELINE_PATH, "rb") as f:
+        db_path = db.DB_PATH
+        if Path(db_path).exists():
+            with open(db_path, "rb") as f:
                 await update.message.reply_document(
                     document=f,
-                    filename=f"CalmMoney_Pipeline_{date.today().strftime('%Y-%m-%d')}.xlsx",
-                    caption="Here's your current pipeline file."
+                    filename=f"CalmMoney_Pipeline_{date.today().strftime('%Y-%m-%d')}.db",
+                    caption="Here's your current pipeline database."
                 )
         else:
-            await update.message.reply_text("Pipeline file not found.")
+            await update.message.reply_text("Pipeline database not found.")
     except Exception as e:
         await update.message.reply_text(f"Error sending file: {str(e)[:200]}")
 
@@ -1610,14 +1231,11 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text("CSV is empty.")
                 return
 
-            init_extra_sheets()
-            wb = openpyxl.load_workbook(PIPELINE_PATH)
-            ws = wb["Insurance Book"]
-
-            # Clear existing data
-            for r in range(3, 503):
-                for c in range(1, 9):
-                    ws.cell(row=r, column=c, value=None)
+            # Clear existing insurance book entries via db
+            # (delete all, then re-import)
+            existing = db.read_insurance_book()
+            with db.get_db() as conn:
+                conn.execute("DELETE FROM insurance_book")
 
             # Import — detect if first row is a header or data
             first_row_lower = [str(c).lower().strip() for c in rows[0]] if rows else []
@@ -1629,39 +1247,31 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for i, row in enumerate(data_rows):
                 if not row or not row[0].strip():
                     continue
-                r = 3 + count
-                # Column A: Name (first column or 'name' column)
-                ws.cell(row=r, column=1, value=row[0].strip())
+                entry = {"name": row[0].strip(), "phone": "", "address": "", "policy_start": "", "notes": ""}
                 # Try to map other columns
                 for j, val in enumerate(row[1:], 1):
                     if j < len(header):
                         h = header[j] if j < len(header) else ""
                         if "phone" in h or "tel" in h:
-                            ws.cell(row=r, column=2, value=val.strip())
+                            entry["phone"] = val.strip()
                         elif "address" in h or "addr" in h:
-                            ws.cell(row=r, column=3, value=val.strip())
+                            entry["address"] = val.strip()
                         elif "date" in h or "start" in h or "inception" in h:
-                            ws.cell(row=r, column=4, value=val.strip())
+                            entry["policy_start"] = val.strip()
                         else:
-                            # Put remaining data in notes
-                            existing = ws.cell(row=r, column=7).value or ""
-                            ws.cell(row=r, column=7, value=f"{existing} {val.strip()}".strip())
+                            entry["notes"] = f"{entry['notes']} {val.strip()}".strip()
                     elif j == 1:
-                        ws.cell(row=r, column=2, value=val.strip())  # Assume phone
+                        entry["phone"] = val.strip()
                     elif j == 2:
-                        ws.cell(row=r, column=3, value=val.strip())  # Assume address
+                        entry["address"] = val.strip()
                     elif j == 3:
-                        ws.cell(row=r, column=4, value=val.strip())  # Assume policy start date
+                        entry["policy_start"] = val.strip()
                     else:
-                        # Put remaining columns in notes
-                        existing = ws.cell(row=r, column=7).value or ""
-                        ws.cell(row=r, column=7, value=f"{existing} {val.strip()}".strip())
+                        entry["notes"] = f"{entry['notes']} {val.strip()}".strip()
 
-                ws.cell(row=r, column=5, value="Not Called")
+                entry["status"] = "Not Called"
+                db.add_insurance_entry(entry)
                 count += 1
-
-            wb.save(PIPELINE_PATH)
-            wb.close()
 
             await update.message.reply_text(
                 f"Insurance book loaded! {count} contacts imported.\n"
@@ -1683,17 +1293,14 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if "insurance" in fname or "book" in fname or "home" in fname or "client" in fname:
             # Import as insurance book
+            import openpyxl as _openpyxl
             await file.download_to_drive("/tmp/book_upload.xlsx")
-            src_wb = openpyxl.load_workbook("/tmp/book_upload.xlsx")
+            src_wb = _openpyxl.load_workbook("/tmp/book_upload.xlsx")
             src_ws = src_wb.active
 
-            init_extra_sheets()
-            wb = openpyxl.load_workbook(PIPELINE_PATH)
-            ws = wb["Insurance Book"]
-
-            for r in range(3, 503):
-                for c in range(1, 9):
-                    ws.cell(row=r, column=c, value=None)
+            # Clear existing insurance book
+            with db.get_db() as conn:
+                conn.execute("DELETE FROM insurance_book")
 
             count = 0
             start = 2 if src_ws.cell(row=1, column=1).value and any(
@@ -1705,17 +1312,16 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 name = src_ws.cell(row=r, column=1).value
                 if not name:
                     continue
-                target = 3 + count
-                ws.cell(row=target, column=1, value=str(name))
+                entry = {"name": str(name), "status": "Not Called"}
+                col_map = {2: "phone", 3: "address", 4: "policy_start", 5: "status", 6: "last_called", 7: "notes"}
                 for c in range(2, min(src_ws.max_column + 1, 8)):
                     val = src_ws.cell(row=r, column=c).value
-                    if val:
-                        ws.cell(row=target, column=c, value=str(val))
-                ws.cell(row=target, column=5, value="Not Called")
+                    if val and c in col_map:
+                        entry[col_map[c]] = str(val)
+                entry["status"] = "Not Called"  # Override any imported status
+                db.add_insurance_entry(entry)
                 count += 1
 
-            wb.save(PIPELINE_PATH)
-            wb.close()
             src_wb.close()
 
             await update.message.reply_text(
@@ -1723,15 +1329,13 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"Text 'calls' to get your first batch."
             )
         else:
-            # Replace pipeline
-            await file.download_to_drive(PIPELINE_PATH)
-            wb = openpyxl.load_workbook(PIPELINE_PATH)
-            sheets = wb.sheetnames
-            wb.close()
+            # Import Excel as pipeline migration
+            tmp_path = "/tmp/pipeline_upload.xlsx"
+            await file.download_to_drive(tmp_path)
+            result = db.migrate_from_excel(tmp_path)
 
             await update.message.reply_text(
-                f"Pipeline updated from your file.\n"
-                f"Sheets: {', '.join(sheets)}\n"
+                f"Pipeline imported from your file.\n{result}\n"
                 f"All changes are live now."
             )
 
@@ -1753,7 +1357,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/meetings — view meetings\n"
         "/calls — next prospects to call\n"
         "/stats — win/loss stats\n"
-        "/export — download Excel file\n\n"
+        "/export — download pipeline database\n\n"
         "You can also type anything and I'll figure it out:\n"
         "  move Sarah to discovery call\n"
         "  meeting with John Thursday 2pm\n"
@@ -1764,13 +1368,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
-    # Initialize pipeline file if it doesn't exist
-    if not Path(PIPELINE_PATH).exists():
-        logger.info(f"Pipeline file not found at {PIPELINE_PATH}. Please provide one.")
-        return
+    # Initialize SQLite database
+    db.init_db()
 
-    # Initialize extra sheets
-    init_extra_sheets()
+    # One-time migration from Excel (skips if DB already has data)
+    excel_path = os.path.join(DATA_DIR, "pipeline.xlsx") if DATA_DIR else "pipeline.xlsx"
+    if os.path.exists(excel_path):
+        result = db.migrate_from_excel(excel_path)
+        logger.info(f"Migration check: {result}")
 
     # Start web dashboard in background thread
     from dashboard import start_dashboard_thread
