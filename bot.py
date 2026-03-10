@@ -1000,7 +1000,7 @@ Marc's style:
 Return ONLY the email (subject line + body). No commentary."""
 
     response = client.messages.create(
-        model="claude-haiku-4-5-20251001",
+        model="claude-sonnet-4-6",
         max_tokens=1024,
         messages=[{"role": "user", "content": prompt}],
     )
@@ -1030,7 +1030,7 @@ FOLLOW-UP EMAIL: [draft a short casual follow-up email in Marc's style]
 Marc's email style: casual, direct, short. Signs off as "Marc / Calm Money"."""
 
     response = client.messages.create(
-        model="claude-haiku-4-5-20251001",
+        model="claude-sonnet-4-6",
         max_tokens=2048,
         messages=[{"role": "user", "content": prompt}],
     )
@@ -1366,7 +1366,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         messages = [{"role": "user", "content": user_msg}]
 
         response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model="claude-sonnet-4-6",
             max_tokens=1024,
             system=SYSTEM_PROMPT,
             tools=TOOLS,
@@ -1400,7 +1400,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             messages.append({"role": "user", "content": tool_results})
 
             response = client.messages.create(
-                model="claude-haiku-4-5-20251001",
+                model="claude-sonnet-4-6",
                 max_tokens=1024,
                 system=SYSTEM_PROMPT,
                 tools=TOOLS,
