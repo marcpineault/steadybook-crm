@@ -775,7 +775,7 @@ def draft_email(prospect_name: str, email_type: str, details: str = "") -> str:
             context = json.dumps(p, default=str)
             break
 
-    prompt = f"""Draft a short, casual email for Marc (financial planner at Calm Money, London Ontario) to send to a prospect.
+    prompt = f"""Draft a short, casual email for Marc Pineault (Financial Advisor at Co-operators, London Ontario) to send to a prospect.
 
 Prospect info: {context}
 Email type: {email_type}
@@ -784,7 +784,7 @@ Additional details: {details}
 Marc's style:
 - Very casual and direct, like texting a friend
 - Short sentences, no fluff
-- Signs off as "Marc" or "Marc / Calm Money"
+- Signs off as "Marc Pineault" or "Marc Pineault, Financial Advisor | Co-operators"
 - For quotes, just lists prices simply (e.g., "$81/mo for $500K")
 - No formal language, no "I hope this finds you well"
 
@@ -818,7 +818,7 @@ NEEDS: [what they need - insurance, investments, retirement, etc.]
 NEXT STEPS: [specific action items with dates if mentioned]
 FOLLOW-UP EMAIL: [draft a short casual follow-up email in Marc's style]
 
-Marc's email style: casual, direct, short. Signs off as "Marc / Calm Money"."""
+Marc's email style: casual, direct, short. Signs off as "Marc Pineault, Financial Advisor | Co-operators"."""
 
     response = client.chat.completions.create(
         model="gpt-4.1",
@@ -1233,7 +1233,7 @@ async def export(update: Update, context: ContextTypes.DEFAULT_TYPE):
             with open(db_path, "rb") as f:
                 await update.message.reply_document(
                     document=f,
-                    filename=f"CalmMoney_Pipeline_{date.today().strftime('%Y-%m-%d')}.db",
+                    filename=f"Pipeline_{date.today().strftime('%Y-%m-%d')}.db",
                     caption="Here's your current pipeline database."
                 )
         else:
