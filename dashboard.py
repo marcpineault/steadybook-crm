@@ -200,7 +200,19 @@ def api_update_prospect(name):
 
         for field, col in PIPELINE_COLS.items():
             if field in data:
-                ws.cell(row=found_row, column=col, value=data[field])
+                val = data[field]
+                # Don't overwrite existing data with empty strings
+                if val == "" or val is None:
+                    continue
+                # Try to preserve numeric types for AUM/revenue
+                if field in ("aum", "revenue"):
+                    try:
+                        val = float(str(val).replace("$", "").replace(",", ""))
+                        if val == int(val):
+                            val = int(val)
+                    except (ValueError, TypeError):
+                        pass
+                ws.cell(row=found_row, column=col, value=val)
 
         wb.save(PIPELINE_PATH)
         wb.close()
@@ -224,8 +236,20 @@ def api_delete_prospect(name):
             wb.close()
             return jsonify({"error": f"Prospect '{name}' not found"}), 404
 
+        # Shift all rows below up to close the gap
+        last_row = found_row
+        for r in range(found_row + 1, DATA_START + MAX_ROWS):
+            if not ws.cell(row=r, column=1).value:
+                break
+            last_row = r
+
+        for r in range(found_row, last_row):
+            for col in range(1, 14):
+                ws.cell(row=r, column=col, value=ws.cell(row=r + 1, column=col).value)
+
+        # Clear the last row
         for col in range(1, 14):
-            ws.cell(row=found_row, column=col, value=None)
+            ws.cell(row=last_row, column=col, value=None)
 
         wb.save(PIPELINE_PATH)
         wb.close()
