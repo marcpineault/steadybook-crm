@@ -1001,30 +1001,40 @@ tr:hover {{ background: #f8f9fa; }}
 
 <div class="container">
 
-    <div class="kpi-grid">
+    <div class="kpi-grid" style="grid-template-columns: repeat(4, 1fr)">
+        <div class="kpi-card blue">
+            <div class="kpi-label">Total AUM</div>
+            <div class="kpi-value">{fmt_money(forecast_aum)}</div>
+        </div>
+        <div class="kpi-card green">
+            <div class="kpi-label">Premium YTD</div>
+            <div class="kpi-value">{fmt_money(forecast_revenue)}</div>
+        </div>
+        <div class="kpi-card gold">
+            <div class="kpi-label">FYC YTD</div>
+            <div class="kpi-value">{fmt_money(won_fyc)}</div>
+        </div>
+        <div class="kpi-card purple">
+            <div class="kpi-label">Pipeline AUM</div>
+            <div class="kpi-value">{fmt_money(total_pipeline)}</div>
+        </div>
+    </div>
+    <div class="kpi-grid" style="grid-template-columns: repeat(4, 1fr); margin-top: 12px">
         <div class="kpi-card">
             <div class="kpi-label">Active Deals</div>
             <div class="kpi-value">{len(active)}</div>
-        </div>
-        <div class="kpi-card blue">
-            <div class="kpi-label">Pipeline Value</div>
-            <div class="kpi-value">{fmt_money(total_pipeline)}</div>
-        </div>
-        <div class="kpi-card">
-            <div class="kpi-label">Est. Revenue</div>
-            <div class="kpi-value">{fmt_money(total_revenue)}</div>
-        </div>
-        <div class="kpi-card green">
-            <div class="kpi-label">Won Revenue</div>
-            <div class="kpi-value">{fmt_money(won_revenue)}</div>
         </div>
         <div class="kpi-card red">
             <div class="kpi-label">Hot Leads</div>
             <div class="kpi-value">{hot_count}</div>
         </div>
-        <div class="kpi-card gold">
+        <div class="kpi-card">
             <div class="kpi-label">Win Rate</div>
             <div class="kpi-value">{win_rate:.0f}%</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Overdue</div>
+            <div class="kpi-value">{len(overdue)}</div>
         </div>
     </div>
 
