@@ -237,6 +237,21 @@ def api_list_prospects():
     return jsonify(prospects)
 
 
+def parse_money(val):
+    """Parse money values like '200k', '1.5M', '$500,000' into float."""
+    try:
+        s = str(val).strip().replace("$", "").replace(",", "").lower()
+        if not s or s == "none" or s == "0":
+            return 0.0
+        if s.endswith("m"):
+            return float(s[:-1]) * 1000000
+        if s.endswith("k"):
+            return float(s[:-1]) * 1000
+        return float(s)
+    except (ValueError, TypeError):
+        return 0.0
+
+
 def fmt_money(val):
     try:
         v = float(str(val).replace("$", "").replace(",", ""))
@@ -266,9 +281,9 @@ def dashboard():
     won = [p for p in prospects if p["stage"] == "Closed-Won"]
     lost = [p for p in prospects if p["stage"] == "Closed-Lost"]
 
-    total_pipeline = sum(float(str(p["aum"]).replace("$","").replace(",","") or 0) for p in active)
-    total_revenue = sum(float(str(p["revenue"]).replace("$","").replace(",","") or 0) for p in active)
-    won_revenue = sum(float(str(p["revenue"]).replace("$","").replace(",","") or 0) for p in won)
+    total_pipeline = sum(parse_money(p["aum"]) for p in active)
+    total_revenue = sum(parse_money(p["revenue"]) for p in active)
+    won_revenue = sum(parse_money(p["revenue"]) for p in won)
     hot_count = len([p for p in active if p["priority"] == "Hot"])
 
     win_rate = 0
@@ -290,19 +305,21 @@ def dashboard():
     AUM_TARGET = 5000000
 
     # Baseline numbers (existing business not tracked in pipeline)
+    # These ONLY apply to forecast targets, not main KPI cards
     BASELINE_AUM = 400000    # Current AUM as of March 2025
-    BASELINE_PREMIUM = 0     # Update when you know life premium YTD
+    BASELINE_PREMIUM = 2000  # Life premium YTD
 
-    # Calculate won AUM from pipeline + baseline
-    won_aum = BASELINE_AUM
+    # Calculate won AUM from pipeline only (for KPI cards)
+    won_aum_pipeline = 0
     for p in won:
         try:
-            won_aum += float(str(p["aum"]).replace("$","").replace(",","") or 0)
+            won_aum_pipeline += parse_money(p["aum"])
         except ValueError:
             pass
 
-    # Add baseline to won revenue
-    won_revenue += BASELINE_PREMIUM
+    # Forecast totals include baselines
+    forecast_revenue = won_revenue + BASELINE_PREMIUM
+    forecast_aum = won_aum_pipeline + BASELINE_AUM
 
     # Days into the year / days remaining
     year_start = date(today.year, 1, 1)
@@ -312,14 +329,14 @@ def dashboard():
     days_remaining = days_total - days_elapsed
     pct_year = days_elapsed / days_total * 100
 
-    # Premium progress (won_revenue = closed premium revenue)
-    premium_pct = (won_revenue / PREMIUM_TARGET * 100) if PREMIUM_TARGET else 0
-    premium_pace = (won_revenue / days_elapsed * days_total) if days_elapsed else 0
+    # Premium progress (forecast includes baseline)
+    premium_pct = (forecast_revenue / PREMIUM_TARGET * 100) if PREMIUM_TARGET else 0
+    premium_pace = (forecast_revenue / days_elapsed * days_total) if days_elapsed else 0
     premium_on_pace = premium_pace >= PREMIUM_TARGET
 
-    # AUM progress
-    aum_pct = (won_aum / AUM_TARGET * 100) if AUM_TARGET else 0
-    aum_pace = (won_aum / days_elapsed * days_total) if days_elapsed else 0
+    # AUM progress (forecast includes baseline)
+    aum_pct = (forecast_aum / AUM_TARGET * 100) if AUM_TARGET else 0
+    aum_pace = (forecast_aum / days_elapsed * days_total) if days_elapsed else 0
     aum_on_pace = aum_pace >= AUM_TARGET
 
     # Pipeline weighted forecast (probability by stage)
@@ -333,16 +350,16 @@ def dashboard():
     for p in active:
         prob = stage_probability.get(p["stage"], 0.10)
         try:
-            weighted_revenue += float(str(p["revenue"]).replace("$","").replace(",","") or 0) * prob
+            weighted_revenue += parse_money(p["revenue"]) * prob
         except ValueError:
             pass
         try:
-            weighted_aum += float(str(p["aum"]).replace("$","").replace(",","") or 0) * prob
+            weighted_aum += parse_money(p["aum"]) * prob
         except ValueError:
             pass
 
-    projected_revenue = won_revenue + weighted_revenue
-    projected_aum = won_aum + weighted_aum
+    projected_revenue = forecast_revenue + weighted_revenue
+    projected_aum = forecast_aum + weighted_aum
 
     # Monthly revenue tracking (won deals by month)
     monthly_revenue = {}
@@ -356,11 +373,11 @@ def dashboard():
                     month_key = m.strftime("%b")
                     month_num = m.month
                     try:
-                        monthly_revenue[(month_num, month_key)] = monthly_revenue.get((month_num, month_key), 0) + float(str(p["revenue"]).replace("$","").replace(",","") or 0)
+                        monthly_revenue[(month_num, month_key)] = monthly_revenue.get((month_num, month_key), 0) + parse_money(p["revenue"])
                     except ValueError:
                         pass
                     try:
-                        monthly_aum[(month_num, month_key)] = monthly_aum.get((month_num, month_key), 0) + float(str(p["aum"]).replace("$","").replace(",","") or 0)
+                        monthly_aum[(month_num, month_key)] = monthly_aum.get((month_num, month_key), 0) + parse_money(p["aum"])
                     except ValueError:
                         pass
             except (ValueError, IndexError):
@@ -545,7 +562,7 @@ def dashboard():
         if s:
             stage_counts[s] = stage_counts.get(s, 0) + 1
             try:
-                stage_revenue[s] = stage_revenue.get(s, 0) + float(str(p["revenue"]).replace("$","").replace(",","") or 0)
+                stage_revenue[s] = stage_revenue.get(s, 0) + parse_money(p["revenue"])
             except ValueError:
                 pass
 
@@ -1044,12 +1061,12 @@ tr:hover {{ background: #f8f9fa; }}
 
         <div class="kpi-grid" style="grid-template-columns: repeat(4, 1fr)">
             <div class="kpi-card green">
-                <div class="kpi-label">Won Premium</div>
-                <div class="kpi-value">{fmt_money(won_revenue)}</div>
+                <div class="kpi-label">Total Premium YTD</div>
+                <div class="kpi-value">{fmt_money(forecast_revenue)}</div>
             </div>
             <div class="kpi-card blue">
-                <div class="kpi-label">Won AUM</div>
-                <div class="kpi-value">{fmt_money(won_aum)}</div>
+                <div class="kpi-label">Total AUM</div>
+                <div class="kpi-value">{fmt_money(forecast_aum)}</div>
             </div>
             <div class="kpi-card purple">
                 <div class="kpi-label">Projected Premium</div>
@@ -1071,13 +1088,12 @@ tr:hover {{ background: #f8f9fa; }}
                     <div class="progress-bar-fill {'green' if premium_on_pace else 'red'}" style="width:{min(premium_pct, 100):.0f}%">{premium_pct:.0f}%</div>
                 </div>
                 <div class="target-meta">
-                    <span>Actual: {fmt_money(won_revenue)}</span>
-                    <span>Year pace: {fmt_money(premium_pace)}</span>
-                    <span>Gap: {fmt_money(max(0, PREMIUM_TARGET - won_revenue))}</span>
+                    <span>Actual: {fmt_money(forecast_revenue)} (baseline {fmt_money(BASELINE_PREMIUM)} + pipeline {fmt_money(won_revenue)})</span>
+                    <span>Gap: {fmt_money(max(0, PREMIUM_TARGET - forecast_revenue))}</span>
                 </div>
                 <div class="target-meta" style="margin-top:8px">
                     <span>Pipeline weighted: +{fmt_money(weighted_revenue)}</span>
-                    <span>Need {fmt_money(max(0, (PREMIUM_TARGET - won_revenue - weighted_revenue) / max(1, days_remaining) * 30))}/mo to close gap</span>
+                    <span>Need {fmt_money(max(0, (PREMIUM_TARGET - forecast_revenue - weighted_revenue) / max(1, days_remaining) * 30))}/mo to close gap</span>
                 </div>
             </div>
             <div class="target-card">
@@ -1089,13 +1105,12 @@ tr:hover {{ background: #f8f9fa; }}
                     <div class="progress-bar-fill {'green' if aum_on_pace else 'red'}" style="width:{min(aum_pct, 100):.0f}%">{aum_pct:.0f}%</div>
                 </div>
                 <div class="target-meta">
-                    <span>Actual: {fmt_money(won_aum)}</span>
-                    <span>Year pace: {fmt_money(aum_pace)}</span>
-                    <span>Gap: {fmt_money(max(0, AUM_TARGET - won_aum))}</span>
+                    <span>Actual: {fmt_money(forecast_aum)} (baseline {fmt_money(BASELINE_AUM)} + pipeline {fmt_money(won_aum_pipeline)})</span>
+                    <span>Gap: {fmt_money(max(0, AUM_TARGET - forecast_aum))}</span>
                 </div>
                 <div class="target-meta" style="margin-top:8px">
                     <span>Pipeline weighted: +{fmt_money(weighted_aum)}</span>
-                    <span>Need {fmt_money(max(0, (AUM_TARGET - won_aum - weighted_aum) / max(1, days_remaining) * 30))}/mo to close gap</span>
+                    <span>Need {fmt_money(max(0, (AUM_TARGET - forecast_aum - weighted_aum) / max(1, days_remaining) * 30))}/mo to close gap</span>
                 </div>
             </div>
         </div>
@@ -1119,7 +1134,7 @@ tr:hover {{ background: #f8f9fa; }}
             <h2>Pipeline Weighted Forecast</h2>
             <table>
                 <tr><th>Stage</th><th>Deals</th><th>Probability</th><th>Raw Revenue</th><th>Weighted</th><th>Raw AUM</th><th>Weighted AUM</th></tr>
-                {''.join(f'<tr><td><span class="badge" style="background:{STAGE_COLORS.get(s, "#BDC3C7")}">{_esc(s)}</span></td><td>{stage_counts.get(s, 0)}</td><td>{int(stage_probability.get(s, 0.1)*100)}%</td><td class="money">{fmt_money(stage_revenue.get(s, 0))}</td><td class="money">{fmt_money(stage_revenue.get(s, 0) * stage_probability.get(s, 0.1))}</td><td class="money">{fmt_money(sum(float(str(p["aum"]).replace("$","").replace(",","") or 0) for p in active if p["stage"]==s))}</td><td class="money">{fmt_money(sum(float(str(p["aum"]).replace("$","").replace(",","") or 0) for p in active if p["stage"]==s) * stage_probability.get(s, 0.1))}</td></tr>' for s in stage_order[:-1] if stage_counts.get(s, 0) > 0)}
+                {''.join(f'<tr><td><span class="badge" style="background:{STAGE_COLORS.get(s, "#BDC3C7")}">{_esc(s)}</span></td><td>{stage_counts.get(s, 0)}</td><td>{int(stage_probability.get(s, 0.1)*100)}%</td><td class="money">{fmt_money(stage_revenue.get(s, 0))}</td><td class="money">{fmt_money(stage_revenue.get(s, 0) * stage_probability.get(s, 0.1))}</td><td class="money">{fmt_money(sum(parse_money(p["aum"]) for p in active if p["stage"]==s))}</td><td class="money">{fmt_money(sum(parse_money(p["aum"]) for p in active if p["stage"]==s) * stage_probability.get(s, 0.1))}</td></tr>' for s in stage_order[:-1] if stage_counts.get(s, 0) > 0)}
                 <tr style="font-weight:700;border-top:2px solid #2c3e50"><td>Total Weighted</td><td></td><td></td><td></td><td class="money">{fmt_money(weighted_revenue)}</td><td></td><td class="money">{fmt_money(weighted_aum)}</td></tr>
             </table>
         </div>
