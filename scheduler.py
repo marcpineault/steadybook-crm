@@ -581,7 +581,7 @@ async def weekly_report():
     for p in active:
         fu = p["_next_followup_date"]
         if p["priority"].lower() == "hot" and fu and fu < today:
-            priorities.append(f"  1. Follow up with {p['name']} (Hot, {(today - fu).days}d overdue)")
+            priorities.append(f"  {len(priorities)+1}. Follow up with {p['name']} (Hot, {(today - fu).days}d overdue)")
     # Then other overdue
     for p in active:
         fu = p["_next_followup_date"]

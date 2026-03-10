@@ -259,7 +259,8 @@ def fmt_money_full(val):
 @app.route("/")
 def dashboard():
     prospects, activities, meetings, book_entries = read_data()
-    today = datetime.now()
+    today = date.today()
+    now = datetime.now()
 
     active = [p for p in prospects if p["stage"] not in ("Closed-Won", "Closed-Lost", "")]
     won = [p for p in prospects if p["stage"] == "Closed-Won"]
@@ -321,8 +322,8 @@ def dashboard():
         fu_class = "overdue" if is_overdue else ""
         fu_display = p["next_followup"].split(" ")[0] if p["next_followup"] and p["next_followup"] != "None" else ""
 
-        p_json = json.dumps(p).replace("'", "&#39;").replace('"', "&quot;")
-        prospect_rows += f"""<tr class="editable-row" onclick='openEdit({p_json})' style="cursor:pointer">
+        p_json_escaped = _esc(json.dumps(p))
+        prospect_rows += f"""<tr class="editable-row" data-prospect="{p_json_escaped}" onclick="openEdit(JSON.parse(this.dataset.prospect))" style="cursor:pointer">
             <td class="name-cell">{_esc(p["name"])}</td>
             <td><span class="badge" style="background:{pri_bg}">{_esc(p["priority"])}</span></td>
             <td><span class="badge" style="background:{stage_bg};color:{stage_fg}">{_esc(p["stage"])}</span></td>
@@ -519,7 +520,7 @@ tr:hover {{ background: #f8f9fa; }}
     <div>
         <h1>CALM <span>MONEY</span> — Pipeline</h1>
     </div>
-    <div class="updated">Updated: {today.strftime('%B %d, %Y at %I:%M %p')}<br>Refresh page for latest data</div>
+    <div class="updated">Updated: {now.strftime('%B %d, %Y at %I:%M %p')}<br>Refresh page for latest data</div>
 </div>
 
 <div class="container">

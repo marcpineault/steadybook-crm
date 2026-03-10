@@ -717,6 +717,11 @@ def get_pipeline_summary():
 
 def ensure_sheet(sheet_name, headers, col_widths=None):
     """Create a sheet if it doesn't exist in the pipeline."""
+    with pipeline_lock:
+        _ensure_sheet_inner(sheet_name, headers, col_widths)
+
+
+def _ensure_sheet_inner(sheet_name, headers, col_widths=None):
     wb = openpyxl.load_workbook(PIPELINE_PATH)
     if sheet_name not in wb.sheetnames:
         ws = wb.create_sheet(sheet_name)
@@ -1427,6 +1432,12 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         ws.cell(row=r, column=2, value=val.strip())  # Assume phone
                     elif j == 2:
                         ws.cell(row=r, column=3, value=val.strip())  # Assume address
+                    elif j == 3:
+                        ws.cell(row=r, column=4, value=val.strip())  # Assume policy start date
+                    else:
+                        # Put remaining columns in notes
+                        existing = ws.cell(row=r, column=7).value or ""
+                        ws.cell(row=r, column=7, value=f"{existing} {val.strip()}".strip())
 
                 ws.cell(row=r, column=5, value="Not Called")
                 count += 1
