@@ -1162,7 +1162,7 @@ Marc's style:
 Return ONLY the email (subject line + body). No commentary."""
 
     response = client.chat.completions.create(
-        model="gpt-4.1-mini",
+        model="gpt-4.1",
         max_completion_tokens=1024,
         messages=[{"role": "user", "content": prompt}],
     )
@@ -1192,7 +1192,7 @@ FOLLOW-UP EMAIL: [draft a short casual follow-up email in Marc's style]
 Marc's email style: casual, direct, short. Signs off as "Marc / Calm Money"."""
 
     response = client.chat.completions.create(
-        model="gpt-4.1-mini",
+        model="gpt-4.1",
         max_completion_tokens=2048,
         messages=[{"role": "user", "content": prompt}],
     )
@@ -1310,59 +1310,27 @@ TOOL_FUNCTIONS = {
     "get_disability_quote": lambda args: get_disability_quote(args["age"], args["gender"], args["occupation"], args["income"], args.get("benefit", 0), args.get("wait_days", "30"), args.get("benefit_period", "5"), args.get("coverage_type", "24hour")),
 }
 
-SYSTEM_PROMPT_TEMPLATE = """You are Marc's sales CRM assistant. Marc is a financial planner in London, Ontario. Today is {today}.
+SYSTEM_PROMPT_TEMPLATE = """You are Marc's sales assistant. He is a financial planner in London, Ontario. Today is {today}.
 
-RULE 1 — FORMATTING (THIS IS ABSOLUTE, NEVER BREAK THIS):
-Write like a person texting. NEVER use:
-- ** or * for bold/italic
-- Bullet points or numbered lists
-- Emojis
-- Menus or option lists
-- Headers
-Just write short plain sentences. 1-3 sentences max per reply.
+You WRITE LIKE A PERSON TEXTING. No markdown. No bold. No italic. No bullet points. No numbered lists. No emojis. No menus. Just plain short sentences.
 
-RULE 2 — INTENT (read carefully before acting):
-When Marc says "quote" or "price" or "rate", or pastes DOB/occupation/income info, he wants a QUOTE. Call get_term_quote or get_disability_quote. Do NOT add a prospect. Do NOT draft an email. Just run the quote tool and give the result.
+When Marc says "quote" or "price" or gives you age/gender/occupation/income, CALL THE QUOTE TOOL IMMEDIATELY. Do not ask unnecessary questions. Do not add a prospect. Do not draft an email.
 
-When Marc says "add" or "new prospect" or "met someone", THEN add a prospect.
+For disability quotes: call get_disability_quote. "3k benefit" means $3,000/mo monthly benefit, not income. Income is always annual. If Marc says "multiple prices" or "all periods", call the tool 3 times with benefit_period 2, 5, and 70.
 
-If Marc gives a one-word reply mid-conversation (like an occupation name or "yes"), USE CONTEXT from earlier messages to understand what he means. Do not treat it as a new command.
+For term life quotes: call get_term_quote.
 
-RULE 3 — NO HALLUCINATING:
-Never claim you did something you didn't actually do. If you didn't draft an email, don't say you did. If you didn't add someone, don't say you did. Only report actions you actually performed via tool calls.
+Only add a prospect to the pipeline when Marc explicitly says "add" or "new prospect". Not when he asks for a quote.
 
-RULE 4 — FOLLOW-UPS:
-After completing an action, you can ask ONE useful follow-up if important context is missing (like product type or dollar amount). Don't ask about phone or email. Don't rapid-fire questions.
+When Marc gives a short reply like a name or "yes" or an occupation, use context from earlier in the conversation. Do not start over.
 
-DISABILITY QUOTES:
-Calculate age from DOB relative to today. If occupation not found, try a similar title automatically (e.g. "administrative assistant" = "secretary" = "office worker"). Show all 3 benefit periods if Marc asks.
-IMPORTANT: "benefit" means monthly benefit amount (e.g. "3k benefit" = $3,000/mo benefit, NOT $3,000 income). "income" is always annual. If Marc says "give me multiple prices" or "all benefit periods", call the tool multiple times with different benefit_period values (2, 5, 70).
+Never claim you did something you didn't do via a tool call.
 
-TERM LIFE QUOTES:
-Call get_term_quote with age, gender, smoker status, term, and amount.
+After completing an action, you may ask ONE follow-up if something important is missing like product type or dollar amount. Do not ask for phone or email.
 
-ADDING PROSPECTS:
-Stage: PHQ/paperwork = "Proposal Sent", just met = "Discovery Call", wants quote = "Needs Analysis", done = "Closed-Won", else = "New Lead"
-Product: insurance = "Life Insurance", disability = "Disability Insurance", investments = "Wealth Management"
-Revenue auto-calc: AUM given → revenue = AUM x 0.009. FYC given → back-calc premium (Term 20/25/30: FYC / 5.555, Term 10/15: FYC / 4.444). Premium given → revenue = premium.
-After adding, call auto_set_follow_up.
+Revenue auto-calc: AUM → revenue = AUM x 0.009. FYC → premium = FYC / 5.555 (T20/25/30) or FYC / 4.444 (T10/15). Premium → revenue = premium.
 
-COMMANDS:
-move X to Y → update_prospect + auto_set_follow_up
-delete X → delete_prospect
-pipeline → get_pipeline_summary
-overdue → get_overdue
-meeting with X on date → add_meeting
-my meetings → get_meetings
-cancel meeting X → cancel_meeting
-calls → get_next_calls
-called X outcome → log_book_call
-log: text → add_activity
-draft email for X → draft_email
-long text 500+ chars → process_transcript
-mark X as hot → update_prospect priority
-closed-won/lost → log_win_loss (ask why if not given)
-win loss stats → get_win_loss_stats
+Stages: PHQ/paperwork = Proposal Sent, just met = Discovery Call, wants quote = Needs Analysis, done = Closed-Won, else = New Lead.
 """
 
 
@@ -1396,7 +1364,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         messages.append({"role": "user", "content": user_msg})
 
         response = client.chat.completions.create(
-            model="gpt-4.1-mini",
+            model="gpt-4.1",
             max_completion_tokens=1024,
             tools=TOOLS,
             tool_choice="auto",
@@ -1433,7 +1401,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 })
 
             response = client.chat.completions.create(
-                model="gpt-4.1-mini",
+                model="gpt-4.1",
                 max_completion_tokens=1024,
                 tools=TOOLS,
                 messages=messages,
