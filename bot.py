@@ -583,6 +583,7 @@ def get_disability_quote(age: int, gender: str, occupation: str, income: int,
     # Common occupation aliases → Edge Benefits database titles
     OCC_ALIASES = {
         "administrative assistant": "office worker (general clerical duties only)",
+        "administrative assistance": "office worker (general clerical duties only)",
         "admin assistant": "office worker (general clerical duties only)",
         "admin": "office worker (general clerical duties only)",
         "secretary": "office worker (general clerical duties only)",
@@ -590,7 +591,11 @@ def get_disability_quote(age: int, gender: str, occupation: str, income: int,
         "office admin": "office worker (general clerical duties only)",
         "office administrator": "office worker (general clerical duties only)",
         "office clerk": "office worker (general clerical duties only)",
+        "office worker": "office worker (general clerical duties only)",
+        "clerk": "office worker (general clerical duties only)",
         "clerical": "office worker (general clerical duties only)",
+        "data entry": "office worker (general clerical duties only)",
+        "bookkeeper": "office worker (general clerical duties only)",
         "financial advisor": "insurance - financial planner (more than 2 years experience)",
         "financial planner": "insurance - financial planner (more than 2 years experience)",
         "financial consultant": "insurance - financial planner (more than 2 years experience)",
@@ -618,9 +623,15 @@ def get_disability_quote(age: int, gender: str, occupation: str, income: int,
     occ_lower = occupation.lower().strip()
     risk_class = None
 
-    # Check aliases first
+    # Check aliases first (also try partial/fuzzy alias matching)
     if occ_lower in OCC_ALIASES:
         occ_lower = OCC_ALIASES[occ_lower]
+    else:
+        # Try matching alias keys as substrings or vice versa
+        for alias_key, alias_val in OCC_ALIASES.items():
+            if alias_key in occ_lower or occ_lower in alias_key:
+                occ_lower = alias_val
+                break
 
     # Direct lookup
     if occ_lower in occupations:
@@ -1157,7 +1168,7 @@ Marc's style:
 Return ONLY the email (subject line + body). No commentary."""
 
     response = client.chat.completions.create(
-        model="gpt-5-mini",
+        model="gpt-4.1-mini",
         max_completion_tokens=1024,
         messages=[{"role": "user", "content": prompt}],
     )
@@ -1187,7 +1198,7 @@ FOLLOW-UP EMAIL: [draft a short casual follow-up email in Marc's style]
 Marc's email style: casual, direct, short. Signs off as "Marc / Calm Money"."""
 
     response = client.chat.completions.create(
-        model="gpt-5-mini",
+        model="gpt-4.1-mini",
         max_completion_tokens=2048,
         messages=[{"role": "user", "content": prompt}],
     )
@@ -1386,7 +1397,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         messages.append({"role": "user", "content": user_msg})
 
         response = client.chat.completions.create(
-            model="gpt-5-mini",
+            model="gpt-4.1-mini",
             max_completion_tokens=1024,
             tools=TOOLS,
             tool_choice="auto",
@@ -1423,7 +1434,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 })
 
             response = client.chat.completions.create(
-                model="gpt-5-mini",
+                model="gpt-4.1-mini",
                 max_completion_tokens=1024,
                 tools=TOOLS,
                 messages=messages,
