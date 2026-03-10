@@ -4,7 +4,7 @@ import logging
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-import anthropic
+from openai import OpenAI
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from dotenv import load_dotenv
@@ -17,10 +17,10 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 TELEGRAM_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-ANTHROPIC_KEY = os.environ["ANTHROPIC_API_KEY"]
+OPENAI_KEY = os.environ["OPENAI_API_KEY"]
 PIPELINE_PATH = os.environ.get("PIPELINE_PATH", "pipeline.xlsx")
 
-client = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
+client = OpenAI(api_key=OPENAI_KEY)
 
 # ── Styling constants ──
 TEAL = "1ABC9C"
@@ -162,6 +162,34 @@ def update_prospect(name: str, updates: dict) -> str:
     wb.save(PIPELINE_PATH)
     wb.close()
     return f"Updated {matched_name}: {', '.join(changes)}"
+
+
+def delete_prospect(name: str) -> str:
+    """Delete a prospect by name."""
+    wb = openpyxl.load_workbook(PIPELINE_PATH)
+    ws = wb["Pipeline"]
+
+    target_row = None
+    matched_name = None
+    name_lower = name.lower()
+
+    for r in range(DATA_START, DATA_START + MAX_ROWS):
+        cell_val = ws.cell(row=r, column=1).value
+        if cell_val and name_lower in str(cell_val).lower():
+            target_row = r
+            matched_name = cell_val
+            break
+
+    if not target_row:
+        wb.close()
+        return f"Could not find prospect matching '{name}'."
+
+    for col in range(1, 14):
+        ws.cell(row=target_row, column=col, value=None)
+
+    wb.save(PIPELINE_PATH)
+    wb.close()
+    return f"Deleted {matched_name} from pipeline."
 
 
 def add_activity(data: dict) -> str:
@@ -999,13 +1027,13 @@ Marc's style:
 
 Return ONLY the email (subject line + body). No commentary."""
 
-    response = client.messages.create(
-        model="claude-sonnet-4-6",
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
         max_tokens=1024,
         messages=[{"role": "user", "content": prompt}],
     )
 
-    return response.content[0].text
+    return response.choices[0].message.content
 
 
 # ── Otter transcript processing ──
@@ -1029,268 +1057,102 @@ FOLLOW-UP EMAIL: [draft a short casual follow-up email in Marc's style]
 
 Marc's email style: casual, direct, short. Signs off as "Marc / Calm Money"."""
 
-    response = client.messages.create(
-        model="claude-sonnet-4-6",
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
         max_tokens=2048,
         messages=[{"role": "user", "content": prompt}],
     )
 
-    return response.content[0].text
+    return response.choices[0].message.content
 
 
-# ── Available tools for Claude ──
+# ── Helper to build OpenAI tool defs ──
+
+def _tool(name, desc, props, required=None):
+    params = {"type": "object", "properties": props}
+    if required:
+        params["required"] = required
+    return {"type": "function", "function": {"name": name, "description": desc, "parameters": params}}
+
 
 TOOLS = [
-    {
-        "name": "read_pipeline",
-        "description": "Read all prospects from the sales pipeline. Returns a list of all prospects with their details.",
-        "input_schema": {"type": "object", "properties": {}, "required": []},
-    },
-    {
-        "name": "add_prospect",
-        "description": "Add a new prospect to the pipeline. Use 'New Lead' as default stage.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "name": {"type": "string", "description": "Prospect's full name"},
-                "phone": {"type": "string", "description": "Phone number"},
-                "email": {"type": "string", "description": "Email address"},
-                "source": {"type": "string", "enum": ["Referral", "Website", "Social Media", "Seminar", "Cold Outreach", "LinkedIn", "Podcast", "Networking", "Centre of Influence", "Other"]},
-                "priority": {"type": "string", "enum": ["Hot", "Warm", "Cold"]},
-                "stage": {"type": "string", "enum": ["New Lead", "Contacted", "Discovery Call", "Needs Analysis", "Plan Presentation", "Proposal Sent", "Negotiation", "Closed-Won", "Closed-Lost", "Nurture"]},
-                "product": {"type": "string", "enum": ["Life Insurance", "Wealth Management", "Life Insurance + Wealth", "Disability Insurance", "Critical Illness", "Group Benefits", "Estate Planning", "Other"]},
-                "aum": {"type": "string", "description": "Estimated premium or AUM value"},
-                "revenue": {"type": "string", "description": "Estimated annual revenue from this client"},
-                "next_followup": {"type": "string", "description": "Next follow-up date in YYYY-MM-DD format"},
-                "notes": {"type": "string", "description": "Any notes about the prospect"},
-            },
-            "required": ["name"],
-        },
-    },
-    {
-        "name": "update_prospect",
-        "description": "Update an existing prospect's information. Search by name (partial match works).",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "name": {"type": "string", "description": "Prospect name to search for (partial match)"},
-                "updates": {
-                    "type": "object",
-                    "description": "Fields to update",
-                    "properties": {
-                        "stage": {"type": "string"},
-                        "priority": {"type": "string"},
-                        "next_followup": {"type": "string"},
-                        "notes": {"type": "string"},
-                        "phone": {"type": "string"},
-                        "email": {"type": "string"},
-                        "product": {"type": "string"},
-                        "aum": {"type": "string"},
-                        "revenue": {"type": "string"},
-                        "source": {"type": "string"},
-                    },
-                },
-            },
-            "required": ["name", "updates"],
-        },
-    },
-    {
-        "name": "add_activity",
-        "description": "Log an activity/touchpoint in the Activity Log.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "prospect": {"type": "string", "description": "Prospect name"},
-                "action": {"type": "string", "description": "What was done (e.g., Phone Call, Email, Meeting)"},
-                "outcome": {"type": "string", "description": "Result of the activity"},
-                "next_step": {"type": "string", "description": "What to do next"},
-                "notes": {"type": "string", "description": "Additional notes"},
-            },
-            "required": ["prospect", "action"],
-        },
-    },
-    {
-        "name": "get_overdue",
-        "description": "Get all prospects with overdue follow-up dates.",
-        "input_schema": {"type": "object", "properties": {}, "required": []},
-    },
-    {
-        "name": "get_pipeline_summary",
-        "description": "Get a full summary of the current pipeline: active deals, value, stages, overdue items.",
-        "input_schema": {"type": "object", "properties": {}, "required": []},
-    },
-    {
-        "name": "add_meeting",
-        "description": "Schedule a meeting with a prospect. Auto-fills prep notes from pipeline.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "date": {"type": "string", "description": "Meeting date in YYYY-MM-DD format"},
-                "time": {"type": "string", "description": "Meeting time (e.g., '2:00 PM')"},
-                "prospect": {"type": "string", "description": "Prospect name"},
-                "type": {"type": "string", "enum": ["Discovery Call", "Plan Presentation", "Review", "Follow-Up", "Closing", "Other"]},
-            },
-            "required": ["date", "prospect"],
-        },
-    },
-    {
-        "name": "get_meetings",
-        "description": "Get scheduled meetings. Optionally filter by date (YYYY-MM-DD) or 'this week'.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "date_filter": {"type": "string", "description": "Date to filter by (YYYY-MM-DD), or leave empty for all"},
-            },
-            "required": [],
-        },
-    },
-    {
-        "name": "cancel_meeting",
-        "description": "Cancel a meeting by prospect name.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "prospect": {"type": "string", "description": "Prospect name to cancel meeting for"},
-            },
-            "required": ["prospect"],
-        },
-    },
-    {
-        "name": "get_next_calls",
-        "description": "Get the next prospects to call from the insurance book.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "count": {"type": "integer", "description": "Number of calls to get (default 5)"},
-            },
-            "required": [],
-        },
-    },
-    {
-        "name": "log_book_call",
-        "description": "Log the outcome of a call from the insurance book. Outcomes: 'not interested', 'no answer', 'booked meeting [date]', 'callback [date]'.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "name": {"type": "string", "description": "Person's name from the book"},
-                "outcome": {"type": "string", "description": "Call outcome"},
-                "notes": {"type": "string", "description": "Any notes"},
-                "retry_days": {"type": "integer", "description": "Days until retry for no answer/callback (default 3)"},
-            },
-            "required": ["name", "outcome"],
-        },
-    },
-    {
-        "name": "get_book_stats",
-        "description": "Get insurance book calling statistics: total, called, remaining, meetings booked, conversion rate.",
-        "input_schema": {"type": "object", "properties": {}, "required": []},
-    },
-    {
-        "name": "draft_email",
-        "description": "Draft an email for a prospect. Types: 'follow-up', 'quote', 'intro', 'check-in', 'referral request'.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "prospect_name": {"type": "string", "description": "Prospect name"},
-                "email_type": {"type": "string", "description": "Type of email to draft"},
-                "details": {"type": "string", "description": "Additional details (e.g., quote prices, context)"},
-            },
-            "required": ["prospect_name", "email_type"],
-        },
-    },
-    {
-        "name": "process_transcript",
-        "description": "Process a meeting transcript (from Otter or pasted). Extracts summary, needs, next steps, and drafts follow-up email. Use when receiving a long message that looks like a meeting transcript.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "transcript": {"type": "string", "description": "The meeting transcript text"},
-            },
-            "required": ["transcript"],
-        },
-    },
-    {
-        "name": "get_follow_up_sequence",
-        "description": "Get the recommended follow-up cadence for a prospect based on their current stage. Shows what to do on which day.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "prospect_name": {"type": "string", "description": "Prospect name"},
-                "stage": {"type": "string", "description": "Current pipeline stage"},
-            },
-            "required": ["prospect_name", "stage"],
-        },
-    },
-    {
-        "name": "auto_set_follow_up",
-        "description": "Automatically set the next follow-up date based on the stage's follow-up sequence. Call this after moving a prospect to a new stage.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "prospect_name": {"type": "string", "description": "Prospect name"},
-                "stage": {"type": "string", "description": "Current pipeline stage"},
-            },
-            "required": ["prospect_name", "stage"],
-        },
-    },
-    {
-        "name": "log_win_loss",
-        "description": "Log why a deal was won or lost. Call this whenever a prospect is moved to Closed-Won or Closed-Lost. Ask Marc for the reason.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "prospect_name": {"type": "string", "description": "Prospect name"},
-                "outcome": {"type": "string", "enum": ["Won", "Lost"], "description": "Whether the deal was won or lost"},
-                "reason": {"type": "string", "description": "Why the deal was won or lost (e.g., 'great rapport', 'went with competitor', 'price too high', 'referral trust')"},
-            },
-            "required": ["prospect_name", "outcome", "reason"],
-        },
-    },
-    {
-        "name": "get_win_loss_stats",
-        "description": "Get win/loss analysis: win rate, top reasons for winning and losing, breakdown by product.",
-        "input_schema": {"type": "object", "properties": {}, "required": []},
-    },
-    {
-        "name": "get_term_quote",
-        "description": "Look up term life insurance quotes from term4sale.ca. Returns competitive rates from multiple carriers including Co-operators. Use when Marc says 'quote' or asks for life insurance rates.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "age": {"type": "integer", "description": "Client's age"},
-                "gender": {"type": "string", "enum": ["male", "female"], "description": "Client's gender"},
-                "smoker": {"type": "boolean", "description": "Whether client smokes/uses tobacco"},
-                "term": {"type": "string", "enum": ["10", "15", "20", "25", "30"], "description": "Term length in years"},
-                "amount": {"type": "integer", "description": "Coverage amount in dollars (e.g., 500000)"},
-                "health": {"type": "string", "enum": ["regular"], "description": "Health class. Always use 'regular'."},
-            },
-            "required": ["age", "gender", "smoker", "term", "amount"],
-        },
-    },
-    {
-        "name": "get_disability_quote",
-        "description": "Look up disability insurance quotes from Edge Benefits (insured by Co-operators). Returns monthly premiums for injury and illness income protection. Use when Marc says 'disability quote' or asks for DI rates.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "age": {"type": "integer", "description": "Client's age (18-69)"},
-                "gender": {"type": "string", "enum": ["male", "female"], "description": "Client's gender"},
-                "occupation": {"type": "string", "description": "Client's occupation (e.g., 'accountant', 'nurse', 'teacher')"},
-                "income": {"type": "integer", "description": "Client's annual employment income"},
-                "benefit": {"type": "integer", "description": "Desired monthly benefit amount ($1000-$6000 in $500 increments). 0 = auto-calculate max eligible."},
-                "wait_days": {"type": "string", "enum": ["0", "30", "112"], "description": "Waiting period in days. Default 30."},
-                "benefit_period": {"type": "string", "enum": ["2", "5", "70"], "description": "Benefit period: 2=2yr, 5=5yr, 70=to age 70. Default 5."},
-                "coverage_type": {"type": "string", "enum": ["24hour", "non-occupational"], "description": "Coverage type. Default 24hour."},
-            },
-            "required": ["age", "gender", "occupation", "income"],
-        },
-    },
+    _tool("read_pipeline", "Read all prospects from the sales pipeline.", {}, []),
+    _tool("add_prospect", "Add a new prospect to the pipeline.", {
+        "name": {"type": "string", "description": "Prospect's full name"},
+        "phone": {"type": "string"}, "email": {"type": "string"},
+        "source": {"type": "string"}, "priority": {"type": "string"},
+        "stage": {"type": "string"}, "product": {"type": "string"},
+        "aum": {"type": "string"}, "revenue": {"type": "string"},
+        "next_followup": {"type": "string"}, "notes": {"type": "string"},
+    }, ["name"]),
+    _tool("update_prospect", "Update an existing prospect (partial name match).", {
+        "name": {"type": "string", "description": "Prospect name to find"},
+        "updates": {"type": "object", "description": "Fields to update: stage, priority, next_followup, notes, phone, email, product, aum, revenue, source, name"},
+    }, ["name", "updates"]),
+    _tool("delete_prospect", "Delete a prospect from the pipeline by name.", {
+        "name": {"type": "string", "description": "Prospect name to delete"},
+    }, ["name"]),
+    _tool("add_activity", "Log an activity in the Activity Log.", {
+        "prospect": {"type": "string"}, "action": {"type": "string"},
+        "outcome": {"type": "string"}, "next_step": {"type": "string"}, "notes": {"type": "string"},
+    }, ["prospect", "action"]),
+    _tool("get_overdue", "Get prospects with overdue follow-ups.", {}, []),
+    _tool("get_pipeline_summary", "Get pipeline summary: active deals, value, stages, overdue.", {}, []),
+    _tool("add_meeting", "Schedule a meeting with a prospect.", {
+        "date": {"type": "string", "description": "YYYY-MM-DD"}, "time": {"type": "string"},
+        "prospect": {"type": "string"}, "type": {"type": "string"},
+    }, ["date", "prospect"]),
+    _tool("get_meetings", "Get scheduled meetings.", {
+        "date_filter": {"type": "string", "description": "YYYY-MM-DD or 'this week' or empty for all"},
+    }, []),
+    _tool("cancel_meeting", "Cancel a meeting by prospect name.", {
+        "prospect": {"type": "string"},
+    }, ["prospect"]),
+    _tool("get_next_calls", "Get next prospects to call from insurance book.", {
+        "count": {"type": "integer", "description": "How many (default 5)"},
+    }, []),
+    _tool("log_book_call", "Log outcome of a call from insurance book.", {
+        "name": {"type": "string"}, "outcome": {"type": "string"},
+        "notes": {"type": "string"}, "retry_days": {"type": "integer"},
+    }, ["name", "outcome"]),
+    _tool("get_book_stats", "Get insurance book calling stats.", {}, []),
+    _tool("draft_email", "Draft an email for a prospect.", {
+        "prospect_name": {"type": "string"}, "email_type": {"type": "string"},
+        "details": {"type": "string"},
+    }, ["prospect_name", "email_type"]),
+    _tool("process_transcript", "Process a meeting transcript. Extract summary, needs, next steps.", {
+        "transcript": {"type": "string"},
+    }, ["transcript"]),
+    _tool("get_follow_up_sequence", "Get recommended follow-up cadence for a prospect's stage.", {
+        "prospect_name": {"type": "string"}, "stage": {"type": "string"},
+    }, ["prospect_name", "stage"]),
+    _tool("auto_set_follow_up", "Auto-set next follow-up date after stage change.", {
+        "prospect_name": {"type": "string"}, "stage": {"type": "string"},
+    }, ["prospect_name", "stage"]),
+    _tool("log_win_loss", "Log why a deal was won or lost.", {
+        "prospect_name": {"type": "string"},
+        "outcome": {"type": "string", "enum": ["Won", "Lost"]},
+        "reason": {"type": "string"},
+    }, ["prospect_name", "outcome", "reason"]),
+    _tool("get_win_loss_stats", "Get win/loss analysis: win rate, reasons, product breakdown.", {}, []),
+    _tool("get_term_quote", "Look up Co-operators term life insurance quotes.", {
+        "age": {"type": "integer"}, "gender": {"type": "string"},
+        "smoker": {"type": "boolean"}, "term": {"type": "string"},
+        "amount": {"type": "integer"}, "health": {"type": "string"},
+    }, ["age", "gender", "smoker", "term", "amount"]),
+    _tool("get_disability_quote", "Look up Edge Benefits disability insurance quotes.", {
+        "age": {"type": "integer"}, "gender": {"type": "string"},
+        "occupation": {"type": "string"}, "income": {"type": "integer"},
+        "benefit": {"type": "integer"}, "wait_days": {"type": "string"},
+        "benefit_period": {"type": "string"}, "coverage_type": {"type": "string"},
+    }, ["age", "gender", "occupation", "income"]),
 ]
 
 TOOL_FUNCTIONS = {
     "read_pipeline": lambda _: json.dumps(read_pipeline(), default=str),
     "add_prospect": lambda args: add_prospect(args),
     "update_prospect": lambda args: update_prospect(args["name"], args["updates"]),
+    "delete_prospect": lambda args: delete_prospect(args["name"]),
     "add_activity": lambda args: add_activity(args),
     "get_overdue": lambda _: get_overdue(),
     "get_pipeline_summary": lambda _: get_pipeline_summary(),
@@ -1342,6 +1204,7 @@ Key rules:
 - Long messages (500+ chars) that look like meeting transcripts → process_transcript.
 - "what's the sequence for X" / "follow-up plan for X" → get_follow_up_sequence.
 - When moving a prospect to a new stage, ALWAYS call auto_set_follow_up.
+- "delete [name]" / "remove [name]" → delete_prospect.
 - When moving to Closed-Won or Closed-Lost, ask WHY (this is the ONE time you can ask a question), then call log_win_loss.
 - "why do I win" / "win loss stats" / "why do I lose" → get_win_loss_stats.
 - "quote [name], [age][M/F] [smoker/non-smoker], $[amount] term [length]" → get_term_quote.
@@ -1361,59 +1224,50 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"Received: {user_msg}")
 
     try:
-        # Call Claude with tools
-        messages = [{"role": "user", "content": user_msg}]
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_msg},
+        ]
 
-        response = client.messages.create(
-            model="claude-sonnet-4-6",
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
             max_tokens=1024,
-            system=SYSTEM_PROMPT,
             tools=TOOLS,
             messages=messages,
         )
 
+        msg = response.choices[0].message
+
         # Process tool calls in a loop
-        while response.stop_reason == "tool_use":
-            tool_results = []
-            assistant_content = response.content
+        while msg.tool_calls:
+            messages.append(msg)
 
-            for block in response.content:
-                if block.type == "tool_use":
-                    tool_name = block.name
-                    tool_input = block.input
-                    logger.info(f"Tool call: {tool_name}({json.dumps(tool_input)})")
+            for tool_call in msg.tool_calls:
+                tool_name = tool_call.function.name
+                tool_input = json.loads(tool_call.function.arguments)
+                logger.info(f"Tool call: {tool_name}({json.dumps(tool_input)})")
 
-                    func = TOOL_FUNCTIONS.get(tool_name)
-                    if func:
-                        result = func(tool_input)
-                    else:
-                        result = f"Unknown tool: {tool_name}"
+                func = TOOL_FUNCTIONS.get(tool_name)
+                if func:
+                    result = func(tool_input)
+                else:
+                    result = f"Unknown tool: {tool_name}"
 
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": str(result),
-                    })
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": str(result),
+                })
 
-            messages.append({"role": "assistant", "content": assistant_content})
-            messages.append({"role": "user", "content": tool_results})
-
-            response = client.messages.create(
-                model="claude-sonnet-4-6",
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
                 max_tokens=1024,
-                system=SYSTEM_PROMPT,
                 tools=TOOLS,
                 messages=messages,
             )
+            msg = response.choices[0].message
 
-        # Extract final text response
-        reply = ""
-        for block in response.content:
-            if hasattr(block, "text"):
-                reply += block.text
-
-        if not reply:
-            reply = "Done! (no message returned)"
+        reply = msg.content or "Done!"
 
         await update.message.reply_text(reply)
         logger.info(f"Replied: {reply[:100]}")
