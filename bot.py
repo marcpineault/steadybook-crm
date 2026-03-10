@@ -5,6 +5,7 @@ import threading
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+import requests
 from openai import OpenAI
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -489,7 +490,6 @@ TERM_MAP = {"10": "3", "15": "4", "20": "5", "25": "6", "30": "7"}
 
 def _fetch_term4sale(age, sex, smoke, term_str, face):
     """Hit term4sale.ca API live for Co-operators rates."""
-    import requests
     birth_year = 2026 - age
     cat_code = TERM_MAP.get(term_str)
     if not cat_code:
@@ -512,7 +512,9 @@ def _fetch_term4sale(age, sex, smoke, term_str, face):
     try:
         resp = requests.get("https://www.term4sale.ca/apit4sc/compulifeapi/api.php/",
                            params=params, headers=headers, timeout=10)
+        logger.info(f"term4sale API status={resp.status_code}, body={resp.text[:100]}")
         if "scraping" in resp.text.lower() and len(resp.text) < 50:
+            logger.warning("term4sale blocked us (returned 'scraping')")
             return None
         data = resp.json()
         results = data.get("Compulife_ComparisonResults", {}).get("Compulife_Results", [])
@@ -523,8 +525,9 @@ def _fetch_term4sale(age, sex, smoke, term_str, face):
                     "monthly": r["Compulife_premiumM"].strip(),
                     "product": r["Compulife_product"].strip(),
                 }
-    except Exception:
-        pass
+        logger.info(f"Co-operators not found in {len(results)} results")
+    except Exception as e:
+        logger.error(f"term4sale API error: {e}")
     return None
 
 
