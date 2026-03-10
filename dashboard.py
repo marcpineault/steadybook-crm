@@ -1,7 +1,7 @@
 import html as _html
 import os
 import threading
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import json
@@ -285,6 +285,251 @@ def dashboard():
             except (ValueError, IndexError):
                 pass
 
+    # ── Revenue Forecasting ──
+    PREMIUM_TARGET = 200000
+    AUM_TARGET = 5000000
+
+    # Calculate won AUM
+    won_aum = 0
+    for p in won:
+        try:
+            won_aum += float(str(p["aum"]).replace("$","").replace(",","") or 0)
+        except ValueError:
+            pass
+
+    # Days into the year / days remaining
+    year_start = date(today.year, 1, 1)
+    year_end = date(today.year, 12, 31)
+    days_elapsed = (today - year_start).days + 1
+    days_total = (year_end - year_start).days + 1
+    days_remaining = days_total - days_elapsed
+    pct_year = days_elapsed / days_total * 100
+
+    # Premium progress (won_revenue = closed premium revenue)
+    premium_pct = (won_revenue / PREMIUM_TARGET * 100) if PREMIUM_TARGET else 0
+    premium_pace = (won_revenue / days_elapsed * days_total) if days_elapsed else 0
+    premium_on_pace = premium_pace >= PREMIUM_TARGET
+
+    # AUM progress
+    aum_pct = (won_aum / AUM_TARGET * 100) if AUM_TARGET else 0
+    aum_pace = (won_aum / days_elapsed * days_total) if days_elapsed else 0
+    aum_on_pace = aum_pace >= AUM_TARGET
+
+    # Pipeline weighted forecast (probability by stage)
+    stage_probability = {
+        "New Lead": 0.05, "Contacted": 0.10, "Discovery Call": 0.20,
+        "Needs Analysis": 0.35, "Plan Presentation": 0.50, "Proposal Sent": 0.65,
+        "Negotiation": 0.80, "Nurture": 0.05,
+    }
+    weighted_revenue = 0
+    weighted_aum = 0
+    for p in active:
+        prob = stage_probability.get(p["stage"], 0.10)
+        try:
+            weighted_revenue += float(str(p["revenue"]).replace("$","").replace(",","") or 0) * prob
+        except ValueError:
+            pass
+        try:
+            weighted_aum += float(str(p["aum"]).replace("$","").replace(",","") or 0) * prob
+        except ValueError:
+            pass
+
+    projected_revenue = won_revenue + weighted_revenue
+    projected_aum = won_aum + weighted_aum
+
+    # Monthly revenue tracking (won deals by month)
+    monthly_revenue = {}
+    monthly_aum = {}
+    for p in won:
+        fc = p.get("first_contact", "")
+        if fc and fc != "None":
+            try:
+                m = datetime.strptime(fc.split(" ")[0], "%Y-%m-%d")
+                if m.year == today.year:
+                    month_key = m.strftime("%b")
+                    month_num = m.month
+                    try:
+                        monthly_revenue[(month_num, month_key)] = monthly_revenue.get((month_num, month_key), 0) + float(str(p["revenue"]).replace("$","").replace(",","") or 0)
+                    except ValueError:
+                        pass
+                    try:
+                        monthly_aum[(month_num, month_key)] = monthly_aum.get((month_num, month_key), 0) + float(str(p["aum"]).replace("$","").replace(",","") or 0)
+                    except ValueError:
+                        pass
+            except (ValueError, IndexError):
+                pass
+
+    # Fill all months up to current
+    all_months = []
+    for m in range(1, today.month + 1):
+        mk = date(today.year, m, 1).strftime("%b")
+        all_months.append(mk)
+
+    monthly_rev_values = [monthly_revenue.get((i+1, mk), 0) for i, mk in enumerate(all_months)]
+    monthly_target_line = [PREMIUM_TARGET / 12] * len(all_months)
+
+    # ── Conversion Funnel ──
+    stage_order = ["New Lead", "Contacted", "Discovery Call", "Needs Analysis", "Plan Presentation", "Proposal Sent", "Negotiation", "Closed-Won"]
+    funnel_counts = {}
+    for s in stage_order:
+        funnel_counts[s] = 0
+    for p in prospects:
+        s = p["stage"]
+        if s in funnel_counts:
+            funnel_counts[s] += 1
+        # Count won deals as having passed through all prior stages
+        if s == "Closed-Won":
+            for prior in stage_order:
+                funnel_counts[prior] += 1
+
+    # Average days in each stage (for velocity)
+    stage_days = {}
+    for p in active:
+        s = p["stage"]
+        fc = p.get("first_contact", "")
+        if fc and fc != "None" and s:
+            try:
+                start = datetime.strptime(fc.split(" ")[0], "%Y-%m-%d").date()
+                days_in = (today - start).days
+                if s not in stage_days:
+                    stage_days[s] = []
+                stage_days[s].append(days_in)
+            except (ValueError, IndexError):
+                pass
+
+    avg_stage_days = {}
+    for s, days_list in stage_days.items():
+        avg_stage_days[s] = sum(days_list) / len(days_list)
+
+    # Conversion rates between stages
+    funnel_rates = []
+    for i in range(len(stage_order) - 1):
+        current = funnel_counts[stage_order[i]]
+        next_s = funnel_counts[stage_order[i + 1]]
+        rate = (next_s / current * 100) if current > 0 else 0
+        funnel_rates.append(rate)
+
+    # Source effectiveness
+    source_wins = {}
+    source_totals = {}
+    for p in prospects:
+        src = p["source"] or "Unknown"
+        if p["stage"]:
+            source_totals[src] = source_totals.get(src, 0) + 1
+            if p["stage"] == "Closed-Won":
+                source_wins[src] = source_wins.get(src, 0) + 1
+
+    source_conversion = {}
+    for src, total in source_totals.items():
+        wins = source_wins.get(src, 0)
+        source_conversion[src] = {"wins": wins, "total": total, "rate": (wins / total * 100) if total > 0 else 0}
+
+    # ── Activity Scoreboard ──
+    # Count activities this week and today
+    week_start = today - timedelta(days=today.weekday())  # Monday
+    activities_today = 0
+    activities_week = 0
+    calls_today = 0
+    calls_week = 0
+    emails_today = 0
+    emails_week = 0
+    meetings_today = 0
+    meetings_week = 0
+
+    for a in activities:
+        ad = a["date"]
+        if ad and ad != "None":
+            try:
+                activity_date = datetime.strptime(ad.split(" ")[0], "%Y-%m-%d").date()
+                action = a["action"].lower()
+                is_today = activity_date == today
+                is_week = activity_date >= week_start
+
+                if is_today:
+                    activities_today += 1
+                    if "call" in action or "phone" in action:
+                        calls_today += 1
+                    if "email" in action:
+                        emails_today += 1
+                    if "meeting" in action or "discovery" in action or "presentation" in action:
+                        meetings_today += 1
+
+                if is_week:
+                    activities_week += 1
+                    if "call" in action or "phone" in action:
+                        calls_week += 1
+                    if "email" in action:
+                        emails_week += 1
+                    if "meeting" in action or "discovery" in action or "presentation" in action:
+                        meetings_week += 1
+            except (ValueError, IndexError):
+                pass
+
+    # Include insurance book calls in call counts
+    for b in book_entries:
+        lc = b.get("last_called", "")
+        if lc and lc != "None":
+            try:
+                call_date = datetime.strptime(lc.split(" ")[0], "%Y-%m-%d").date()
+                if call_date == today:
+                    calls_today += 1
+                if call_date >= week_start:
+                    calls_week += 1
+            except (ValueError, IndexError):
+                pass
+
+    # Daily targets
+    DAILY_CALLS_TARGET = 10
+    DAILY_EMAILS_TARGET = 3
+    WEEKLY_MEETINGS_TARGET = 5
+
+    # Calculate streaks (consecutive days with at least 1 activity)
+    activity_dates = set()
+    for a in activities:
+        ad = a["date"]
+        if ad and ad != "None":
+            try:
+                activity_dates.add(datetime.strptime(ad.split(" ")[0], "%Y-%m-%d").date())
+            except (ValueError, IndexError):
+                pass
+    for b in book_entries:
+        lc = b.get("last_called", "")
+        if lc and lc != "None":
+            try:
+                activity_dates.add(datetime.strptime(lc.split(" ")[0], "%Y-%m-%d").date())
+            except (ValueError, IndexError):
+                pass
+
+    streak = 0
+    check_date = today
+    while check_date in activity_dates:
+        streak += 1
+        check_date -= timedelta(days=1)
+
+    # Pre-compute deals aging rows
+    aging_rows = ""
+    for p in sorted(active, key=lambda x: x.get("first_contact", "9999")):
+        fc = p.get("first_contact", "")
+        if fc and fc != "None":
+            try:
+                days_open = (today - datetime.strptime(fc.split(" ")[0], "%Y-%m-%d").date()).days
+                stale = '<span class="overdue">Stale</span>' if days_open > 30 else "OK"
+            except (ValueError, IndexError):
+                days_open = "?"
+                stale = "?"
+        else:
+            days_open = "?"
+            stale = "?"
+        stage_bg = STAGE_COLORS.get(p["stage"], "#BDC3C7")
+        aging_rows += f'<tr><td class="name-cell">{_esc(p["name"])}</td><td><span class="badge" style="background:{stage_bg}">{_esc(p["stage"])}</span></td><td>{days_open}</td><td>{stale}</td></tr>'
+
+    # Pre-compute source effectiveness rows
+    source_eff_rows = ""
+    for src, data in sorted(source_conversion.items(), key=lambda x: -x[1]["rate"]):
+        if data["total"] >= 1:
+            rate_bg = "#27ae60" if data["rate"] >= 30 else "#f39c12" if data["rate"] >= 15 else "#e74c3c"
+            source_eff_rows += f'<tr><td>{_esc(src)}</td><td>{data["total"]}</td><td>{data["wins"]}</td><td><span class="badge" style="background:{rate_bg}">{data["rate"]:.0f}%</span></td></tr>'
+
     # Stage counts for chart
     stage_counts = {}
     stage_revenue = {}
@@ -486,6 +731,183 @@ tr:hover {{ background: #f8f9fa; }}
 
 .editable-row:hover {{ background: #edf7f6 !important; }}
 
+/* Tabs */
+.tab-nav {{
+    display: flex;
+    gap: 0;
+    background: white;
+    border-radius: 12px 12px 0 0;
+    margin-bottom: 0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    overflow: hidden;
+}}
+.tab-btn {{
+    flex: 1;
+    padding: 14px 20px;
+    border: none;
+    background: white;
+    font-size: 13px;
+    font-weight: 600;
+    color: #7f8c8d;
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    transition: all 0.2s;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}}
+.tab-btn:hover {{ background: #f8f9fa; color: #2c3e50; }}
+.tab-btn.active {{ color: #1abc9c; border-bottom-color: #1abc9c; background: #f0faf8; }}
+.tab-content {{ display: none; }}
+.tab-content.active {{ display: block; }}
+
+/* Progress bars */
+.progress-bar-container {{
+    background: #f0f2f5;
+    border-radius: 8px;
+    height: 24px;
+    overflow: hidden;
+    position: relative;
+    margin: 8px 0;
+}}
+.progress-bar-fill {{
+    height: 100%;
+    border-radius: 8px;
+    transition: width 0.5s ease;
+    display: flex;
+    align-items: center;
+    padding-left: 8px;
+    font-size: 11px;
+    font-weight: 600;
+    color: white;
+    min-width: 40px;
+}}
+.progress-bar-fill.green {{ background: linear-gradient(90deg, #27ae60, #2ecc71); }}
+.progress-bar-fill.red {{ background: linear-gradient(90deg, #e74c3c, #e67e22); }}
+.progress-bar-fill.blue {{ background: linear-gradient(90deg, #2980b9, #3498db); }}
+.progress-bar-fill.teal {{ background: linear-gradient(90deg, #16a085, #1abc9c); }}
+
+.pace-indicator {{
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+}}
+.pace-ahead {{ background: #d5f5e3; color: #27ae60; }}
+.pace-behind {{ background: #fadbd8; color: #e74c3c; }}
+
+.target-card {{
+    background: white;
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    margin-bottom: 16px;
+}}
+.target-header {{
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}}
+.target-header h3 {{
+    font-size: 15px;
+    font-weight: 700;
+    color: #0f1b2d;
+}}
+.target-meta {{
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: #7f8c8d;
+    margin-top: 4px;
+}}
+
+/* Funnel */
+.funnel-stage {{
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+    gap: 12px;
+}}
+.funnel-label {{
+    width: 140px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #2c3e50;
+    text-align: right;
+}}
+.funnel-bar-wrap {{
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}}
+.funnel-bar {{
+    height: 28px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    padding-left: 10px;
+    font-size: 12px;
+    font-weight: 600;
+    color: white;
+    min-width: 30px;
+    transition: width 0.5s ease;
+}}
+.funnel-rate {{
+    font-size: 11px;
+    color: #7f8c8d;
+    white-space: nowrap;
+}}
+.funnel-velocity {{
+    font-size: 11px;
+    color: #95a5a6;
+    min-width: 60px;
+}}
+
+/* Scoreboard */
+.score-grid {{
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}}
+.score-card {{
+    background: white;
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    border-top: 4px solid #1abc9c;
+}}
+.score-card.fire {{ border-top-color: #e74c3c; }}
+.score-card h4 {{
+    font-size: 11px;
+    text-transform: uppercase;
+    color: #7f8c8d;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+}}
+.score-big {{
+    font-size: 36px;
+    font-weight: 700;
+    color: #0f1b2d;
+}}
+.score-target {{
+    font-size: 12px;
+    color: #7f8c8d;
+    margin-top: 4px;
+}}
+.streak-badge {{
+    display: inline-block;
+    background: linear-gradient(135deg, #e74c3c, #f39c12);
+    color: white;
+    padding: 6px 16px;
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: 700;
+}}
+
 .btn {{ display: inline-block; padding: 8px 20px; border-radius: 8px; font-size: 13px; font-weight: 600; border: none; cursor: pointer; }}
 .btn-primary {{ background: #1abc9c; color: white; }}
 .btn-primary:hover {{ background: #16a085; }}
@@ -552,7 +974,17 @@ tr:hover {{ background: #f8f9fa; }}
         </div>
     </div>
 
-    <div class="chart-grid">
+    <div class="tab-nav">
+        <button class="tab-btn active" onclick="showTab('pipeline')">Pipeline</button>
+        <button class="tab-btn" onclick="showTab('forecast')">Revenue Forecast</button>
+        <button class="tab-btn" onclick="showTab('funnel')">Conversion Funnel</button>
+        <button class="tab-btn" onclick="showTab('scoreboard')">Activity Score</button>
+    </div>
+
+    <!-- ═══ TAB 1: PIPELINE (existing) ═══ -->
+    <div class="tab-content active" id="tab-pipeline">
+
+    <div class="chart-grid" style="margin-top:24px">
         <div class="chart-card">
             <h3>By Stage</h3>
             <canvas id="stageChart"></canvas>
@@ -597,6 +1029,181 @@ tr:hover {{ background: #f8f9fa; }}
     </div>
 
     <div class="refresh-note">Click any prospect row to edit. Changes save to your pipeline instantly.</div>
+
+    </div><!-- end tab-pipeline -->
+
+    <!-- ═══ TAB 2: REVENUE FORECAST ═══ -->
+    <div class="tab-content" id="tab-forecast" style="margin-top:24px">
+
+        <div class="kpi-grid" style="grid-template-columns: repeat(4, 1fr)">
+            <div class="kpi-card green">
+                <div class="kpi-label">Won Premium</div>
+                <div class="kpi-value">{fmt_money(won_revenue)}</div>
+            </div>
+            <div class="kpi-card blue">
+                <div class="kpi-label">Won AUM</div>
+                <div class="kpi-value">{fmt_money(won_aum)}</div>
+            </div>
+            <div class="kpi-card purple">
+                <div class="kpi-label">Projected Premium</div>
+                <div class="kpi-value">{fmt_money(projected_revenue)}</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Projected AUM</div>
+                <div class="kpi-value">{fmt_money(projected_aum)}</div>
+            </div>
+        </div>
+
+        <div class="two-col">
+            <div class="target-card">
+                <div class="target-header">
+                    <h3>Premium Target: {fmt_money(PREMIUM_TARGET)}</h3>
+                    <span class="pace-indicator {'pace-ahead' if premium_on_pace else 'pace-behind'}">{'Ahead of pace' if premium_on_pace else 'Behind pace'}</span>
+                </div>
+                <div class="progress-bar-container">
+                    <div class="progress-bar-fill {'green' if premium_on_pace else 'red'}" style="width:{min(premium_pct, 100):.0f}%">{premium_pct:.0f}%</div>
+                </div>
+                <div class="target-meta">
+                    <span>Actual: {fmt_money(won_revenue)}</span>
+                    <span>Year pace: {fmt_money(premium_pace)}</span>
+                    <span>Gap: {fmt_money(max(0, PREMIUM_TARGET - won_revenue))}</span>
+                </div>
+                <div class="target-meta" style="margin-top:8px">
+                    <span>Pipeline weighted: +{fmt_money(weighted_revenue)}</span>
+                    <span>Need {fmt_money(max(0, (PREMIUM_TARGET - won_revenue - weighted_revenue) / max(1, days_remaining) * 30))}/mo to close gap</span>
+                </div>
+            </div>
+            <div class="target-card">
+                <div class="target-header">
+                    <h3>AUM Target: {fmt_money(AUM_TARGET)}</h3>
+                    <span class="pace-indicator {'pace-ahead' if aum_on_pace else 'pace-behind'}">{'Ahead of pace' if aum_on_pace else 'Behind pace'}</span>
+                </div>
+                <div class="progress-bar-container">
+                    <div class="progress-bar-fill {'green' if aum_on_pace else 'red'}" style="width:{min(aum_pct, 100):.0f}%">{aum_pct:.0f}%</div>
+                </div>
+                <div class="target-meta">
+                    <span>Actual: {fmt_money(won_aum)}</span>
+                    <span>Year pace: {fmt_money(aum_pace)}</span>
+                    <span>Gap: {fmt_money(max(0, AUM_TARGET - won_aum))}</span>
+                </div>
+                <div class="target-meta" style="margin-top:8px">
+                    <span>Pipeline weighted: +{fmt_money(weighted_aum)}</span>
+                    <span>Need {fmt_money(max(0, (AUM_TARGET - won_aum - weighted_aum) / max(1, days_remaining) * 30))}/mo to close gap</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="target-card">
+            <h3 style="margin-bottom:16px">Monthly Revenue vs Target</h3>
+            <canvas id="monthlyChart" height="80"></canvas>
+        </div>
+
+        <div class="target-card">
+            <div class="target-header">
+                <h3>Year Progress</h3>
+                <span style="font-size:12px;color:#7f8c8d">{days_elapsed} of {days_total} days ({pct_year:.0f}%)</span>
+            </div>
+            <div class="progress-bar-container">
+                <div class="progress-bar-fill teal" style="width:{pct_year:.0f}%">{pct_year:.0f}%</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Pipeline Weighted Forecast</h2>
+            <table>
+                <tr><th>Stage</th><th>Deals</th><th>Probability</th><th>Raw Revenue</th><th>Weighted</th><th>Raw AUM</th><th>Weighted AUM</th></tr>
+                {''.join(f'<tr><td><span class="badge" style="background:{STAGE_COLORS.get(s, "#BDC3C7")}">{_esc(s)}</span></td><td>{stage_counts.get(s, 0)}</td><td>{int(stage_probability.get(s, 0.1)*100)}%</td><td class="money">{fmt_money(stage_revenue.get(s, 0))}</td><td class="money">{fmt_money(stage_revenue.get(s, 0) * stage_probability.get(s, 0.1))}</td><td class="money">{fmt_money(sum(float(str(p["aum"]).replace("$","").replace(",","") or 0) for p in active if p["stage"]==s))}</td><td class="money">{fmt_money(sum(float(str(p["aum"]).replace("$","").replace(",","") or 0) for p in active if p["stage"]==s) * stage_probability.get(s, 0.1))}</td></tr>' for s in stage_order[:-1] if stage_counts.get(s, 0) > 0)}
+                <tr style="font-weight:700;border-top:2px solid #2c3e50"><td>Total Weighted</td><td></td><td></td><td></td><td class="money">{fmt_money(weighted_revenue)}</td><td></td><td class="money">{fmt_money(weighted_aum)}</td></tr>
+            </table>
+        </div>
+
+    </div><!-- end tab-forecast -->
+
+    <!-- ═══ TAB 3: CONVERSION FUNNEL ═══ -->
+    <div class="tab-content" id="tab-funnel" style="margin-top:24px">
+
+        <div class="section">
+            <h2>Sales Funnel</h2>
+            <div style="max-width:700px;margin:0 auto;padding:20px 0">
+                {''.join(f'<div class="funnel-stage"><div class="funnel-label">{_esc(stage_order[i])}</div><div class="funnel-bar-wrap"><div class="funnel-bar" style="width:{max(8, funnel_counts[stage_order[i]] / max(1, funnel_counts[stage_order[0]]) * 100):.0f}%;background:{STAGE_COLORS.get(stage_order[i], "#BDC3C7")}">{funnel_counts[stage_order[i]]}</div><div class="funnel-rate">{f"{funnel_rates[i]:.0f}% pass" if i < len(funnel_rates) else ""}</div><div class="funnel-velocity">{f"~{avg_stage_days.get(stage_order[i], 0):.0f}d avg" if stage_order[i] in avg_stage_days else ""}</div></div></div>' for i in range(len(stage_order)))}
+            </div>
+        </div>
+
+        <div class="two-col">
+            <div class="section">
+                <h2>Source Effectiveness</h2>
+                {'<table><tr><th>Source</th><th>Total Leads</th><th>Wins</th><th>Conversion</th></tr>' + source_eff_rows + '</table>' if source_conversion else '<div class="empty-state"><p>No source data yet.</p></div>'}
+            </div>
+            <div class="section">
+                <h2>Deals Aging (Active Pipeline)</h2>
+                {'<table><tr><th>Prospect</th><th>Stage</th><th>Days Open</th><th>Status</th></tr>' + aging_rows + '</table>' if active else '<div class="empty-state"><p>No active deals.</p></div>'}
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Stage Velocity</h2>
+            <canvas id="velocityChart" height="60"></canvas>
+        </div>
+
+    </div><!-- end tab-funnel -->
+
+    <!-- ═══ TAB 4: ACTIVITY SCOREBOARD ═══ -->
+    <div class="tab-content" id="tab-scoreboard" style="margin-top:24px">
+
+        <div style="text-align:center;margin-bottom:24px">
+            {f'<div class="streak-badge">🔥 {streak} Day Streak</div>' if streak > 0 else '<div style="color:#7f8c8d;font-size:14px">No streak yet — make a call to start one!</div>'}
+        </div>
+
+        <div class="score-grid">
+            <div class="score-card {'fire' if calls_today >= DAILY_CALLS_TARGET else ''}">
+                <h4>Calls Today</h4>
+                <div class="score-big">{calls_today}</div>
+                <div class="score-target">Target: {DAILY_CALLS_TARGET}</div>
+                <div class="progress-bar-container" style="margin-top:8px">
+                    <div class="progress-bar-fill {'green' if calls_today >= DAILY_CALLS_TARGET else 'blue'}" style="width:{min(calls_today / DAILY_CALLS_TARGET * 100, 100):.0f}%"></div>
+                </div>
+            </div>
+            <div class="score-card {'fire' if emails_today >= DAILY_EMAILS_TARGET else ''}">
+                <h4>Emails Today</h4>
+                <div class="score-big">{emails_today}</div>
+                <div class="score-target">Target: {DAILY_EMAILS_TARGET}</div>
+                <div class="progress-bar-container" style="margin-top:8px">
+                    <div class="progress-bar-fill {'green' if emails_today >= DAILY_EMAILS_TARGET else 'blue'}" style="width:{min(emails_today / DAILY_EMAILS_TARGET * 100, 100):.0f}%"></div>
+                </div>
+            </div>
+            <div class="score-card {'fire' if meetings_week >= WEEKLY_MEETINGS_TARGET else ''}">
+                <h4>Meetings This Week</h4>
+                <div class="score-big">{meetings_week}</div>
+                <div class="score-target">Target: {WEEKLY_MEETINGS_TARGET}</div>
+                <div class="progress-bar-container" style="margin-top:8px">
+                    <div class="progress-bar-fill {'green' if meetings_week >= WEEKLY_MEETINGS_TARGET else 'blue'}" style="width:{min(meetings_week / WEEKLY_MEETINGS_TARGET * 100, 100):.0f}%"></div>
+                </div>
+            </div>
+            <div class="score-card">
+                <h4>Total Activities Today</h4>
+                <div class="score-big">{activities_today}</div>
+                <div class="score-target">Week total: {activities_week}</div>
+            </div>
+        </div>
+
+        <div class="two-col">
+            <div class="section">
+                <h2>This Week's Numbers</h2>
+                <table>
+                    <tr><th>Metric</th><th>Today</th><th>This Week</th><th>Target</th></tr>
+                    <tr><td>Calls</td><td>{calls_today}</td><td>{calls_week}</td><td>{DAILY_CALLS_TARGET}/day</td></tr>
+                    <tr><td>Emails</td><td>{emails_today}</td><td>{emails_week}</td><td>{DAILY_EMAILS_TARGET}/day</td></tr>
+                    <tr><td>Meetings</td><td>{meetings_today}</td><td>{meetings_week}</td><td>{WEEKLY_MEETINGS_TARGET}/week</td></tr>
+                    <tr style="font-weight:700;border-top:2px solid #2c3e50"><td>Total Activities</td><td>{activities_today}</td><td>{activities_week}</td><td></td></tr>
+                </table>
+            </div>
+            <div class="section">
+                <h2>Insurance Book Progress</h2>
+                {'<div style="text-align:center;padding:20px"><div class="score-big" style="font-size:48px">' + str(len([b for b in book_entries if b["status"].lower() not in ("not called","")])) + '<span style="font-size:20px;color:#7f8c8d">/' + str(len(book_entries)) + '</span></div><div style="color:#7f8c8d;margin-top:4px">Contacts Called</div><div class="progress-bar-container" style="margin-top:12px"><div class="progress-bar-fill teal" style="width:' + str(min(len([b for b in book_entries if b["status"].lower() not in ("not called","")]) / max(1, len(book_entries)) * 100, 100)) + '%">' + str(int(len([b for b in book_entries if b["status"].lower() not in ("not called","")]) / max(1, len(book_entries)) * 100)) + '%</div></div><div class="target-meta" style="margin-top:8px"><span>Booked: ' + str(len([b for b in book_entries if b["status"].lower()=="booked meeting"])) + '</span><span>Not Interested: ' + str(len([b for b in book_entries if b["status"].lower()=="not interested"])) + '</span><span>Callbacks: ' + str(len([b for b in book_entries if b["status"].lower()=="callback"])) + '</span></div></div>' if book_entries else '<div class="empty-state"><p>Upload an insurance book CSV to track progress.</p></div>'}
+            </div>
+        </div>
+
+    </div><!-- end tab-scoreboard -->
 
 </div>
 
@@ -662,6 +1269,17 @@ tr:hover {{ background: #f8f9fa; }}
 </div>
 
 <script>
+// Tab switching
+function showTab(name) {{
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + name).classList.add('active');
+    event.target.classList.add('active');
+    // Initialize charts when their tab is shown
+    if (name === 'forecast' && !window._forecastInit) initForecastCharts();
+    if (name === 'funnel' && !window._funnelInit) initFunnelCharts();
+}}
+
 const chartColors = ['#1abc9c','#3498db','#8e44ad','#e67e22','#f39c12','#2980b9','#e74c3c','#27ae60','#95a5a6','#2c3e50'];
 
 new Chart(document.getElementById('stageChart'), {{
@@ -780,6 +1398,76 @@ async function deleteProspect() {{
 document.getElementById('editModal').addEventListener('click', function(e) {{
     if (e.target === this) closeModal();
 }});
+
+// Forecast charts (lazy init)
+function initForecastCharts() {{
+    window._forecastInit = true;
+    const ctx = document.getElementById('monthlyChart');
+    if (!ctx) return;
+    new Chart(ctx, {{
+        type: 'bar',
+        data: {{
+            labels: {all_months},
+            datasets: [
+                {{
+                    label: 'Won Premium',
+                    data: {monthly_rev_values},
+                    backgroundColor: '#1abc9c',
+                    borderRadius: 6,
+                }},
+                {{
+                    label: 'Monthly Target',
+                    data: {monthly_target_line},
+                    type: 'line',
+                    borderColor: '#e74c3c',
+                    borderDash: [5, 5],
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    fill: false,
+                }}
+            ]
+        }},
+        options: {{
+            responsive: true,
+            scales: {{
+                y: {{
+                    beginAtZero: true,
+                    ticks: {{ callback: v => '$' + (v/1000).toFixed(0) + 'K' }}
+                }}
+            }},
+            plugins: {{
+                legend: {{ position: 'bottom', labels: {{ boxWidth: 12, padding: 8, font: {{ size: 11 }} }} }}
+            }}
+        }}
+    }});
+}}
+
+// Velocity chart (lazy init)
+function initFunnelCharts() {{
+    window._funnelInit = true;
+    const ctx = document.getElementById('velocityChart');
+    if (!ctx) return;
+    const velocityLabels = {list(avg_stage_days.keys())};
+    const velocityData = {[round(v, 1) for v in avg_stage_days.values()]};
+    new Chart(ctx, {{
+        type: 'bar',
+        data: {{
+            labels: velocityLabels,
+            datasets: [{{
+                label: 'Avg Days in Stage',
+                data: velocityData,
+                backgroundColor: velocityData.map(d => d > 14 ? '#e74c3c' : d > 7 ? '#f39c12' : '#27ae60'),
+                borderRadius: 6,
+            }}]
+        }},
+        options: {{
+            indexAxis: 'y',
+            responsive: true,
+            scales: {{ x: {{ beginAtZero: true, title: {{ display: true, text: 'Days' }} }} }},
+            plugins: {{ legend: {{ display: false }} }}
+        }}
+    }});
+}}
 </script>
 
 </body>
