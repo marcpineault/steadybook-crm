@@ -90,7 +90,7 @@ async def extract_and_update(transcript: str, bot=None) -> str:
     prompt = build_extraction_prompt(transcript)
 
     response = client.chat.completions.create(
-        model="gpt-4.1",
+        model="gpt-4.1-nano",
         max_completion_tokens=1024,
         messages=[{"role": "user", "content": prompt}],
     )
