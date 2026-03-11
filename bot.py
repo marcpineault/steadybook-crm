@@ -62,6 +62,14 @@ def add_prospect(data: dict) -> str:
     return db.add_prospect(data)
 
 
+def lookup_prospect(name: str) -> str:
+    """Look up a single prospect by name."""
+    p = db.get_prospect_by_name(name)
+    if not p:
+        return f"No prospect found matching '{name}'."
+    return json.dumps(p, default=str)
+
+
 def update_prospect(name: str, updates: dict) -> str:
     """Update a prospect by name (via SQLite)."""
     return db.update_prospect(name, updates)
@@ -976,6 +984,9 @@ def _tool(name, desc, props, required=None):
 
 TOOLS = [
     _tool("read_pipeline", "Read all prospects from the sales pipeline.", {}, []),
+    _tool("lookup_prospect", "Look up a single prospect by name. Returns their details.", {
+        "name": {"type": "string", "description": "Prospect name to search for"},
+    }, ["name"]),
     _tool("add_prospect", "Add a new prospect to the pipeline.", {
         "name": {"type": "string", "description": "Prospect's full name"},
         "phone": {"type": "string"}, "email": {"type": "string"},
@@ -1057,6 +1068,7 @@ TOOLS = [
 
 TOOL_FUNCTIONS = {
     "read_pipeline": lambda _: json.dumps(read_pipeline(), default=str),
+    "lookup_prospect": lambda args: lookup_prospect(args["name"]),
     "add_prospect": lambda args: add_prospect(args),
     "update_prospect": lambda args: update_prospect(args["name"], args.get("updates") or {k: v for k, v in args.items() if k != "name"}),
     "delete_prospect": lambda args: delete_prospect(args["name"]),
@@ -1126,6 +1138,27 @@ Commands Marc might use:
 - draft emails
 - process meeting transcripts
 - mark priorities"""
+
+PROMPT_COWORKER = """You are an assistant for Marc's insurance team at Co-operators in London, Ontario. Today is {today}.
+
+{formatting}
+
+You are chatting with {coworker_name}, one of Marc's coworkers. Be friendly and helpful.
+
+You can help them with:
+- Looking up a prospect's status (use lookup_prospect)
+- Adding new leads/prospects to Marc's pipeline (use add_prospect, then auto_set_follow_up)
+- Getting disability or term life insurance quotes (use get_disability_quote or get_term_quote)
+- Answering general insurance questions
+
+When they add a new prospect, set source to "Referral from {coworker_name}" and add "Added by {coworker_name}" to notes.
+
+You CANNOT help with: editing/deleting prospects, viewing the full pipeline, managing meetings, exporting data, or anything else admin-only. If they ask, let them know Marc handles that.
+
+Keep it conversational and brief."""
+
+# Tools available to coworkers
+COWORKER_TOOL_NAMES = {"lookup_prospect", "add_prospect", "auto_set_follow_up", "get_disability_quote", "get_term_quote"}
 
 def _build_prompt(template):
     return template.format(today=date.today().strftime("%Y-%m-%d"), formatting=FORMATTING_RULE)
@@ -1502,14 +1535,49 @@ def _is_otter_transcript(text: str) -> bool:
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle free-form text messages."""
-    if not await _require_admin(update):
-        return
+    """Handle free-form text messages — admin gets full access, coworkers get limited assistant."""
+    is_admin = _is_admin(update)
     user_msg = update.message.text
     if not user_msg:
         return
 
     chat_id = update.effective_chat.id
+
+    # Coworker chat flow
+    if not is_admin:
+        coworker = update.effective_user.first_name or "Coworker"
+        logger.info(f"Coworker {coworker}: {user_msg}")
+
+        try:
+            coworker_tools = [t for t in TOOLS if t["function"]["name"] in COWORKER_TOOL_NAMES]
+            prompt = PROMPT_COWORKER.replace("{coworker_name}", coworker)
+            history = _get_history(chat_id)
+            messages = [{"role": "system", "content": _build_prompt(prompt)}]
+            messages.extend(history)
+            messages.append({"role": "user", "content": user_msg})
+
+            reply = await _llm_respond(update, messages, tools=coworker_tools)
+            _save_history(chat_id, user_msg, reply)
+            await update.message.reply_text(reply)
+            logger.info(f"Coworker {coworker} reply: {reply[:100]}")
+
+            # Notify Marc if the coworker added a prospect or did something actionable
+            action_keywords = ["added", "new prospect", "prospect:", "pipeline"]
+            if ADMIN_CHAT_ID and any(kw in reply.lower() for kw in action_keywords):
+                try:
+                    await context.bot.send_message(
+                        chat_id=ADMIN_CHAT_ID,
+                        text=f"Update from {coworker}:\n{reply}"
+                    )
+                except Exception as e:
+                    logger.warning(f"Could not notify admin: {e}")
+
+        except Exception as e:
+            logger.error(f"Coworker chat error: {e}")
+            await update.message.reply_text(f"Something went wrong: {str(e)[:200]}")
+        return
+
+    # Admin flow
     logger.info(f"Received: {user_msg}")
 
     # Detect Otter.ai transcripts from Zapier and process as call transcripts
@@ -1707,16 +1775,17 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _is_admin(update):
         await update.message.reply_text(
-            "Welcome! Here's what you can do:\n\n"
-            "/quote — get insurance quotes\n"
-            "  /quote disability office worker 50k income 3k benefit\n"
-            "  /quote term 35 male nonsmoker 500k 20yr\n\n"
-            "/add — add a prospect for Marc\n"
-            "  /add John Smith, interested in life insurance, 35 years old\n\n"
-            "/status — check on a prospect\n"
-            "  /status John Smith\n\n"
-            "You can also send a voice note about a prospect and it will be added automatically.\n\n"
-            "Marc will be notified when you add a prospect."
+            "Welcome! I'm Marc's assistant. You can just chat with me naturally.\n\n"
+            "Things I can help with:\n"
+            "- Add a lead: just tell me about them\n"
+            "- Check on a prospect: 'how's John Smith doing?'\n"
+            "- Get a quote: 'disability quote for an office worker making 50k'\n"
+            "- Send a voice note about a prospect\n\n"
+            "Or use commands:\n"
+            "/quote — insurance quotes\n"
+            "/add — add a prospect\n"
+            "/status — check on a prospect\n\n"
+            "Marc gets notified when you add a lead."
         )
         return
 
