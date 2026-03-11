@@ -105,7 +105,7 @@ async def extract_and_update(transcript: str, bot=None, source: str = "voice_not
 
     try:
         response = client.chat.completions.create(
-            model="gpt-5-nano",
+            model="gpt-5-mini",
             max_completion_tokens=1024,
             messages=[{"role": "user", "content": prompt}],
         )
