@@ -156,6 +156,17 @@ def init_db():
                 reason TEXT DEFAULT '',
                 product TEXT DEFAULT ''
             );
+
+            CREATE TABLE IF NOT EXISTS interactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT DEFAULT (datetime('now')),
+                prospect TEXT DEFAULT '',
+                source TEXT DEFAULT '',
+                raw_text TEXT DEFAULT '',
+                summary TEXT DEFAULT '',
+                action_items TEXT DEFAULT '',
+                created_at TEXT DEFAULT (datetime('now'))
+            );
         """)
     logger.info(f"Database initialized at {DB_PATH}")
 
@@ -439,6 +450,41 @@ def get_win_loss_stats():
         rows = conn.execute(
             "SELECT * FROM win_loss_log ORDER BY id DESC"
         ).fetchall()
+    return _rows_to_dicts(rows)
+
+
+# ── Interactions CRUD ──
+
+def add_interaction(data: dict) -> str:
+    """Log an interaction (voice note, transcript, email, booking)."""
+    with get_db() as conn:
+        conn.execute(
+            """INSERT INTO interactions (date, prospect, source, raw_text, summary, action_items)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (
+                data.get("date") or datetime.now().strftime("%Y-%m-%d %H:%M"),
+                data.get("prospect", ""),
+                data.get("source", ""),
+                data.get("raw_text", ""),
+                data.get("summary", ""),
+                data.get("action_items", ""),
+            ),
+        )
+    return f"Logged interaction for {data.get('prospect', 'unknown')} via {data.get('source', '?')}."
+
+
+def read_interactions(limit: int = 50, prospect: str = ""):
+    """Return recent interactions, newest first. Optionally filter by prospect."""
+    with get_db() as conn:
+        if prospect:
+            rows = conn.execute(
+                "SELECT * FROM interactions WHERE LOWER(prospect) LIKE ? ORDER BY id DESC LIMIT ?",
+                (f"%{prospect.lower()}%", limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM interactions ORDER BY id DESC LIMIT ?", (limit,)
+            ).fetchall()
     return _rows_to_dicts(rows)
 
 
