@@ -85,6 +85,134 @@ def process_booking(data: dict) -> str:
         return f"New prospect: {name} — {booking_notes}. Meeting added."
 
 
+def process_calendar_event(data: dict) -> str:
+    """Process an Outlook calendar event from Power Automate.
+
+    Handles multiple attendees, location, categories, and meeting type detection.
+    Expected data fields:
+      subject, start_time, end_time, location, body, categories,
+      attendees: [{"name": "...", "email": "..."}]
+      is_online (bool), online_meeting_url
+    """
+    subject = (data.get("subject") or "").strip()
+    if not subject:
+        return "No subject in calendar event."
+
+    attendees = data.get("attendees") or []
+    # If attendees came as a single dict (one attendee), wrap it
+    if isinstance(attendees, dict):
+        attendees = [attendees]
+
+    start_time = data.get("start_time") or data.get("date") or ""
+    end_time = data.get("end_time") or ""
+    location = data.get("location") or ""
+    body = data.get("body") or data.get("notes") or ""
+    categories = data.get("categories") or ""
+    is_online = data.get("is_online", False)
+    online_url = data.get("online_meeting_url") or ""
+
+    # Build meeting context
+    meeting_type = _classify_meeting(subject, location, is_online)
+    meeting_details = f"{meeting_type}: {subject}"
+    if location:
+        meeting_details += f" @ {location}"
+    if is_online and online_url:
+        meeting_details += " (virtual)"
+    if body:
+        meeting_details += f" | {body[:200]}"
+
+    results = []
+
+    if not attendees:
+        # No attendees — just log the meeting for Marc's schedule
+        if start_time:
+            meeting_date, meeting_time = _parse_datetime(start_time)
+            db.add_meeting({
+                "date": meeting_date, "time": meeting_time,
+                "prospect": "", "type": meeting_type,
+                "prep_notes": meeting_details,
+            })
+        results.append(f"Calendar event logged: {subject}")
+    else:
+        for att in attendees:
+            att_name = (att.get("name") or "").strip()
+            att_email = (att.get("email") or "").strip()
+
+            if not att_name and not att_email:
+                continue
+            if not att_name:
+                att_name = att_email.split("@")[0].replace(".", " ").title()
+
+            # Skip Marc's own email
+            if att_email and "marcpineault" in att_email.lower():
+                continue
+            if att_email and "pineault" in att_email.lower() and "cooperators" in att_email.lower():
+                continue
+
+            existing = db.get_prospect_by_name(att_name)
+            if existing:
+                old_notes = existing.get("notes", "")
+                combined = f"{old_notes} | [Calendar] {meeting_details}" if old_notes else f"[Calendar] {meeting_details}"
+                updates = {"notes": combined}
+                if att_email and not existing.get("email"):
+                    updates["email"] = att_email
+                db.update_prospect(att_name, updates)
+                action = f"Updated {existing['name']}"
+            else:
+                product = _guess_product(subject, body)
+                db.add_prospect({
+                    "name": att_name, "email": att_email, "phone": "",
+                    "source": "Calendar Event", "stage": "New Lead",
+                    "priority": "Warm", "product": product,
+                    "notes": f"[Calendar] {meeting_details}",
+                })
+                _score_and_schedule(att_name)
+                action = f"New prospect: {att_name}"
+
+            # Add meeting entry
+            if start_time:
+                meeting_date, meeting_time = _parse_datetime(start_time)
+                db.add_meeting({
+                    "date": meeting_date, "time": meeting_time,
+                    "prospect": att_name, "type": meeting_type,
+                    "prep_notes": meeting_details,
+                })
+
+            db.add_interaction({
+                "prospect": att_name, "source": "calendar_event",
+                "raw_text": json.dumps(data)[:2000],
+                "summary": meeting_details,
+            })
+            db.add_activity({
+                "prospect": att_name, "action": f"Calendar event: {meeting_type}",
+                "outcome": subject, "next_step": "Prepare for meeting",
+            })
+            results.append(action)
+
+    if not results:
+        return f"Calendar event logged: {subject} (no attendees to track)"
+
+    return f"Calendar event processed:\n" + "\n".join(f"  {r}" for r in results)
+
+
+def _classify_meeting(subject: str, location: str, is_online: bool) -> str:
+    """Classify a calendar event into a meeting type."""
+    text = f"{subject} {location}".lower()
+    if any(w in text for w in ["discovery", "intro", "initial", "first"]):
+        return "Discovery Call"
+    if any(w in text for w in ["review", "annual", "check-in", "checkin"]):
+        return "Review Meeting"
+    if any(w in text for w in ["presentation", "proposal", "plan pres"]):
+        return "Plan Presentation"
+    if any(w in text for w in ["sign", "closing", "paperwork"]):
+        return "Closing"
+    if any(w in text for w in ["needs", "analysis", "fact find"]):
+        return "Needs Analysis"
+    if is_online or any(w in text for w in ["teams", "zoom", "virtual", "call", "phone"]):
+        return "Call"
+    return "Meeting"
+
+
 def process_email_lead(data: dict) -> str:
     """Process a forwarded lead email from Zapier."""
     body = data.get("body", "")

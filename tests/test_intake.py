@@ -111,3 +111,52 @@ def test_process_email_lead_minimal(monkeypatch):
         "body": "New lead: Jane Doe, wants auto insurance quote",
     })
     assert "Jane" in result
+
+
+def test_process_calendar_event_with_attendees():
+    from intake import process_calendar_event
+    result = process_calendar_event({
+        "subject": "Discovery Call - Life Insurance",
+        "start_time": "2026-03-20T10:00:00",
+        "end_time": "2026-03-20T11:00:00",
+        "location": "Co-operators Office",
+        "body": "Initial meeting to discuss life insurance needs",
+        "attendees": [
+            {"name": "Tom Wilson", "email": "tom@example.com"},
+            {"name": "Lisa Wilson", "email": "lisa@example.com"},
+        ],
+    })
+    assert "Tom Wilson" in result
+    assert "Lisa Wilson" in result
+    tom = db.get_prospect_by_name("Tom Wilson")
+    assert tom is not None
+    assert tom["email"] == "tom@example.com"
+    assert tom["source"] == "Calendar Event"
+    lisa = db.get_prospect_by_name("Lisa Wilson")
+    assert lisa is not None
+    meetings = db.read_meetings()
+    assert any(m["prospect"] == "Tom Wilson" for m in meetings)
+
+
+def test_process_calendar_event_no_attendees():
+    from intake import process_calendar_event
+    result = process_calendar_event({
+        "subject": "Team Standup",
+        "start_time": "2026-03-20T09:00:00",
+    })
+    assert "logged" in result.lower()
+
+
+def test_process_calendar_event_skips_marc():
+    from intake import process_calendar_event
+    result = process_calendar_event({
+        "subject": "Client Call",
+        "start_time": "2026-03-20T10:00:00",
+        "attendees": [
+            {"name": "Marc Pineault", "email": "MarcPineault@cooperators.onmicrosoft.com"},
+            {"name": "Bob Smith", "email": "bob@example.com"},
+        ],
+    })
+    assert "Bob Smith" in result
+    assert db.get_prospect_by_name("Marc Pineault") is None
+    assert db.get_prospect_by_name("Bob Smith") is not None

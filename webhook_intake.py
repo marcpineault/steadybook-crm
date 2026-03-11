@@ -10,7 +10,7 @@ import os
 
 from flask import Blueprint, jsonify, request
 
-from intake import process_booking, process_email_lead
+from intake import process_booking, process_calendar_event, process_email_lead
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +49,8 @@ def intake_webhook():
     try:
         if intake_type == "booking":
             result = process_booking(data)
+        elif intake_type == "calendar_event":
+            result = process_calendar_event(data)
         elif intake_type == "email_lead":
             result = process_email_lead(data)
         else:
