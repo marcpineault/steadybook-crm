@@ -815,7 +815,7 @@ Marc's style:
 Return ONLY the email (subject line + body). No commentary."""
 
     response = client.chat.completions.create(
-        model="gpt-4.1",
+        model="gpt-5",
         max_completion_tokens=1024,
         messages=[{"role": "user", "content": prompt}],
     )
@@ -845,7 +845,7 @@ FOLLOW-UP EMAIL: [draft a short casual follow-up email in Marc's style]
 Marc's email style: casual, direct, short. Signs off as "Marc Pineault, Financial Advisor | Co-operators"."""
 
     response = client.chat.completions.create(
-        model="gpt-4.1",
+        model="gpt-5",
         max_completion_tokens=2048,
         messages=[{"role": "user", "content": prompt}],
     )
@@ -1027,7 +1027,7 @@ _chat_histories = {}
 async def _llm_respond(update, messages, tools=None):
     """Send messages to LLM, process tool calls, return reply."""
     response = client.chat.completions.create(
-        model="gpt-4.1",
+        model="gpt-5",
         max_completion_tokens=1024,
         tools=tools or TOOLS,
         tool_choice="auto",
@@ -1084,7 +1084,7 @@ async def _llm_respond(update, messages, tools=None):
             })
 
         response = client.chat.completions.create(
-            model="gpt-4.1",
+            model="gpt-5",
             max_completion_tokens=1024,
             tools=tools or TOOLS,
             messages=messages,
