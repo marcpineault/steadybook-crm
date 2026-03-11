@@ -817,7 +817,177 @@ tr:hover {{ background: #f8f9fa; }}
 @media (max-width: 900px) {{
     .chart-grid {{ grid-template-columns: 1fr; }}
     .two-col {{ grid-template-columns: 1fr; }}
-    .kpi-grid {{ grid-template-columns: repeat(2, 1fr); }}
+    .kpi-grid {{ grid-template-columns: repeat(2, 1fr) !important; }}
+}}
+
+/* ── Mobile-first optimizations ── */
+@media (max-width: 600px) {{
+    /* Header */
+    .header {{
+        padding: 16px;
+        flex-direction: column;
+        gap: 8px;
+        text-align: center;
+    }}
+    .header h1 {{ font-size: 18px; }}
+    .header .updated {{ font-size: 11px; }}
+
+    /* Container */
+    .container {{ padding: 12px; }}
+
+    /* KPI cards — 2 per row, tighter */
+    .kpi-grid {{
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 8px !important;
+        margin-bottom: 12px !important;
+    }}
+    .kpi-card {{
+        padding: 12px 14px;
+        border-radius: 8px;
+    }}
+    .kpi-value {{ font-size: 22px; }}
+    .kpi-label {{ font-size: 10px; }}
+
+    /* Tabs — scrollable horizontal */
+    .tab-nav {{
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        border-radius: 8px 8px 0 0;
+        scrollbar-width: none;
+    }}
+    .tab-nav::-webkit-scrollbar {{ display: none; }}
+    .tab-btn {{
+        padding: 10px 12px;
+        font-size: 11px;
+        white-space: nowrap;
+        min-width: fit-content;
+        letter-spacing: 0;
+    }}
+
+    /* Charts */
+    .chart-grid {{
+        grid-template-columns: 1fr !important;
+        gap: 12px;
+        margin-top: 12px !important;
+    }}
+    .chart-card {{
+        padding: 14px;
+        border-radius: 8px;
+    }}
+
+    /* Sections */
+    .section {{
+        padding: 14px;
+        margin-bottom: 12px;
+        border-radius: 8px;
+    }}
+    .section h2 {{ font-size: 14px; margin-bottom: 10px; }}
+
+    /* Two columns → stack */
+    .two-col {{
+        grid-template-columns: 1fr !important;
+        gap: 12px;
+    }}
+
+    /* Tables — horizontal scroll wrapper */
+    .section table,
+    .target-card table {{
+        display: block;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        white-space: nowrap;
+    }}
+    th, td {{ padding: 8px 10px; font-size: 12px; }}
+    .notes {{ max-width: 120px; white-space: normal; }}
+    .name-cell {{ font-size: 12px; }}
+
+    /* Target cards */
+    .target-card {{
+        padding: 16px;
+        border-radius: 8px;
+        margin-bottom: 12px;
+    }}
+    .target-header {{
+        flex-direction: column;
+        gap: 6px;
+        align-items: flex-start;
+    }}
+    .target-header h3 {{ font-size: 14px; }}
+    .target-meta {{
+        flex-direction: column;
+        gap: 2px;
+        font-size: 11px;
+    }}
+
+    /* Funnel */
+    .funnel-stage {{
+        flex-wrap: wrap;
+        gap: 4px;
+        margin-bottom: 10px;
+    }}
+    .funnel-label {{
+        width: 100%;
+        text-align: left;
+        font-size: 11px;
+    }}
+    .funnel-bar {{ height: 24px; font-size: 11px; }}
+    .funnel-rate {{ font-size: 10px; }}
+    .funnel-velocity {{ font-size: 10px; min-width: 50px; }}
+
+    /* Scoreboard */
+    .score-grid {{
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 8px;
+    }}
+    .score-card {{ padding: 14px; border-radius: 8px; }}
+    .score-big {{ font-size: 28px; }}
+    .score-target {{ font-size: 11px; }}
+    .streak-badge {{ font-size: 12px; padding: 5px 14px; }}
+
+    /* Progress bars */
+    .progress-bar-container {{ height: 20px; }}
+    .progress-bar-fill {{ font-size: 10px; min-width: 30px; }}
+
+    /* Pace indicator */
+    .pace-indicator {{ font-size: 10px; padding: 2px 8px; }}
+
+    /* Modal */
+    .modal {{
+        padding: 20px;
+        border-radius: 12px;
+        width: 95vw;
+        max-height: 85vh;
+    }}
+    .modal h2 {{ font-size: 16px; margin-bottom: 14px; }}
+    .modal .form-row {{
+        grid-template-columns: 1fr;
+        gap: 0;
+    }}
+    .modal input, .modal select, .modal textarea {{
+        font-size: 16px; /* prevents iOS zoom on focus */
+        padding: 10px 12px;
+    }}
+    .modal label {{ margin-top: 8px; }}
+    .modal .actions {{
+        flex-direction: column-reverse;
+        gap: 8px;
+    }}
+    .modal .actions .left {{ margin-right: 0; }}
+    .modal .actions .btn {{ width: 100%; text-align: center; padding: 12px; }}
+
+    /* Add button */
+    .add-btn {{ float: none; display: block; width: 100%; margin-bottom: 10px; text-align: center; }}
+
+    /* Pipeline header with button */
+    .section h2 {{
+        flex-direction: column !important;
+        gap: 8px;
+        align-items: flex-start !important;
+    }}
+    .section h2 .btn {{ width: 100%; text-align: center; }}
+
+    /* Refresh note */
+    .refresh-note {{ font-size: 11px; padding: 8px; }}
 }}
 </style>
 </head>
