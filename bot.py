@@ -14,6 +14,7 @@ import db
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+from voice_handler import handle_voice_message
 
 load_dotenv()
 
@@ -1448,6 +1449,7 @@ def build_application():
     app.add_handler(CommandHandler("priority", cmd_priority))
     app.add_handler(CommandHandler("p", cmd_priority))  # shortcut
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
+    app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice_message))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     async def error_handler(update, context):
