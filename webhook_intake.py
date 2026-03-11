@@ -4,6 +4,7 @@ Flask blueprint that receives payloads from Power Automate (Outlook Bookings) an
 All requests must include X-Webhook-Secret header matching INTAKE_WEBHOOK_SECRET env var.
 """
 
+import hmac
 import logging
 import os
 
@@ -24,7 +25,7 @@ def _check_auth() -> bool:
         logger.warning("INTAKE_WEBHOOK_SECRET not set — rejecting all intake webhooks")
         return False
     token = request.headers.get("X-Webhook-Secret", "")
-    return token == WEBHOOK_SECRET
+    return hmac.compare_digest(token, WEBHOOK_SECRET)
 
 
 @intake_bp.route("/api/intake", methods=["POST"])

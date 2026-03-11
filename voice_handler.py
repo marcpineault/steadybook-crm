@@ -135,6 +135,9 @@ async def extract_and_update(transcript: str, bot=None) -> str:
                 "product": p.get("product", ""),
                 "notes": p.get("notes", ""),
             })
+            # Score and schedule follow-up for new prospects
+            from intake import _score_and_schedule
+            _score_and_schedule(name)
             results.append(f"New prospect: {name} — {p.get('product', '?')}")
 
         db.add_interaction({
@@ -167,6 +170,7 @@ async def handle_voice_message(update, context):
 
     await update.message.reply_text("Got your voice note, processing...")
 
+    tmp_path = None
     try:
         file = await voice.get_file()
         with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp:
@@ -176,11 +180,16 @@ async def handle_voice_message(update, context):
         transcript = await transcribe_voice(tmp_path)
         logger.info(f"Transcription: {transcript[:200]}")
 
-        os.unlink(tmp_path)
-
         if not transcript.strip():
             await update.message.reply_text("Couldn't make out what you said. Try again?")
             return
+
+        # Save raw transcript before extraction so nothing is lost on failure
+        db.add_interaction({
+            "prospect": "",
+            "source": "voice_note_raw",
+            "raw_text": transcript,
+        })
 
         result = await extract_and_update(transcript)
         await update.message.reply_text(result)
@@ -188,3 +197,6 @@ async def handle_voice_message(update, context):
     except Exception as e:
         logger.error(f"Voice handler error: {e}")
         await update.message.reply_text(f"Error processing voice note: {str(e)[:200]}")
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
