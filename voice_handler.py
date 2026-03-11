@@ -55,6 +55,10 @@ Rules:
 
 def parse_extraction_response(raw: str) -> list[dict]:
     """Parse the AI extraction response into a list of prospect dicts."""
+    if not raw:
+        logger.warning("AI returned empty/null response")
+        return []
+
     try:
         text = raw.strip()
         if text.startswith("```"):
@@ -67,12 +71,21 @@ def parse_extraction_response(raw: str) -> list[dict]:
                 text = text[4:].strip()
 
         data = json.loads(text)
-        prospects = data.get("prospects", [])
-        if not isinstance(prospects, list):
-            return []
-        return prospects
-    except (json.JSONDecodeError, AttributeError, KeyError):
-        logger.warning(f"Failed to parse extraction response: {raw[:200]}")
+
+        # Handle {"prospects": [...]} format
+        if isinstance(data, dict):
+            prospects = data.get("prospects", [])
+            if not isinstance(prospects, list):
+                return []
+            return prospects
+
+        # Handle direct list format: [{"name": "...", ...}]
+        if isinstance(data, list):
+            return data
+
+        return []
+    except (json.JSONDecodeError, AttributeError, KeyError) as e:
+        logger.warning(f"Failed to parse extraction response ({e}): {raw[:300]}")
         return []
 
 
@@ -97,6 +110,7 @@ async def extract_and_update(transcript: str, bot=None, source: str = "voice_not
             messages=[{"role": "user", "content": prompt}],
         )
         raw = response.choices[0].message.content
+        logger.info(f"AI extraction raw response ({len(raw) if raw else 0} chars): {(raw or '')[:300]}")
         prospects = parse_extraction_response(raw)
     except Exception as e:
         logger.error(f"AI extraction failed: {e}")
