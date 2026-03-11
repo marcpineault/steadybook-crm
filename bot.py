@@ -1574,8 +1574,8 @@ def main():
     # Initialize bot (sets up webhook with Telegram)
     init_bot()
 
-    # Register webhook route on Flask app
-    register_webhook(flask_app)
+    # Register webhook route on Flask app (pass callback to avoid __main__ vs bot module split)
+    register_webhook(flask_app, process_webhook_update)
 
     # Handle SIGTERM from Railway for clean shutdown
     def handle_sigterm(signum, frame):

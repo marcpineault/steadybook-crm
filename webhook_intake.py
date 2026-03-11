@@ -66,8 +66,13 @@ def intake_webhook():
 def _notify_telegram(message: str):
     """Send a notification to the Telegram bot chat. Best-effort, non-blocking."""
     try:
-        from bot import telegram_app, bot_event_loop
         import asyncio
+        import sys
+
+        # bot.py runs as __main__, so globals live there (not in 'bot' module)
+        main_mod = sys.modules.get("__main__")
+        telegram_app = getattr(main_mod, "telegram_app", None)
+        bot_event_loop = getattr(main_mod, "bot_event_loop", None)
 
         chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
         if not telegram_app or not bot_event_loop or not chat_id:
