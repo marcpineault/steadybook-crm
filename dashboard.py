@@ -1,8 +1,11 @@
 import html as _html
+import hmac
 import os
 import re
+import secrets
 import threading
 from datetime import date, datetime, timedelta
+from functools import wraps
 
 import json
 
@@ -14,7 +17,60 @@ def _esc(val):
     """Escape HTML to prevent XSS."""
     return _html.escape(str(val)) if val else ""
 
+
+def _esc_json_attr(val):
+    """Escape a JSON string for safe embedding in an HTML attribute.
+
+    Uses html.escape with quote=True to handle &, <, >, and quotes,
+    ensuring the JSON cannot break out of the attribute context.
+    """
+    return _html.escape(val, quote=True)
+
+
+DASHBOARD_API_KEY = os.environ.get("DASHBOARD_API_KEY", "")
+
+# In-memory set of valid CSRF tokens (generated per dashboard page load)
+_csrf_tokens: set = set()
+_MAX_CSRF_TOKENS = 200
+
+
+def _generate_csrf_token() -> str:
+    """Generate a CSRF token, store it, and return it."""
+    token = secrets.token_urlsafe(32)
+    # Evict oldest tokens if we hit the limit
+    while len(_csrf_tokens) >= _MAX_CSRF_TOKENS:
+        _csrf_tokens.pop()
+    _csrf_tokens.add(token)
+    return token
+
+
+def _require_auth(f):
+    """Decorator: accepts either X-API-Key header or X-CSRF-Token header."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        # Check API key first (for external/programmatic access)
+        api_key = request.headers.get("X-API-Key", "")
+        if DASHBOARD_API_KEY and api_key and hmac.compare_digest(api_key, DASHBOARD_API_KEY):
+            return f(*args, **kwargs)
+        # Check CSRF token (for dashboard UI)
+        csrf_token = request.headers.get("X-CSRF-Token", "")
+        if csrf_token and csrf_token in _csrf_tokens:
+            return f(*args, **kwargs)
+        return jsonify({"error": "Unauthorized"}), 401
+    return decorated
+
+
 app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 1 * 1024 * 1024  # 1 MB max request size
+
+
+@app.after_request
+def _set_security_headers(response):
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    return response
 
 STAGE_COLORS = {
     "New Lead": "#BDC3C7", "Contacted": "#3498DB", "Discovery Call": "#8E44AD",
@@ -36,6 +92,7 @@ def read_data():
 
 
 @app.route("/api/prospect", methods=["POST"])
+@_require_auth
 def api_add_prospect():
     data = request.json
     if not data or not data.get("name"):
@@ -45,6 +102,7 @@ def api_add_prospect():
 
 
 @app.route("/api/prospect/<name>", methods=["PUT"])
+@_require_auth
 def api_update_prospect(name):
     data = request.json
     if not data:
@@ -56,6 +114,7 @@ def api_update_prospect(name):
 
 
 @app.route("/api/prospect/<name>", methods=["DELETE"])
+@_require_auth
 def api_delete_prospect(name):
     result = db.delete_prospect(name)
     if "not found" in result.lower():
@@ -64,6 +123,7 @@ def api_delete_prospect(name):
 
 
 @app.route("/api/prospects")
+@_require_auth
 def api_list_prospects():
     prospects, _, _, _ = read_data()
     return jsonify(prospects)
@@ -125,6 +185,7 @@ def fmt_money_full(val):
 
 @app.route("/")
 def dashboard():
+    csrf_token = _generate_csrf_token()
     prospects, activities, meetings, book_entries = read_data()
     today = date.today()
     now = datetime.now()
@@ -452,7 +513,7 @@ def dashboard():
         fu_class = "overdue" if is_overdue else ""
         fu_display = p["next_followup"].split(" ")[0] if p["next_followup"] and p["next_followup"] != "None" else ""
 
-        p_json_escaped = _esc(json.dumps(p))
+        p_json_escaped = _esc_json_attr(json.dumps(p))
         prospect_rows += f"""<tr class="editable-row" data-prospect="{p_json_escaped}" onclick="openEdit(JSON.parse(this.dataset.prospect))" style="cursor:pointer">
             <td class="name-cell">{_esc(p["name"])}</td>
             <td><span class="badge" style="background:{pri_bg}">{_esc(p["priority"])}</span></td>
@@ -517,6 +578,7 @@ def dashboard():
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="csrf-token" content="{csrf_token}">
 <title>Calm Money — Pipeline Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <style>
@@ -1440,16 +1502,19 @@ function getFormData() {{
     }};
 }}
 
+const _csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+
 async function saveProspect() {{
     const data = getFormData();
     if (!data.name) {{ alert('Name is required'); return; }}
+    const hdrs = {{'Content-Type': 'application/json', 'X-CSRF-Token': _csrfToken}};
     try {{
         let res;
         if (isAdding) {{
-            res = await fetch('/api/prospect', {{ method: 'POST', headers: {{'Content-Type': 'application/json'}}, body: JSON.stringify(data) }});
+            res = await fetch('/api/prospect', {{ method: 'POST', headers: hdrs, body: JSON.stringify(data) }});
         }} else {{
             const origName = document.getElementById('origName').value;
-            res = await fetch('/api/prospect/' + encodeURIComponent(origName), {{ method: 'PUT', headers: {{'Content-Type': 'application/json'}}, body: JSON.stringify(data) }});
+            res = await fetch('/api/prospect/' + encodeURIComponent(origName), {{ method: 'PUT', headers: hdrs, body: JSON.stringify(data) }});
         }}
         const result = await res.json();
         if (result.ok) {{ closeModal(); location.reload(); }}
@@ -1461,7 +1526,7 @@ async function deleteProspect() {{
     const name = document.getElementById('origName').value;
     if (!confirm('Delete ' + name + '?')) return;
     try {{
-        const res = await fetch('/api/prospect/' + encodeURIComponent(name), {{ method: 'DELETE' }});
+        const res = await fetch('/api/prospect/' + encodeURIComponent(name), {{ method: 'DELETE', headers: {{'X-CSRF-Token': _csrfToken}} }});
         const result = await res.json();
         if (result.ok) {{ closeModal(); location.reload(); }}
         else alert(result.error || 'Error deleting');
@@ -1554,10 +1619,17 @@ def register_webhook(flask_app, process_update_fn=None):
     from webhook_intake import intake_bp
     flask_app.register_blueprint(intake_bp)
 
+    telegram_webhook_secret = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
+
     @flask_app.route("/webhook", methods=["POST"])
     def webhook():
         if process_update_fn is None:
             return "Bot not initialized", 503
+        # Validate Telegram's secret_token header if configured
+        if telegram_webhook_secret:
+            token = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+            if not hmac.compare_digest(token, telegram_webhook_secret):
+                return "Unauthorized", 401
         update_data = request.get_json(force=True, silent=True)
         if not update_data:
             return "ok"

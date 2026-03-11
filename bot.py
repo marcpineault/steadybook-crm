@@ -2018,12 +2018,13 @@ def init_bot():
 
         # Set webhook URL — Railway provides RAILWAY_PUBLIC_DOMAIN
         domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "")
+        telegram_webhook_secret = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
         if domain:
             webhook_url = f"https://{domain}/webhook"
-            await telegram_app.bot.set_webhook(
-                url=webhook_url,
-                drop_pending_updates=True,
-            )
+            webhook_kwargs = {"url": webhook_url, "drop_pending_updates": True}
+            if telegram_webhook_secret:
+                webhook_kwargs["secret_token"] = telegram_webhook_secret
+            await telegram_app.bot.set_webhook(**webhook_kwargs)
             logger.info(f"Webhook set: {webhook_url}")
         else:
             logger.warning("RAILWAY_PUBLIC_DOMAIN not set — webhook not configured")

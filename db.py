@@ -248,8 +248,10 @@ def update_prospect(name: str, updates: dict) -> str:
         if not safe_fields:
             return f"No valid updates for {matched_name}."
 
-        set_clauses = ", ".join(f"{field} = ?" for field in safe_fields)
-        values = list(safe_fields.values()) + [prospect_id]
+        # Build SET clause using only validated field names from the allowlist
+        validated_fields = [f for f in safe_fields if f in allowed]
+        set_clauses = ", ".join(f'"{field}" = ?' for field in validated_fields)
+        values = [safe_fields[f] for f in validated_fields] + [prospect_id]
         conn.execute(
             f"UPDATE prospects SET {set_clauses}, updated_at = datetime('now') WHERE id = ?",
             values,
@@ -361,8 +363,9 @@ def update_meeting(meeting_id: int, updates: dict) -> str:
     if not safe_fields:
         return f"No valid updates for meeting {meeting_id}."
     with get_db() as conn:
-        set_clauses = ", ".join(f"{field} = ?" for field in safe_fields)
-        values = list(safe_fields.values()) + [meeting_id]
+        validated_fields = [f for f in safe_fields if f in allowed]
+        set_clauses = ", ".join(f'"{field}" = ?' for field in validated_fields)
+        values = [safe_fields[f] for f in validated_fields] + [meeting_id]
         conn.execute(f"UPDATE meetings SET {set_clauses} WHERE id = ?", values)
     return f"Updated meeting {meeting_id}: {', '.join(f'{f} → {v}' for f, v in safe_fields.items())}"
 
@@ -411,8 +414,9 @@ def update_insurance_entry(entry_id: int, updates: dict) -> str:
     if not safe_fields:
         return f"No valid updates for insurance entry {entry_id}."
     with get_db() as conn:
-        set_clauses = ", ".join(f"{field} = ?" for field in safe_fields)
-        values = list(safe_fields.values()) + [entry_id]
+        validated_fields = [f for f in safe_fields if f in allowed]
+        set_clauses = ", ".join(f'"{field}" = ?' for field in validated_fields)
+        values = [safe_fields[f] for f in validated_fields] + [entry_id]
         conn.execute(f"UPDATE insurance_book SET {set_clauses} WHERE id = ?", values)
     return f"Updated insurance entry {entry_id}: {', '.join(f'{f} → {v}' for f, v in safe_fields.items())}"
 

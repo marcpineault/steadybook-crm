@@ -40,6 +40,9 @@ def intake_webhook():
     if not _check_auth():
         return jsonify({"error": "Unauthorized"}), 401
 
+    if request.content_length and request.content_length > 512 * 1024:
+        return jsonify({"error": "Payload too large"}), 413
+
     payload = request.get_json(silent=True)
     if not payload:
         return jsonify({"error": "Invalid JSON payload"}), 400
@@ -74,13 +77,16 @@ def email_inbound():
     """Receive inbound emails from CloudMailin and process as leads.
     CloudMailin sends JSON with: envelope, headers, plain, html, attachments.
     """
-    # Validate CloudMailin secret
+    # Validate CloudMailin secret (check header first, fall back to query param)
     if not CLOUDMAILIN_SECRET:
         logger.warning("CLOUDMAILIN_SECRET not set — rejecting email-inbound request")
         return jsonify({"error": "Unauthorized"}), 401
-    token = request.args.get("secret", "")
+    token = request.headers.get("X-CloudMailin-Secret", "") or request.args.get("secret", "")
     if not hmac.compare_digest(token, CLOUDMAILIN_SECRET):
         return jsonify({"error": "Unauthorized"}), 401
+
+    if request.content_length and request.content_length > 512 * 1024:
+        return jsonify({"error": "Payload too large"}), 413
 
     payload = request.get_json(silent=True)
     if not payload:
@@ -103,7 +109,6 @@ def email_inbound():
         body = ""
 
     logger.info(f"Email inbound from={sender} subject={subject} body_len={len(body)}")
-    logger.info(f"Email body preview: {body[:500]}")
 
     if not body and not subject:
         return jsonify({"error": "Empty email"}), 400
