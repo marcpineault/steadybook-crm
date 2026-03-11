@@ -44,9 +44,9 @@ async def _require_admin(update) -> bool:
     if _is_admin(update):
         return True
     await update.message.reply_text(
-        "You have access to /quote and /start only.\n"
+        "You have access to /quote and /add only.\n"
         "Try: /quote disability office worker 50k income 3k benefit\n"
-        "Or: /quote term 35 male nonsmoker 500k 20yr"
+        "Or: /add John Smith, office worker, 50k income"
     )
     return False
 
@@ -1263,11 +1263,71 @@ async def cmd_quote(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ── /add command ──
 
+PROMPT_ADD_COWORKER = """You help add disability insurance prospects to Marc's CRM pipeline. Today is {{today}}.
+
+{{formatting}}
+
+The prospect is being added by a coworker: {coworker_name}.
+
+Parse their message and call add_prospect with:
+- product: MUST be "Disability Insurance" (coworkers can only add disability prospects)
+- source: "Referral from {coworker_name}"
+- stage: guess from context — just met = "Discovery Call", wants quote = "Needs Analysis", else = "New Lead"
+- priority: guess — interested = "Hot", mentioned = "Warm", else = "Cold"
+- notes: include any details from the message, plus "Added by {coworker_name}"
+
+Then call auto_set_follow_up.
+
+After adding, confirm the prospect was added. Don't ask follow-up questions."""
+
+
 async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /add command — add prospect to pipeline."""
-    if not await _require_admin(update):
-        return
+    is_admin = _is_admin(update)
     user_msg = update.message.text.replace("/add", "", 1).strip()
+
+    if not is_admin:
+        # Coworkers can only add disability prospects
+        if not user_msg:
+            await update.message.reply_text(
+                "Add a disability prospect:\n"
+                "/add John Smith, office worker, 50k income, interested in disability"
+            )
+            return
+
+        chat_id = update.effective_chat.id
+        coworker = update.effective_user.first_name or "Coworker"
+        logger.info(f"/add (coworker {coworker}): {user_msg}")
+
+        try:
+            add_tools = [t for t in TOOLS if t["function"]["name"] in ("add_prospect", "auto_set_follow_up")]
+            prompt = PROMPT_ADD_COWORKER.format(coworker_name=coworker)
+            # Double-brace placeholders become single for _build_prompt
+            prompt = prompt.replace("{{today}}", "{today}").replace("{{formatting}}", "{formatting}")
+            messages = [{"role": "system", "content": _build_prompt(prompt)}]
+            messages.append({"role": "user", "content": user_msg})
+
+            reply = await _llm_respond(update, messages, tools=add_tools)
+            _save_history(chat_id, f"[add-coworker:{coworker}] {user_msg}", reply)
+            await update.message.reply_text(reply)
+            logger.info(f"/add coworker replied: {reply[:100]}")
+
+            # Notify Marc about the new prospect
+            if ADMIN_CHAT_ID:
+                try:
+                    await context.bot.send_message(
+                        chat_id=ADMIN_CHAT_ID,
+                        text=f"New disability prospect added by {coworker}:\n{user_msg}"
+                    )
+                except Exception as e:
+                    logger.warning(f"Could not notify admin: {e}")
+
+        except Exception as e:
+            logger.error(f"/add coworker error: {e}")
+            await update.message.reply_text(f"Something went wrong: {str(e)[:200]}")
+        return
+
+    # Admin flow — full access
     if not user_msg:
         await update.message.reply_text(
             "Usage: /add John Smith, 500k AUM, wealth management, hot, referral from Sarah"
@@ -1613,11 +1673,13 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _is_admin(update):
         await update.message.reply_text(
-            "Welcome! You have access to insurance quotes.\n\n"
+            "Welcome! You have access to quotes and adding disability prospects.\n\n"
             "/quote — get insurance quotes\n"
             "  /quote disability office worker 50k income 3k benefit\n"
             "  /quote term 35 male nonsmoker 500k 20yr\n\n"
-            "Just type /quote followed by the details!"
+            "/add — add a disability prospect\n"
+            "  /add John Smith, office worker, 50k income, interested in disability\n\n"
+            "Marc will be notified when you add a prospect."
         )
         return
 

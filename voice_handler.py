@@ -186,8 +186,9 @@ async def handle_voice_message(update, context):
     admin_id = os.environ.get("TELEGRAM_CHAT_ID", "")
     if admin_id and str(update.effective_chat.id) != str(admin_id):
         await update.message.reply_text(
-            "You have access to /quote only.\n"
-            "Try: /quote disability female 30 office worker 50k income 3k benefit"
+            "You have access to /quote and /add only.\n"
+            "Try: /quote disability office worker 50k income 3k benefit\n"
+            "Or: /add John Smith, office worker, 50k income"
         )
         return
 
