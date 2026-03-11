@@ -112,10 +112,50 @@ Morning of a meeting, bot sends a Telegram nudge with a suggested personal messa
 | OpenAI GPT | All AI analysis & drafting | API (already in use) |
 | Outlook Bookings | Scheduling + email reminders | Existing, unchanged |
 
+## Prospect Matching Strategy
+
+AI-extracted names from voice notes and transcripts need fuzzy matching against the pipeline. Approach: AI returns a structured name, bot searches via existing `LIKE %name%`. If multiple matches found, bot asks user to confirm. If no match, bot creates new prospect and confirms. Whisper misspellings handled by including the raw transcript in the confirmation so the user can correct.
+
+## Webhook Security
+
+Single webhook endpoint (built in Phase 1, extended in Phase 2) with:
+- Shared secret token in request headers (configured in Zapier/Power Automate and validated by bot)
+- All webhook actions scoped to the single authorized CHAT_ID — no multi-user access
+- Malformed payloads logged and discarded with error notification to user
+
+This is a single-user system. All bot commands and webhook actions are restricted to the authorized Telegram user.
+
+## Email Delivery
+
+Draft emails are stored in the database. User reviews via `/review_email` in Telegram. On approval, email sent via Microsoft Graph API (same Microsoft ecosystem as Outlook Bookings) or SMTP through the user's existing Co-operators email. Specific sending method determined during Phase 2 implementation based on what Co-operators IT permits.
+
+## Error Handling
+
+External service failures (Whisper API, Zapier timeouts, malformed Otter transcripts, GPT extraction failures) are handled with:
+- Retry once with exponential backoff
+- On failure, notify user via Telegram with the raw input so nothing is silently lost
+- Voice notes and transcripts saved to db before processing so they can be re-processed later
+
+## Scoring Clarification
+
+The existing `scoring.py` uses a 0-100 scale. Phase 3A cadence tiers map to this: Hot (70-100), Warm (40-69), Cool (0-39). New leads from intake (Phase 1B/1C) get a preliminary score based on available fields; full scoring applies once more data is collected.
+
+## Transcript Storage
+
+Full Otter transcripts stored in SQLite. Railway's persistent volume handles storage. For long transcripts (30-60 min calls), store summary + key extractions inline, full transcript as a separate db row to keep pipeline queries fast.
+
+## Pre-Call Briefing Timing
+
+The scheduler polls upcoming meetings every 15 minutes. When a meeting is within the next 15-minute window, it triggers the briefing. Meeting times stored with timezone (ET, matching user's location). Power Automate sends meeting data including full datetime on booking creation; scheduler uses this for trigger timing.
+
 ## Recording & Privacy
 
 User notifies clients at start of calls (Canada one-party consent). Otter.ai handles recording. Transcripts stored in bot's SQLite database on Railway.
 
+## Phase 3C Clarification
+
+The "Personal Touch" automation is a reminder system, not a message sender. The bot reminds the user via Telegram and suggests message content. The user manually sends the personal video/voice/text to the client through their preferred channel (text, WhatsApp, etc.) outside the bot.
+
 ## Build Order
 
-Phase 1 → Phase 2 → Phase 3. Each phase builds on the data the previous phase collects. Phase 1 is self-contained and delivers immediate value.
+Phase 1 → Phase 2 → Phase 3. Each phase builds on the data the previous phase collects. Phase 1 is self-contained and delivers immediate value. The webhook endpoint is built once in Phase 1 and extended with new payload types in Phase 2.
