@@ -6,6 +6,7 @@ Handles:
 """
 
 import hmac
+import html as html_module
 import logging
 import os
 import re
@@ -73,11 +74,13 @@ def email_inbound():
     """Receive inbound emails from CloudMailin and process as leads.
     CloudMailin sends JSON with: envelope, headers, plain, html, attachments.
     """
-    # Validate CloudMailin secret (sent as basic auth or query param)
-    if CLOUDMAILIN_SECRET:
-        token = request.args.get("secret", "")
-        if not hmac.compare_digest(token, CLOUDMAILIN_SECRET):
-            return jsonify({"error": "Unauthorized"}), 401
+    # Validate CloudMailin secret
+    if not CLOUDMAILIN_SECRET:
+        logger.warning("CLOUDMAILIN_SECRET not set — rejecting email-inbound request")
+        return jsonify({"error": "Unauthorized"}), 401
+    token = request.args.get("secret", "")
+    if not hmac.compare_digest(token, CLOUDMAILIN_SECRET):
+        return jsonify({"error": "Unauthorized"}), 401
 
     payload = request.get_json(silent=True)
     if not payload:
@@ -128,8 +131,8 @@ def _strip_html(html: str) -> str:
     text = re.sub(r"</(p|div|tr|li|h[1-6])>", "\n", text, flags=re.IGNORECASE)
     # Strip remaining tags
     text = re.sub(r"<[^>]+>", " ", text)
-    # Decode common HTML entities
-    text = text.replace("&nbsp;", " ").replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+    # Decode all HTML entities
+    text = html_module.unescape(text)
     # Collapse whitespace
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)

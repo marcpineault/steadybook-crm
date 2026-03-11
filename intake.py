@@ -197,18 +197,23 @@ def process_calendar_event(data: dict) -> str:
 
 def _classify_meeting(subject: str, location: str, is_online: bool) -> str:
     """Classify a calendar event into a meeting type."""
-    text = f"{subject} {location}".lower()
-    if any(w in text for w in ["discovery", "intro", "initial", "first"]):
+    import re
+    text = f" {subject} {location} ".lower()
+
+    def _has_word(*words):
+        return any(re.search(rf"\b{w}\b", text) for w in words)
+
+    if _has_word("discovery", "intro", "initial", "first"):
         return "Discovery Call"
-    if any(w in text for w in ["review", "annual", "check-in", "checkin"]):
+    if _has_word("review", "annual", "check-in", "checkin"):
         return "Review Meeting"
-    if any(w in text for w in ["presentation", "proposal", "plan pres"]):
+    if _has_word("presentation", "proposal") or "plan pres" in text:
         return "Plan Presentation"
-    if any(w in text for w in ["sign", "closing", "paperwork"]):
+    if _has_word("sign", "closing", "paperwork"):
         return "Closing"
-    if any(w in text for w in ["needs", "analysis", "fact find"]):
+    if _has_word("needs", "analysis") or "fact find" in text:
         return "Needs Analysis"
-    if is_online or any(w in text for w in ["teams", "zoom", "virtual", "call", "phone"]):
+    if is_online or _has_word("teams", "zoom", "virtual", "call", "phone"):
         return "Call"
     return "Meeting"
 
@@ -255,8 +260,9 @@ Return ONLY valid JSON."""
 
         if raw.startswith("```"):
             raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
+            raw = raw.rstrip()
             if raw.endswith("```"):
-                raw = raw[:-3]
+                raw = raw[:-3].rstrip()
             raw = raw.strip()
             if raw.startswith("json"):
                 raw = raw[4:].strip()
@@ -275,7 +281,12 @@ Return ONLY valid JSON."""
         old_notes = existing.get("notes", "")
         new_notes = prospect.get("notes", "")
         combined = f"{old_notes} | [Email Lead] {new_notes}" if old_notes else f"[Email Lead] {new_notes}"
-        db.update_prospect(name, {"notes": combined})
+        updates = {"notes": combined}
+        if prospect.get("email") and not existing.get("email"):
+            updates["email"] = prospect["email"]
+        if prospect.get("phone") and not existing.get("phone"):
+            updates["phone"] = prospect["phone"]
+        db.update_prospect(name, updates)
         result = f"Updated {existing['name']} with email lead details."
     else:
         db.add_prospect({

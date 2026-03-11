@@ -59,8 +59,9 @@ def parse_extraction_response(raw: str) -> list[dict]:
         text = raw.strip()
         if text.startswith("```"):
             text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+            text = text.rstrip()
             if text.endswith("```"):
-                text = text[:-3]
+                text = text[:-3].rstrip()
             text = text.strip()
             if text.startswith("json"):
                 text = text[4:].strip()
@@ -89,14 +90,17 @@ async def extract_and_update(transcript: str, bot=None) -> str:
     """Extract prospect data from transcript, update pipeline, return summary."""
     prompt = build_extraction_prompt(transcript)
 
-    response = client.chat.completions.create(
-        model="gpt-4.1-nano",
-        max_completion_tokens=1024,
-        messages=[{"role": "user", "content": prompt}],
-    )
-
-    raw = response.choices[0].message.content
-    prospects = parse_extraction_response(raw)
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4.1-nano",
+            max_completion_tokens=1024,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = response.choices[0].message.content
+        prospects = parse_extraction_response(raw)
+    except Exception as e:
+        logger.error(f"AI extraction failed: {e}")
+        return f"AI extraction failed — transcript was saved. Error: {str(e)[:100]}\n\nTry again or add manually with /add."
 
     if not prospects:
         return f"Could not extract prospect data from your voice note. Here's what I heard:\n\n{transcript}\n\nTry again or add manually with /add."

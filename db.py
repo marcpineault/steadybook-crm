@@ -276,12 +276,21 @@ def delete_prospect(name: str) -> str:
 
 
 def get_prospect_by_name(name: str):
-    """Partial match lookup. Returns single dict or None."""
+    """Lookup by exact match first, then fuzzy partial match. Returns single dict or None."""
     with get_db() as conn:
+        # Try exact match first
         row = conn.execute(
-            "SELECT * FROM prospects WHERE LOWER(name) LIKE ? LIMIT 1",
-            (f"%{name.lower()}%",),
+            "SELECT * FROM prospects WHERE LOWER(name) = ? LIMIT 1",
+            (name.lower(),),
         ).fetchone()
+        if row is None:
+            # Fall back to partial match
+            row = conn.execute(
+                "SELECT * FROM prospects WHERE LOWER(name) LIKE ? LIMIT 1",
+                (f"%{name.lower()}%",),
+            ).fetchone()
+            if row:
+                logger.info(f"Prospect fuzzy match: '{name}' → '{dict(row)['name']}'")
     return _row_to_dict(row)
 
 
