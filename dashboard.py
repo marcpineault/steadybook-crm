@@ -1388,8 +1388,12 @@ def register_webhook(flask_app, process_update_fn=None):
     def webhook():
         if process_update_fn is None:
             return "Bot not initialized", 503
-        update_data = request.get_json(force=True)
-        process_update_fn(update_data)
+        update_data = request.get_json(force=True, silent=True)
+        if not update_data:
+            return "ok"
+        # Fire and forget — don't block Flask thread waiting for LLM responses
+        import threading
+        threading.Thread(target=process_update_fn, args=(update_data,), daemon=True).start()
         return "ok"
 
 

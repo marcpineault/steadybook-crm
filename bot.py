@@ -260,7 +260,7 @@ TERM_MAP = {"10": "3", "15": "4", "20": "5", "25": "6", "30": "7"}
 
 def _fetch_term4sale(age, sex, smoke, term_str, face):
     """Hit term4sale.ca API live for Co-operators rates."""
-    birth_year = 2026 - age
+    birth_year = date.today().year - age
     cat_code = TERM_MAP.get(term_str)
     if not cat_code:
         return None
@@ -535,7 +535,7 @@ def get_pipeline_summary():
         except ValueError:
             pass
 
-    hot = len([p for p in active if p["priority"].lower() == "hot"])
+    hot = len([p for p in active if (p.get("priority") or "").lower() == "hot"])
 
     stages = {}
     for p in active:
@@ -1044,7 +1044,16 @@ async def _llm_respond(update, messages, tools=None):
 
         for tool_call in msg.tool_calls:
             tool_name = tool_call.function.name
-            tool_input = json.loads(tool_call.function.arguments)
+            try:
+                tool_input = json.loads(tool_call.function.arguments)
+            except json.JSONDecodeError as e:
+                logger.error(f"Bad tool args for {tool_name}: {e}")
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": f"Error: could not parse tool arguments: {e}",
+                })
+                continue
             logger.info(f"Tool call: {tool_name}({json.dumps(tool_input)})")
 
             func = TOOL_FUNCTIONS.get(tool_name)
@@ -1082,11 +1091,20 @@ async def _llm_respond(update, messages, tools=None):
         )
         msg = response.choices[0].message
 
+    if not msg.content and msg.tool_calls:
+        logger.warning("Hit tool loop limit without text response")
+        return "I ran into a loop processing that. Please try again or rephrase."
     return msg.content or "Done!"
 
 
+MAX_CHAT_IDS = 100
+
 def _get_history(chat_id):
     if chat_id not in _chat_histories:
+        if len(_chat_histories) >= MAX_CHAT_IDS:
+            # Evict oldest chat history to prevent unbounded memory growth
+            oldest = next(iter(_chat_histories))
+            del _chat_histories[oldest]
         _chat_histories[chat_id] = []
     return _chat_histories[chat_id]
 
@@ -1577,20 +1595,19 @@ def init_bot():
 
 
 def process_webhook_update(update_data: dict):
-    """Process an incoming webhook update from Telegram."""
+    """Process an incoming webhook update from Telegram. Non-blocking."""
     if telegram_app is None or bot_event_loop is None:
         logger.error("Bot not initialized")
         return
 
     async def _process():
-        update = Update.de_json(update_data, telegram_app.bot)
-        await telegram_app.process_update(update)
+        try:
+            update = Update.de_json(update_data, telegram_app.bot)
+            await telegram_app.process_update(update)
+        except Exception as e:
+            logger.error(f"Error processing update: {e}")
 
-    future = asyncio.run_coroutine_threadsafe(_process(), bot_event_loop)
-    try:
-        future.result(timeout=60)
-    except Exception as e:
-        logger.error(f"Error processing update: {e}")
+    asyncio.run_coroutine_threadsafe(_process(), bot_event_loop)
 
 
 def main():
