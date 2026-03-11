@@ -1477,6 +1477,77 @@ async def cmd_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(result)
 
 
+# ── /call command — quick call logging ──
+
+PROMPT_CALL = """You help Marc log call outcomes quickly. Today is {today}.
+
+{formatting}
+
+Marc just told you about a call. Parse the message and:
+
+1. Use lookup_prospect to find the prospect (if name given)
+2. Use add_activity to log the call with:
+   - prospect: the person's name
+   - action: "Phone call" or "Call attempt"
+   - outcome: what happened (connected, voicemail, no answer, booked meeting, etc.)
+   - next_step: what to do next (if mentioned or obvious)
+3. If they mentioned a follow-up date or next step, use update_prospect to set next_followup
+4. If the call outcome changes the stage (e.g. booked a meeting = Discovery Call, sent proposal = Proposal Sent), use update_prospect to update stage
+
+Common outcomes to recognize:
+- "no answer" / "VM" / "voicemail" → log as no answer, set follow-up 2-3 days
+- "left message" → log as voicemail, set follow-up 3 days
+- "booked" / "meeting" → log as booked meeting, advance stage
+- "not interested" → log as declined, move to Nurture or Closed-Lost
+- "great call" / "interested" → log as positive call, keep stage or advance
+- "callback" → log as callback requested, set follow-up as mentioned
+
+Reply with a SHORT confirmation. One or two lines max. Example: "Logged call with John Smith — voicemail, follow-up Friday."
+Do NOT ask follow-up questions."""
+
+
+async def cmd_call(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /call command — quick call logging."""
+    if not await _require_admin(update):
+        return
+    user_msg = update.message.text
+    # Strip /call or /log prefix
+    for prefix in ("/call", "/log"):
+        if user_msg.lower().startswith(prefix):
+            user_msg = user_msg[len(prefix):].strip()
+            break
+
+    if not user_msg:
+        await update.message.reply_text(
+            "Quick call log:\n"
+            "/call John Smith - voicemail\n"
+            "/call Sarah Jones - booked discovery call\n"
+            "/call Mike - no answer\n"
+            "/call Lisa - great call, sending proposal Friday"
+        )
+        return
+
+    chat_id = update.effective_chat.id
+    logger.info(f"/call: {user_msg}")
+
+    try:
+        call_tools = [t for t in TOOLS if t["function"]["name"] in (
+            "lookup_prospect", "add_activity", "update_prospect", "auto_set_follow_up", "add_prospect"
+        )]
+
+        messages = [{"role": "system", "content": _build_prompt(PROMPT_CALL)}]
+        messages.append({"role": "user", "content": user_msg})
+
+        reply = await _llm_respond(update, messages, tools=call_tools)
+        _save_history(chat_id, f"[call] {user_msg}", reply)
+        await update.message.reply_text(reply)
+        logger.info(f"/call replied: {reply[:100]}")
+
+    except Exception as e:
+        logger.error(f"/call error: {e}")
+        await update.message.reply_text(f"Something went wrong: {str(e)[:200]}")
+
+
 # ── /pipeline, /overdue, /meetings, /calls — direct tool commands ──
 
 async def cmd_pipeline(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1855,6 +1926,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "  /quote term 35 male nonsmoker 500k 20yr\n\n"
         "/add — add a prospect\n"
         "  /add John Smith, 300k AUM, wealth management, hot, referral\n\n"
+        "/call — quick call log\n"
+        "  /call John Smith - voicemail\n"
+        "  /call Sarah - booked discovery call\n\n"
         "/pipeline — see your deals\n"
         "/priority — ranked call list with scores\n"
         "/overdue — who needs follow-up\n"
@@ -1885,6 +1959,8 @@ def build_application():
     app.add_handler(CommandHandler("add", cmd_add))
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CommandHandler("msg", cmd_msg))
+    app.add_handler(CommandHandler("call", cmd_call))
+    app.add_handler(CommandHandler("log", cmd_call))  # alias
     app.add_handler(CommandHandler("pipeline", cmd_pipeline))
     app.add_handler(CommandHandler("overdue", cmd_overdue))
     app.add_handler(CommandHandler("meetings", cmd_meetings))
