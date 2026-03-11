@@ -7,6 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault("DATA_DIR", "/tmp/test_calm_bot")
 os.environ.setdefault("OPENAI_API_KEY", "test-key")
 os.environ.setdefault("INTAKE_WEBHOOK_SECRET", "test-secret-123")
+os.environ.setdefault("CLOUDMAILIN_SECRET", "test-cloudmailin-secret")
 os.makedirs("/tmp/test_calm_bot", exist_ok=True)
 
 import db
@@ -87,3 +88,61 @@ def test_webhook_rejects_missing_payload():
             headers={"X-Webhook-Secret": "test-secret-123"},
         )
         assert resp.status_code == 400
+
+
+def test_email_inbound_rejects_bad_secret():
+    app = create_test_app()
+    with app.test_client() as c:
+        resp = c.post(
+            "/api/email-inbound?secret=wrong",
+            json={"headers": {"Subject": "Test"}, "plain": "hello"},
+        )
+        assert resp.status_code == 401
+
+
+def test_email_inbound_processes_cloudmailin_payload(monkeypatch):
+    import intake
+
+    class MockMessage:
+        content = '{"name": "Bob Lee", "phone": "", "email": "bob@example.com", "product": "Home Insurance", "notes": "Wants home insurance quote", "priority": "Warm", "source": "Email Lead", "stage": "New Lead"}'
+
+    class MockChoice:
+        message = MockMessage()
+
+    class MockResponse:
+        choices = [MockChoice()]
+
+    class MockCompletions:
+        def create(self, **kwargs):
+            return MockResponse()
+
+    class MockChat:
+        completions = MockCompletions()
+
+    class MockClient:
+        chat = MockChat()
+
+    monkeypatch.setattr(intake, "client", MockClient())
+
+    app = create_test_app()
+    with app.test_client() as c:
+        resp = c.post(
+            "/api/email-inbound?secret=test-cloudmailin-secret",
+            json={
+                "envelope": {"from": "marc@cooperators.ca", "to": "abc@cloudmailin.net"},
+                "headers": {
+                    "Subject": "Meeting with Bob Lee - Home Insurance",
+                    "From": "Marc Pineault <marc@cooperators.ca>",
+                    "To": "abc@cloudmailin.net",
+                },
+                "plain": "Just booked a meeting with Bob Lee (bob@example.com) about home insurance. March 25 at 2pm.",
+                "html": "",
+                "attachments": [],
+            },
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["ok"] is True
+        assert "Bob Lee" in body["message"]
+        prospect = db.get_prospect_by_name("Bob Lee")
+        assert prospect is not None

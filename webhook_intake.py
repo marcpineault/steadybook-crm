@@ -1,7 +1,8 @@
 """
 Webhook endpoint for external lead intake.
-Flask blueprint that receives payloads from Power Automate (Outlook Bookings) and Zapier (email forwarding, Otter transcripts in Phase 2).
-All requests must include X-Webhook-Secret header matching INTAKE_WEBHOOK_SECRET env var.
+Handles:
+  - /api/intake — Power Automate / Zapier payloads (requires X-Webhook-Secret)
+  - /api/email-inbound — CloudMailin inbound email forwarding (validated by CLOUDMAILIN_SECRET)
 """
 
 import hmac
@@ -15,6 +16,7 @@ from intake import process_booking, process_calendar_event, process_email_lead
 logger = logging.getLogger(__name__)
 
 WEBHOOK_SECRET = os.environ.get("INTAKE_WEBHOOK_SECRET", "")
+CLOUDMAILIN_SECRET = os.environ.get("CLOUDMAILIN_SECRET", "")
 
 intake_bp = Blueprint("intake", __name__)
 
@@ -62,6 +64,45 @@ def intake_webhook():
 
     except Exception as e:
         logger.error(f"Intake webhook error: {e}")
+        return jsonify({"error": str(e)[:200]}), 500
+
+
+@intake_bp.route("/api/email-inbound", methods=["POST"])
+def email_inbound():
+    """Receive inbound emails from CloudMailin and process as leads.
+    CloudMailin sends JSON with: envelope, headers, plain, html, attachments.
+    """
+    # Validate CloudMailin secret (sent as basic auth or query param)
+    if CLOUDMAILIN_SECRET:
+        token = request.args.get("secret", "")
+        if not hmac.compare_digest(token, CLOUDMAILIN_SECRET):
+            return jsonify({"error": "Unauthorized"}), 401
+
+    payload = request.get_json(silent=True)
+    if not payload:
+        return jsonify({"error": "Invalid JSON payload"}), 400
+
+    # Extract email fields from CloudMailin format
+    headers = payload.get("headers", {})
+    envelope = payload.get("envelope", {})
+    subject = headers.get("Subject", "")
+    sender = headers.get("From", envelope.get("from", ""))
+    body = payload.get("plain", "") or payload.get("html", "")
+
+    if not body and not subject:
+        return jsonify({"error": "Empty email"}), 400
+
+    try:
+        result = process_email_lead({
+            "from": sender,
+            "subject": subject,
+            "body": body,
+        })
+        logger.info(f"Email inbound: {result}")
+        _notify_telegram(result)
+        return jsonify({"ok": True, "message": result})
+    except Exception as e:
+        logger.error(f"Email inbound error: {e}")
         return jsonify({"error": str(e)[:200]}), 500
 
 
