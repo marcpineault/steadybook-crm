@@ -1380,7 +1380,10 @@ function initFunnelCharts() {{
 
 
 def register_webhook(flask_app):
-    """Register the Telegram webhook route on the Flask app."""
+    """Register the Telegram webhook route and intake webhook on the Flask app."""
+    from webhook_intake import intake_bp
+    flask_app.register_blueprint(intake_bp)
+
     @flask_app.route("/webhook", methods=["POST"])
     def webhook():
         from bot import process_webhook_update
