@@ -86,7 +86,7 @@ async def transcribe_voice(file_path: str) -> str:
     return transcript.text
 
 
-async def extract_and_update(transcript: str, bot=None) -> str:
+async def extract_and_update(transcript: str, bot=None, source: str = "voice_note") -> str:
     """Extract prospect data from transcript, update pipeline, return summary."""
     prompt = build_extraction_prompt(transcript)
 
@@ -102,8 +102,11 @@ async def extract_and_update(transcript: str, bot=None) -> str:
         logger.error(f"AI extraction failed: {e}")
         return f"AI extraction failed — transcript was saved. Error: {str(e)[:100]}\n\nTry again or add manually with /add."
 
+    source_label = "Otter transcript" if source == "otter_transcript" else "voice note"
+    tag = "[Otter]" if source == "otter_transcript" else "[Voice]"
+
     if not prospects:
-        return f"Could not extract prospect data from your voice note. Here's what I heard:\n\n{transcript}\n\nTry again or add manually with /add."
+        return f"Could not extract prospect data from your {source_label}.\n\nTry again or add manually with /add."
 
     results = []
     for p in prospects:
@@ -116,7 +119,7 @@ async def extract_and_update(transcript: str, bot=None) -> str:
             old_notes = existing.get("notes", "")
             new_notes = p.get("notes", "")
             action_items = p.get("action_items", "")
-            combined = f"{old_notes} | [Voice] {new_notes}"
+            combined = f"{old_notes} | {tag} {new_notes}"
             if action_items:
                 combined += f" | Action: {action_items}"
 
@@ -127,13 +130,13 @@ async def extract_and_update(transcript: str, bot=None) -> str:
                 updates["priority"] = p["priority"]
 
             db.update_prospect(name, updates)
-            results.append(f"Updated {existing['name']} — added voice note details")
+            results.append(f"Updated {existing['name']} — added {source_label} details")
         else:
             db.add_prospect({
                 "name": name,
                 "phone": p.get("phone", ""),
                 "email": p.get("email", ""),
-                "source": p.get("source", "voice_note"),
+                "source": p.get("source", source),
                 "priority": p.get("priority", "Warm"),
                 "stage": p.get("stage", "New Lead"),
                 "product": p.get("product", ""),
@@ -146,7 +149,7 @@ async def extract_and_update(transcript: str, bot=None) -> str:
 
         db.add_interaction({
             "prospect": name,
-            "source": "voice_note",
+            "source": source,
             "raw_text": transcript,
             "summary": p.get("notes", ""),
             "action_items": p.get("action_items", ""),
@@ -154,12 +157,12 @@ async def extract_and_update(transcript: str, bot=None) -> str:
 
         db.add_activity({
             "prospect": name,
-            "action": "Voice note processed",
+            "action": f"{source_label.title()} processed",
             "outcome": p.get("notes", ""),
             "next_step": p.get("action_items", ""),
         })
 
-    summary = "Voice note processed:\n" + "\n".join(f"  {r}" for r in results)
+    summary = f"{source_label.title()} processed:\n" + "\n".join(f"  {r}" for r in results)
     return summary
 
 

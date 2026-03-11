@@ -1300,7 +1300,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "source": "otter_transcript",
                 "raw_text": user_msg[:5000],
             })
-            result = await extract_and_update(user_msg)
+            result = await extract_and_update(user_msg, source="otter_transcript")
             await update.message.reply_text(result)
         except Exception as e:
             logger.error(f"Otter transcript error: {e}")
