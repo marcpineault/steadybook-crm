@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 TELEGRAM_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 OPENAI_KEY = os.environ["OPENAI_API_KEY"]
+ADMIN_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
 # DATA_DIR kept for migration path reference
 DATA_DIR = os.environ.get("DATA_DIR", "")
@@ -31,6 +32,23 @@ client = OpenAI(api_key=OPENAI_KEY)
 
 # DEPRECATED — kept for scheduler import compat
 pipeline_lock = threading.RLock()
+
+
+def _is_admin(update) -> bool:
+    """Check if the message sender is the admin (Marc)."""
+    return str(update.effective_chat.id) == str(ADMIN_CHAT_ID)
+
+
+async def _require_admin(update) -> bool:
+    """Check admin access. Sends denial message if not admin. Returns True if authorized."""
+    if _is_admin(update):
+        return True
+    await update.message.reply_text(
+        "You have access to /quote and /start only.\n"
+        "Try: /quote disability female 30 office worker 50k income 3k benefit\n"
+        "Or: /quote term 35 male nonsmoker 500k 20yr"
+    )
+    return False
 
 
 def read_pipeline():
@@ -1154,6 +1172,8 @@ async def cmd_quote(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /add command — add prospect to pipeline."""
+    if not await _require_admin(update):
+        return
     user_msg = update.message.text.replace("/add", "", 1).strip()
     if not user_msg:
         await update.message.reply_text(
@@ -1183,6 +1203,8 @@ async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ── /pipeline, /overdue, /meetings, /calls — direct tool commands ──
 
 async def cmd_pipeline(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await _require_admin(update):
+        return
     try:
         result = get_pipeline_summary()
         await update.message.reply_text(result)
@@ -1191,6 +1213,8 @@ async def cmd_pipeline(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_overdue(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await _require_admin(update):
+        return
     try:
         result = get_overdue()
         await update.message.reply_text(result)
@@ -1199,6 +1223,8 @@ async def cmd_overdue(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_meetings(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await _require_admin(update):
+        return
     try:
         result = get_meetings()
         await update.message.reply_text(result)
@@ -1207,6 +1233,8 @@ async def cmd_meetings(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_calls(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await _require_admin(update):
+        return
     try:
         result = get_next_calls()
         await update.message.reply_text(result)
@@ -1215,6 +1243,8 @@ async def cmd_calls(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await _require_admin(update):
+        return
     try:
         result = get_win_loss_stats()
         await update.message.reply_text(result)
@@ -1223,6 +1253,8 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_priority(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await _require_admin(update):
+        return
     """Show ranked call list with scores and actions."""
     import scoring
     ranked = scoring.get_ranked_call_list(10)
@@ -1247,6 +1279,8 @@ async def cmd_priority(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_lead(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /lead command — paste in a lead email or referral info."""
+    if not await _require_admin(update):
+        return
     user_msg = update.message.text.replace("/lead", "", 1).strip()
     if not user_msg:
         await update.message.reply_text(
@@ -1282,6 +1316,8 @@ def _is_otter_transcript(text: str) -> bool:
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle free-form text messages."""
+    if not await _require_admin(update):
+        return
     user_msg = update.message.text
     if not user_msg:
         return
@@ -1324,6 +1360,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def export(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await _require_admin(update):
+        return
     """Send the pipeline database file to the user."""
     try:
         db_path = db.DB_PATH
@@ -1342,6 +1380,8 @@ async def export(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle uploaded files — pipeline Excel or insurance book CSV/Excel."""
+    if not await _require_admin(update):
+        return
     doc = update.message.document
     fname = doc.file_name.lower()
 
@@ -1478,6 +1518,16 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not _is_admin(update):
+        await update.message.reply_text(
+            "Welcome! You have access to insurance quotes.\n\n"
+            "/quote — get insurance quotes\n"
+            "  /quote disability female 30 office worker 50k income 3k benefit\n"
+            "  /quote term 35 male nonsmoker 500k 20yr\n\n"
+            "Just type /quote followed by the details!"
+        )
+        return
+
     await update.message.reply_text(
         "Hey Marc! Here are your commands:\n\n"
         "/quote — insurance quotes\n"

@@ -182,6 +182,15 @@ async def extract_and_update(transcript: str, bot=None, source: str = "voice_not
 
 async def handle_voice_message(update, context):
     """Telegram handler for voice messages."""
+    # Admin-only — check via TELEGRAM_CHAT_ID
+    admin_id = os.environ.get("TELEGRAM_CHAT_ID", "")
+    if admin_id and str(update.effective_chat.id) != str(admin_id):
+        await update.message.reply_text(
+            "You have access to /quote only.\n"
+            "Try: /quote disability female 30 office worker 50k income 3k benefit"
+        )
+        return
+
     voice = update.message.voice or update.message.audio
     if not voice:
         return
