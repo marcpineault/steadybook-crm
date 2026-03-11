@@ -517,41 +517,107 @@ def get_disability_quote(age: int = 0, gender: str = "", occupation: str = "", i
         ill_key = f"DIPR_ILL-{risk_class}-{benefit}-{age_band}-{sex_code}-{wait_days}-{benefit_period}"
         ill_rate = rates.get(ill_key)
 
-    wait_label = EDGE_WAIT_LABELS.get(wait_days, f"{wait_days} days")
-    period_label = EDGE_PERIOD_LABELS.get(benefit_period, benefit_period)
     cov_label = "24-Hour" if cov_code == "0" else "Non-Occupational"
 
-    lines.append(f"  ${benefit:,}/mo benefit | {wait_label} wait | {period_label} | {cov_label}")
+    lines.append(f"  ${benefit:,}/mo benefit | {cov_label}")
     lines.append("")
 
-    if has_gender:
-        if inj_rate:
-            lines.append(f"  Injury Only: ${inj_rate:.2f}/mo")
-        else:
-            lines.append(f"  Injury rate not found for this combination.")
+    # Build pricing table across wait period / benefit period combos
+    # Common combos: 112-day/5yr (most common), 112-day/to-70, 30-day/5yr, 30-day/to-70
+    COMMON_COMBOS = [
+        ("112", "5", "112-day wait / 5-yr benefit"),
+        ("112", "70", "112-day wait / to age 70"),
+        ("30", "5", "30-day wait / 5-yr benefit"),
+        ("30", "70", "30-day wait / to age 70"),
+        ("30", "2", "30-day wait / 2-yr benefit"),
+        ("0", "2", "0-day wait / 2-yr benefit"),
+    ]
+
+    # Determine if user specified wait/benefit or we should show all combos
+    user_specified_combo = (wait_days != "30" or benefit_period != "5")
+    show_multi = not user_specified_combo
+
+    if show_multi:
+        lines.append("PRICING OPTIONS (Injury Only):")
+        lines.append("")
+        for combo_wait, combo_period, combo_label in COMMON_COMBOS:
+            if has_gender:
+                inj_k = f"DIPR-{risk_class}-{benefit}-{sex_code}-{combo_wait}-{combo_period}-{cov_code}-0"
+                inj_r = rates.get(inj_k)
+                if inj_r:
+                    lines.append(f"  {combo_label}: ${inj_r:.2f}/mo")
+            else:
+                inj_k_m = f"DIPR-{risk_class}-{benefit}-0-{combo_wait}-{combo_period}-{cov_code}-0"
+                inj_k_f = f"DIPR-{risk_class}-{benefit}-1-{combo_wait}-{combo_period}-{cov_code}-0"
+                r_m = rates.get(inj_k_m)
+                r_f = rates.get(inj_k_f)
+                if r_m or r_f:
+                    parts = []
+                    if r_m:
+                        parts.append(f"M ${r_m:.2f}")
+                    if r_f:
+                        parts.append(f"F ${r_f:.2f}")
+                    lines.append(f"  {combo_label}: {' / '.join(parts)}/mo")
+
+        # Add illness+injury combos if age and gender provided
+        if has_age and has_gender:
+            age_band = _get_age_band(age)
+            lines.append("")
+            lines.append("ILLNESS + INJURY (combined):")
+            lines.append("")
+            for combo_wait, combo_period, combo_label in COMMON_COMBOS:
+                inj_k = f"DIPR-{risk_class}-{benefit}-{sex_code}-{combo_wait}-{combo_period}-{cov_code}-0"
+                ill_k = f"DIPR_ILL-{risk_class}-{benefit}-{age_band}-{sex_code}-{combo_wait}-{combo_period}"
+                inj_r = rates.get(inj_k)
+                ill_r = rates.get(ill_k)
+                if inj_r and ill_r:
+                    total = inj_r + ill_r
+                    lines.append(f"  {combo_label}: ${total:.2f}/mo")
+                elif ill_r:
+                    lines.append(f"  {combo_label}: illness ${ill_r:.2f}/mo (injury rate N/A)")
     else:
-        if inj_rate_m or inj_rate_f:
-            if inj_rate_m:
-                lines.append(f"  Injury Only (Male): ${inj_rate_m:.2f}/mo")
-            if inj_rate_f:
-                lines.append(f"  Injury Only (Female): ${inj_rate_f:.2f}/mo")
+        # User specified a specific combo — show just that one
+        wait_label = EDGE_WAIT_LABELS.get(wait_days, f"{wait_days} days")
+        period_label = EDGE_PERIOD_LABELS.get(benefit_period, benefit_period)
+        lines.append(f"  {wait_label} wait | {period_label}")
+        lines.append("")
+
+        if has_gender:
+            if inj_rate:
+                lines.append(f"  Injury Only: ${inj_rate:.2f}/mo")
+            else:
+                lines.append(f"  Injury rate not found for this combination.")
         else:
-            lines.append(f"  Injury rate not found for this combination.")
+            if inj_rate_m or inj_rate_f:
+                if inj_rate_m:
+                    lines.append(f"  Injury Only (Male): ${inj_rate_m:.2f}/mo")
+                if inj_rate_f:
+                    lines.append(f"  Injury Only (Female): ${inj_rate_f:.2f}/mo")
+            else:
+                lines.append(f"  Injury rate not found for this combination.")
+
+        if has_age and has_gender and ill_rate and inj_rate:
+            total = inj_rate + ill_rate
+            lines.append(f"  Illness + Injury: ${total:.2f}/mo")
+        elif has_age and has_gender and ill_rate:
+            lines.append(f"  Illness Only: ${ill_rate:.2f}/mo")
 
     if not has_age or not has_gender:
         lines.append("")
-        lines.append("(Provide age and gender for illness + injury combined rates)")
+        lines.append("(Add age and gender for illness + injury combined rates)")
 
-    # Show comparison table for different benefit amounts (injury only)
+    # Show other benefit amounts for the most common combo (112-day/5yr)
     lines.append("")
-    lines.append("Other benefit amounts (Injury Only):")
+    ref_wait = "112" if show_multi else wait_days
+    ref_period = "5" if show_multi else benefit_period
+    lines.append(f"Other benefit amounts ({EDGE_WAIT_LABELS.get(ref_wait, ref_wait)} / {EDGE_PERIOD_LABELS.get(ref_period, ref_period)}, Injury Only):")
     lookup_sex = sex_code if has_gender else "0"
     for alt in EDGE_BENEFITS:
         if alt == benefit:
             continue
         if alt > max_benefit:
             break
-        alt_inj = rates.get(f"DIPR-{risk_class}-{alt}-{lookup_sex}-{wait_days}-{benefit_period}-{cov_code}-0")
+        alt_inj = rates.get(f"DIPR-{risk_class}-{alt}-{lookup_sex}-{ref_wait}-{ref_period}-{cov_code}-0")
         if alt_inj:
             lines.append(f"  ${alt:,}/mo: ${alt_inj:.2f}/mo")
 
@@ -976,14 +1042,14 @@ TOOLS = [
         "smoker": {"type": "boolean"}, "term": {"type": "string"},
         "amount": {"type": "integer"}, "health": {"type": "string"},
     }, ["age", "gender", "smoker", "term", "amount"]),
-    _tool("get_disability_quote", "Look up Edge Benefits disability insurance quotes. Age and gender are optional — injury rates don't need them, illness rates do.", {
+    _tool("get_disability_quote", "Look up Edge Benefits disability insurance quotes. Omit wait_days and benefit_period to show all common pricing options. Age/gender optional (only needed for illness rates).", {
         "age": {"type": "integer", "description": "Age of the person (optional — only needed for illness rates)"},
         "gender": {"type": "string", "description": "M or F (optional — only needed for illness rates)"},
         "occupation": {"type": "string", "description": "Job title (e.g. office worker, nurse, teacher)"},
         "income": {"type": "integer", "description": "Annual income in dollars (e.g. 50000, NOT monthly)"},
         "benefit": {"type": "integer", "description": "Desired monthly benefit amount in dollars (e.g. 3000 for $3,000/mo). 0 = auto-calculate max eligible."},
-        "wait_days": {"type": "string", "description": "Waiting period: 0, 30, or 112 days. Default 30."},
-        "benefit_period": {"type": "string", "description": "Benefit period: 2 (2yr), 5 (5yr), or 70 (to age 70). Default 5."},
+        "wait_days": {"type": "string", "description": "Waiting period: 0, 30, or 112 days. OMIT to show all options."},
+        "benefit_period": {"type": "string", "description": "Benefit period: 2 (2yr), 5 (5yr), or 70 (to age 70). OMIT to show all options."},
         "coverage_type": {"type": "string", "description": "24hour or non-occupational. Default 24hour."},
     }, ["occupation", "income"]),
 ]
