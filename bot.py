@@ -44,10 +44,10 @@ async def _require_admin(update) -> bool:
     if _is_admin(update):
         return True
     await update.message.reply_text(
-        "You have access to /quote, /add, and /status.\n"
+        "You have access to /quote, /add, /status, and /msg.\n"
         "Try: /quote disability office worker 50k income 3k benefit\n"
         "Or: /add John Smith, interested in life insurance\n"
-        "Or: /status John Smith"
+        "Or: /msg Hey Marc, can we chat about the Johnson file?"
     )
     return False
 
@@ -68,6 +68,36 @@ def lookup_prospect(name: str) -> str:
     if not p:
         return f"No prospect found matching '{name}'."
     return json.dumps(p, default=str)
+
+
+def message_marc(sender: str, message: str) -> str:
+    """Send a message to Marc via Telegram. Returns confirmation."""
+    import asyncio
+
+    if not ADMIN_CHAT_ID:
+        return "Could not send — Marc's chat ID not configured."
+
+    # Access bot from the running app
+    import sys
+    main_mod = sys.modules.get("__main__")
+    bot = getattr(main_mod, "telegram_app", None)
+    if bot:
+        bot = bot.bot
+    else:
+        return "Message queued — Marc will see it when the bot restarts."
+
+    text = f"Message from {sender}:\n\n{message}"
+
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            asyncio.ensure_future(bot.send_message(chat_id=ADMIN_CHAT_ID, text=text))
+        else:
+            loop.run_until_complete(bot.send_message(chat_id=ADMIN_CHAT_ID, text=text))
+        return f"Message sent to Marc."
+    except Exception as e:
+        logger.error(f"Failed to message Marc: {e}")
+        return f"Could not send message right now. Try again or call Marc directly."
 
 
 def update_prospect(name: str, updates: dict) -> str:
@@ -987,6 +1017,10 @@ TOOLS = [
     _tool("lookup_prospect", "Look up a single prospect by name. Returns their details.", {
         "name": {"type": "string", "description": "Prospect name to search for"},
     }, ["name"]),
+    _tool("message_marc", "Send a message to Marc via Telegram. Use when a coworker wants to tell Marc something.", {
+        "sender": {"type": "string", "description": "Name of the person sending the message"},
+        "message": {"type": "string", "description": "The message to send to Marc"},
+    }, ["sender", "message"]),
     _tool("add_prospect", "Add a new prospect to the pipeline.", {
         "name": {"type": "string", "description": "Prospect's full name"},
         "phone": {"type": "string"}, "email": {"type": "string"},
@@ -1069,6 +1103,7 @@ TOOLS = [
 TOOL_FUNCTIONS = {
     "read_pipeline": lambda _: json.dumps(read_pipeline(), default=str),
     "lookup_prospect": lambda args: lookup_prospect(args["name"]),
+    "message_marc": lambda args: message_marc(args["sender"], args["message"]),
     "add_prospect": lambda args: add_prospect(args),
     "update_prospect": lambda args: update_prospect(args["name"], args.get("updates") or {k: v for k, v in args.items() if k != "name"}),
     "delete_prospect": lambda args: delete_prospect(args["name"]),
@@ -1149,16 +1184,19 @@ You can help them with:
 - Looking up a prospect's status (use lookup_prospect)
 - Adding new leads/prospects to Marc's pipeline (use add_prospect, then auto_set_follow_up)
 - Getting disability or term life insurance quotes (use get_disability_quote or get_term_quote)
+- Sending a message to Marc (use message_marc) — use this when they want to tell Marc something, ask him a question, or give him an update
 - Answering general insurance questions
 
 When they add a new prospect, set source to "Referral from {coworker_name}" and add "Added by {coworker_name}" to notes.
+
+If they say things like "tell Marc...", "can you let Marc know...", "message Marc...", "ask Marc..." — use message_marc to relay the message.
 
 You CANNOT help with: editing/deleting prospects, viewing the full pipeline, managing meetings, exporting data, or anything else admin-only. If they ask, let them know Marc handles that.
 
 Keep it conversational and brief."""
 
 # Tools available to coworkers
-COWORKER_TOOL_NAMES = {"lookup_prospect", "add_prospect", "auto_set_follow_up", "get_disability_quote", "get_term_quote"}
+COWORKER_TOOL_NAMES = {"lookup_prospect", "add_prospect", "auto_set_follow_up", "get_disability_quote", "get_term_quote", "message_marc"}
 
 def _build_prompt(template):
     return template.format(today=date.today().strftime("%Y-%m-%d"), formatting=FORMATTING_RULE)
@@ -1418,6 +1456,25 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lines.append(f"  Notes: {notes}")
 
     await update.message.reply_text("\n".join(lines))
+
+
+# ── /msg command — coworkers can message Marc ──
+
+async def cmd_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /msg command — send a message to Marc. Available to coworkers."""
+    msg_text = update.message.text.replace("/msg", "", 1).strip()
+    sender = update.effective_user.first_name or "Coworker"
+
+    if _is_admin(update):
+        await update.message.reply_text("You're Marc! This command is for your coworkers to message you.")
+        return
+
+    if not msg_text:
+        await update.message.reply_text("Usage: /msg Hey Marc, can we chat about the Johnson file?")
+        return
+
+    result = message_marc(sender, msg_text)
+    await update.message.reply_text(result)
 
 
 # ── /pipeline, /overdue, /meetings, /calls — direct tool commands ──
@@ -1780,11 +1837,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "- Add a lead: just tell me about them\n"
             "- Check on a prospect: 'how's John Smith doing?'\n"
             "- Get a quote: 'disability quote for an office worker making 50k'\n"
+            "- Message Marc: 'tell Marc I need to talk about the Johnson file'\n"
             "- Send a voice note about a prospect\n\n"
             "Or use commands:\n"
             "/quote — insurance quotes\n"
             "/add — add a prospect\n"
-            "/status — check on a prospect\n\n"
+            "/status — check on a prospect\n"
+            "/msg — send Marc a message\n\n"
             "Marc gets notified when you add a lead."
         )
         return
@@ -1825,6 +1884,7 @@ def build_application():
     app.add_handler(CommandHandler("q", cmd_quote))  # shortcut
     app.add_handler(CommandHandler("add", cmd_add))
     app.add_handler(CommandHandler("status", cmd_status))
+    app.add_handler(CommandHandler("msg", cmd_msg))
     app.add_handler(CommandHandler("pipeline", cmd_pipeline))
     app.add_handler(CommandHandler("overdue", cmd_overdue))
     app.add_handler(CommandHandler("meetings", cmd_meetings))

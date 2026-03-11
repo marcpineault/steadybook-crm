@@ -451,6 +451,217 @@ async def _weekly_report_inner():
     logger.info("Weekly report sent.")
 
 
+# ── Midday Check-in ──
+
+async def midday_checkin():
+    """Send a midday progress check at 12:30 PM ET."""
+    if not _bot or not CHAT_ID:
+        return
+
+    try:
+        today = date.today()
+        prospects = _read_prospects()
+        active = [p for p in prospects if p["stage"] not in ("Closed-Won", "Closed-Lost", "")]
+
+        # Count today's activities
+        activities_today = 0
+        calls_today = 0
+        for a in db.read_activities():
+            ad = a.get("date", "")
+            if ad and ad != "None":
+                try:
+                    activity_date = datetime.strptime(ad.split(" ")[0], "%Y-%m-%d").date()
+                    if activity_date == today:
+                        activities_today += 1
+                        if "call" in a["action"].lower() or "phone" in a["action"].lower():
+                            calls_today += 1
+                except (ValueError, IndexError):
+                    pass
+
+        for b in db.read_insurance_book():
+            lc = b.get("last_called", "")
+            if lc and lc != "None":
+                try:
+                    if datetime.strptime(lc.split(" ")[0], "%Y-%m-%d").date() == today:
+                        calls_today += 1
+                except (ValueError, IndexError):
+                    pass
+
+        # Follow-ups due today
+        due_today = []
+        for p in active:
+            fu = p["_next_followup_date"]
+            if fu and fu == today:
+                due_today.append(p["name"])
+
+        # Overdue
+        overdue = [p for p in active if p["_next_followup_date"] and p["_next_followup_date"] < today]
+
+        lines = ["MIDDAY CHECK-IN", "━━━━━━━━━━━━━━━━", ""]
+        lines.append(f"So far today: {calls_today} calls, {activities_today} total activities")
+
+        if calls_today < 10:
+            lines.append(f"  {10 - calls_today} more calls to hit your daily target")
+
+        if due_today:
+            lines.append(f"\nDue today ({len(due_today)}):")
+            for name in due_today[:5]:
+                lines.append(f"  {name}")
+
+        if overdue:
+            lines.append(f"\nOverdue ({len(overdue)}):")
+            for p in overdue[:3]:
+                days_late = (today - p["_next_followup_date"]).days
+                lines.append(f"  {p['name']} — {days_late}d late")
+
+        # Afternoon meetings
+        meetings = _read_meetings_today()
+        afternoon = [m for m in meetings if _is_afternoon(m.get("time", ""))]
+        if afternoon:
+            lines.append(f"\nThis afternoon:")
+            for m in afternoon:
+                lines.append(f"  {m.get('time', '?')} — {m.get('prospect', '?')} ({m.get('type', '?')})")
+
+        if not due_today and not overdue and calls_today >= 10:
+            lines.append("\nYou're crushing it today. Keep going.")
+
+        await _bot.send_message(chat_id=CHAT_ID, text="\n".join(lines))
+        logger.info("Midday check-in sent.")
+    except Exception as e:
+        logger.error(f"Midday check-in failed: {e}")
+
+
+def _is_afternoon(time_str: str) -> bool:
+    """Check if a time string is afternoon (12 PM or later)."""
+    if not time_str:
+        return False
+    t = time_str.lower()
+    if "pm" in t:
+        return True
+    try:
+        hour = int(t.split(":")[0])
+        return hour >= 12
+    except (ValueError, IndexError):
+        return False
+
+
+# ── End of Day Wrap-up ──
+
+async def eod_wrapup():
+    """Send end-of-day summary at 5:30 PM ET on weekdays."""
+    if not _bot or not CHAT_ID:
+        return
+
+    try:
+        today = date.today()
+        # Skip weekends
+        if today.weekday() >= 5:
+            return
+
+        prospects = _read_prospects()
+        active = [p for p in prospects if p["stage"] not in ("Closed-Won", "Closed-Lost", "")]
+
+        # Count today's activities
+        activities_today = 0
+        calls_today = 0
+        for a in db.read_activities():
+            ad = a.get("date", "")
+            if ad and ad != "None":
+                try:
+                    activity_date = datetime.strptime(ad.split(" ")[0], "%Y-%m-%d").date()
+                    if activity_date == today:
+                        activities_today += 1
+                        if "call" in a["action"].lower() or "phone" in a["action"].lower():
+                            calls_today += 1
+                except (ValueError, IndexError):
+                    pass
+
+        for b in db.read_insurance_book():
+            lc = b.get("last_called", "")
+            if lc and lc != "None":
+                try:
+                    if datetime.strptime(lc.split(" ")[0], "%Y-%m-%d").date() == today:
+                        calls_today += 1
+                except (ValueError, IndexError):
+                    pass
+
+        # Overdue still unresolved
+        overdue = [p for p in active if p["_next_followup_date"] and p["_next_followup_date"] < today]
+
+        # Tomorrow's meetings
+        tomorrow_meetings = _read_meetings_tomorrow()
+
+        lines = ["END OF DAY", "━━━━━━━━━━━━━━━━", ""]
+        lines.append(f"Today: {calls_today} calls, {activities_today} total activities")
+
+        if calls_today >= 10:
+            lines.append("Hit your call target today.")
+        else:
+            lines.append(f"Missed call target by {10 - calls_today}.")
+
+        if overdue:
+            lines.append(f"\nStill overdue ({len(overdue)}):")
+            for p in overdue[:5]:
+                days_late = (today - p["_next_followup_date"]).days
+                lines.append(f"  {p['name']} — {days_late}d late")
+
+        # Tomorrow preview
+        tomorrow = today + timedelta(days=1)
+        due_tomorrow = [p for p in active if p["_next_followup_date"] and p["_next_followup_date"] == tomorrow]
+
+        if tomorrow_meetings or due_tomorrow:
+            lines.append(f"\nTomorrow:")
+            for m in tomorrow_meetings:
+                lines.append(f"  Meeting: {m.get('time', '?')} — {m.get('prospect', '?')} ({m.get('type', '?')})")
+            for p in due_tomorrow[:3]:
+                lines.append(f"  Follow-up: {p['name']}")
+
+        lines.append("\nGood work today, Marc.")
+
+        await _bot.send_message(chat_id=CHAT_ID, text="\n".join(lines))
+        logger.info("EOD wrap-up sent.")
+    except Exception as e:
+        logger.error(f"EOD wrap-up failed: {e}")
+
+
+# ── Follow-up Due Today Reminder ──
+
+async def followup_reminder():
+    """Send a reminder about follow-ups due today at 9:30 AM ET."""
+    if not _bot or not CHAT_ID:
+        return
+
+    try:
+        today = date.today()
+        prospects = _read_prospects()
+        active = [p for p in prospects if p["stage"] not in ("Closed-Won", "Closed-Lost", "")]
+
+        due_today = []
+        for p in active:
+            fu = p["_next_followup_date"]
+            if fu and fu == today:
+                due_today.append(p)
+
+        if not due_today:
+            return  # No reminder needed
+
+        lines = [f"FOLLOW-UPS DUE TODAY ({len(due_today)})", "━━━━━━━━━━━━━━━━", ""]
+        for p in due_today:
+            priority = p.get("priority", "")
+            product = p.get("product", "")
+            phone = p.get("phone", "")
+            detail = f" ({priority})" if priority else ""
+            detail += f" — {product}" if product else ""
+            lines.append(f"  {p['name']}{detail}")
+            if phone:
+                lines.append(f"    {phone}")
+
+        await _bot.send_message(chat_id=CHAT_ID, text="\n".join(lines))
+        logger.info(f"Follow-up reminder sent for {len(due_today)} prospects.")
+    except Exception as e:
+        logger.error(f"Follow-up reminder failed: {e}")
+
+
 # ── Scheduler entry point ──
 
 def start_scheduler(telegram_app, event_loop=None):
@@ -483,6 +694,17 @@ def start_scheduler(telegram_app, event_loop=None):
         name="Daily Morning Briefing",
     )
 
+    # Follow-up due today reminder at 9:30 AM ET weekdays
+    scheduler.add_job(
+        followup_reminder,
+        "cron",
+        day_of_week="mon-fri",
+        hour=9,
+        minute=30,
+        id="followup_reminder",
+        name="Follow-Up Due Today",
+    )
+
     # Auto-nag every 2 hours from 9 AM to 5 PM ET
     scheduler.add_job(
         auto_nag,
@@ -491,6 +713,28 @@ def start_scheduler(telegram_app, event_loop=None):
         minute=0,
         id="auto_nag",
         name="Auto-Nag Check",
+    )
+
+    # Midday check-in at 12:30 PM ET weekdays
+    scheduler.add_job(
+        midday_checkin,
+        "cron",
+        day_of_week="mon-fri",
+        hour=12,
+        minute=30,
+        id="midday_checkin",
+        name="Midday Check-In",
+    )
+
+    # End of day wrap-up at 5:30 PM ET weekdays
+    scheduler.add_job(
+        eod_wrapup,
+        "cron",
+        day_of_week="mon-fri",
+        hour=17,
+        minute=30,
+        id="eod_wrapup",
+        name="End of Day Wrap-Up",
     )
 
     # Weekly performance report Sunday at 7 PM ET
@@ -505,4 +749,4 @@ def start_scheduler(telegram_app, event_loop=None):
     )
 
     scheduler.start()
-    logger.info("Scheduler started — morning briefing 8AM, auto-nag 9-5, weekly report Sun 7PM ET.")
+    logger.info("Scheduler started — briefing 8AM, follow-ups 9:30AM, nag 9-5, midday 12:30PM, EOD 5:30PM, weekly Sun 7PM ET.")
