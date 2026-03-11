@@ -1225,7 +1225,33 @@ async def cmd_priority(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines))
 
 
-# ── Free-form message handler (still works for everything else) ──
+# ── /lead command ──
+
+async def cmd_lead(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /lead command — paste in a lead email or referral info."""
+    user_msg = update.message.text.replace("/lead", "", 1).strip()
+    if not user_msg:
+        await update.message.reply_text(
+            "Paste a lead email or referral info after /lead:\n"
+            "/lead Mike Johnson, 35, looking for life insurance, referred by his neighbor. 519-555-5678"
+        )
+        return
+
+    logger.info(f"/lead: {user_msg[:100]}")
+    await update.message.reply_text("Processing lead...")
+
+    try:
+        from intake import process_email_lead
+        result = process_email_lead({
+            "from": "Telegram paste",
+            "subject": "",
+            "body": user_msg,
+        })
+        await update.message.reply_text(result)
+    except Exception as e:
+        logger.error(f"/lead error: {e}")
+        await update.message.reply_text(f"Error processing lead: {str(e)[:200]}")
+
 
 # ── Free-form message handler ──
 
@@ -1448,6 +1474,7 @@ def build_application():
     app.add_handler(CommandHandler("stats", cmd_stats))
     app.add_handler(CommandHandler("priority", cmd_priority))
     app.add_handler(CommandHandler("p", cmd_priority))  # shortcut
+    app.add_handler(CommandHandler("lead", cmd_lead))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice_message))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
