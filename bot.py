@@ -44,9 +44,10 @@ async def _require_admin(update) -> bool:
     if _is_admin(update):
         return True
     await update.message.reply_text(
-        "You have access to /quote and /add only.\n"
+        "You have access to /quote, /add, and /status.\n"
         "Try: /quote disability office worker 50k income 3k benefit\n"
-        "Or: /add John Smith, interested in life insurance"
+        "Or: /add John Smith, interested in life insurance\n"
+        "Or: /status John Smith"
     )
     return False
 
@@ -1353,6 +1354,39 @@ async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Something went wrong: {str(e)[:200]}")
 
 
+# ── /status command — available to everyone ──
+
+async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /status command — look up a prospect by name. Available to all users."""
+    name = update.message.text.replace("/status", "", 1).strip()
+    if not name:
+        await update.message.reply_text("Usage: /status John Smith")
+        return
+
+    prospect = db.get_prospect_by_name(name)
+    if not prospect:
+        await update.message.reply_text(f"No prospect found matching '{name}'.")
+        return
+
+    lines = [
+        f"{prospect['name']}",
+        f"━━━━━━━━━━━━━━━━",
+        f"  Stage: {prospect.get('stage', 'N/A')}",
+        f"  Priority: {prospect.get('priority', 'N/A')}",
+        f"  Product: {prospect.get('product', 'N/A')}",
+    ]
+    if prospect.get("next_followup"):
+        lines.append(f"  Next follow-up: {prospect['next_followup']}")
+    if prospect.get("notes"):
+        # Show last 200 chars of notes to keep it brief
+        notes = prospect["notes"]
+        if len(notes) > 200:
+            notes = "..." + notes[-200:]
+        lines.append(f"  Notes: {notes}")
+
+    await update.message.reply_text("\n".join(lines))
+
+
 # ── /pipeline, /overdue, /meetings, /calls — direct tool commands ──
 
 async def cmd_pipeline(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1673,12 +1707,14 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _is_admin(update):
         await update.message.reply_text(
-            "Welcome! You have access to quotes and adding prospects.\n\n"
+            "Welcome! Here's what you can do:\n\n"
             "/quote — get insurance quotes\n"
             "  /quote disability office worker 50k income 3k benefit\n"
             "  /quote term 35 male nonsmoker 500k 20yr\n\n"
             "/add — add a prospect for Marc\n"
             "  /add John Smith, interested in life insurance, 35 years old\n\n"
+            "/status — check on a prospect\n"
+            "  /status John Smith\n\n"
             "You can also send a voice note about a prospect and it will be added automatically.\n\n"
             "Marc will be notified when you add a prospect."
         )
@@ -1719,6 +1755,7 @@ def build_application():
     app.add_handler(CommandHandler("quote", cmd_quote))
     app.add_handler(CommandHandler("q", cmd_quote))  # shortcut
     app.add_handler(CommandHandler("add", cmd_add))
+    app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CommandHandler("pipeline", cmd_pipeline))
     app.add_handler(CommandHandler("overdue", cmd_overdue))
     app.add_handler(CommandHandler("meetings", cmd_meetings))
