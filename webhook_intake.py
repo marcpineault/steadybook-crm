@@ -8,6 +8,7 @@ Handles:
 import hmac
 import logging
 import os
+import re
 
 from flask import Blueprint, jsonify, request
 
@@ -87,7 +88,19 @@ def email_inbound():
     envelope = payload.get("envelope", {})
     subject = headers.get("Subject", "")
     sender = headers.get("From", envelope.get("from", ""))
-    body = payload.get("plain", "") or payload.get("html", "")
+    plain = payload.get("plain", "") or ""
+    html = payload.get("html", "") or ""
+
+    # Prefer plain text; if only HTML, strip tags to get readable text
+    if plain.strip():
+        body = plain
+    elif html.strip():
+        body = _strip_html(html)
+    else:
+        body = ""
+
+    logger.info(f"Email inbound from={sender} subject={subject} body_len={len(body)}")
+    logger.info(f"Email body preview: {body[:500]}")
 
     if not body and not subject:
         return jsonify({"error": "Empty email"}), 400
@@ -104,6 +117,23 @@ def email_inbound():
     except Exception as e:
         logger.error(f"Email inbound error: {e}")
         return jsonify({"error": str(e)[:200]}), 500
+
+
+def _strip_html(html: str) -> str:
+    """Convert HTML email to readable plain text."""
+    # Remove style and script blocks
+    text = re.sub(r"<(style|script)[^>]*>.*?</\1>", "", html, flags=re.DOTALL | re.IGNORECASE)
+    # Convert <br>, <p>, <div>, <tr> to newlines
+    text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"</(p|div|tr|li|h[1-6])>", "\n", text, flags=re.IGNORECASE)
+    # Strip remaining tags
+    text = re.sub(r"<[^>]+>", " ", text)
+    # Decode common HTML entities
+    text = text.replace("&nbsp;", " ").replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+    # Collapse whitespace
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
 
 
 def _notify_telegram(message: str):
