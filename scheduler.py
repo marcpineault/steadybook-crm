@@ -48,8 +48,11 @@ def _load_nag_state() -> dict:
 
 
 def _save_nag_state(state: dict):
-    with open(NAG_STATE_FILE, "w") as f:
-        json.dump(state, f, indent=2)
+    try:
+        with open(NAG_STATE_FILE, "w") as f:
+            json.dump(state, f, indent=2)
+    except OSError as e:
+        logger.error(f"Failed to save nag state: {e}")
 
 
 def _can_nag(state: dict, prospect_name: str, nag_type: str) -> bool:
@@ -142,6 +145,17 @@ async def morning_briefing():
     if not _bot or not CHAT_ID:
         return
 
+    try:
+        await _morning_briefing_inner()
+    except Exception as e:
+        logger.error(f"Morning briefing failed: {e}")
+        try:
+            await _bot.send_message(chat_id=CHAT_ID, text=f"Morning briefing error — check logs. ({str(e)[:100]})")
+        except Exception:
+            pass
+
+
+async def _morning_briefing_inner():
     import scoring
 
     today = date.today()
@@ -287,6 +301,17 @@ async def weekly_report():
     if not _bot or not CHAT_ID:
         return
 
+    try:
+        await _weekly_report_inner()
+    except Exception as e:
+        logger.error(f"Weekly report failed: {e}")
+        try:
+            await _bot.send_message(chat_id=CHAT_ID, text=f"Weekly report error — check logs. ({str(e)[:100]})")
+        except Exception:
+            pass
+
+
+async def _weekly_report_inner():
     today = date.today()
     week_start = today - timedelta(days=7)
 

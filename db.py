@@ -235,24 +235,27 @@ def update_prospect(name: str, updates: dict) -> str:
             "product", "aum", "revenue", "first_contact", "next_followup", "notes",
         }
 
-        changes = []
+        safe_fields = {}
         for field, value in updates.items():
-            if field not in allowed or not value:
+            if field not in allowed or value is None:
                 continue
             if field in ("aum", "revenue"):
                 parsed = _parse_numeric(value)
                 if parsed is not None:
                     value = parsed
-            conn.execute(
-                f"UPDATE prospects SET {field} = ?, updated_at = datetime('now') WHERE id = ?",
-                (value, prospect_id),
-            )
-            changes.append(f"{field} → {value}")
+            safe_fields[field] = value
 
-        if not changes:
+        if not safe_fields:
             return f"No valid updates for {matched_name}."
 
-    return f"Updated {matched_name}: {', '.join(changes)}"
+        set_clauses = ", ".join(f"{field} = ?" for field in safe_fields)
+        values = list(safe_fields.values()) + [prospect_id]
+        conn.execute(
+            f"UPDATE prospects SET {set_clauses}, updated_at = datetime('now') WHERE id = ?",
+            values,
+        )
+
+    return f"Updated {matched_name}: {', '.join(f'{f} → {v}' for f, v in safe_fields.items())}"
 
 
 def delete_prospect(name: str) -> str:
@@ -345,21 +348,14 @@ def read_meetings():
 def update_meeting(meeting_id: int, updates: dict) -> str:
     """Update a meeting by ID."""
     allowed = {"date", "time", "prospect", "type", "prep_notes", "status"}
+    safe_fields = {f: v for f, v in updates.items() if f in allowed and v is not None}
+    if not safe_fields:
+        return f"No valid updates for meeting {meeting_id}."
     with get_db() as conn:
-        changes = []
-        for field, value in updates.items():
-            if field not in allowed:
-                continue
-            conn.execute(
-                f"UPDATE meetings SET {field} = ? WHERE id = ?",
-                (value, meeting_id),
-            )
-            changes.append(f"{field} → {value}")
-
-        if not changes:
-            return f"No valid updates for meeting {meeting_id}."
-
-    return f"Updated meeting {meeting_id}: {', '.join(changes)}"
+        set_clauses = ", ".join(f"{field} = ?" for field in safe_fields)
+        values = list(safe_fields.values()) + [meeting_id]
+        conn.execute(f"UPDATE meetings SET {set_clauses} WHERE id = ?", values)
+    return f"Updated meeting {meeting_id}: {', '.join(f'{f} → {v}' for f, v in safe_fields.items())}"
 
 
 # ── Insurance Book CRUD ──
@@ -402,21 +398,14 @@ def update_insurance_entry(entry_id: int, updates: dict) -> str:
     """Update an insurance book entry by ID."""
     allowed = {"name", "phone", "address", "policy_start", "status",
                "last_called", "notes", "retry_date"}
+    safe_fields = {f: v for f, v in updates.items() if f in allowed and v is not None}
+    if not safe_fields:
+        return f"No valid updates for insurance entry {entry_id}."
     with get_db() as conn:
-        changes = []
-        for field, value in updates.items():
-            if field not in allowed:
-                continue
-            conn.execute(
-                f"UPDATE insurance_book SET {field} = ? WHERE id = ?",
-                (value, entry_id),
-            )
-            changes.append(f"{field} → {value}")
-
-        if not changes:
-            return f"No valid updates for insurance entry {entry_id}."
-
-    return f"Updated insurance entry {entry_id}: {', '.join(changes)}"
+        set_clauses = ", ".join(f"{field} = ?" for field in safe_fields)
+        values = list(safe_fields.values()) + [entry_id]
+        conn.execute(f"UPDATE insurance_book SET {set_clauses} WHERE id = ?", values)
+    return f"Updated insurance entry {entry_id}: {', '.join(f'{f} → {v}' for f, v in safe_fields.items())}"
 
 
 # ── Win/Loss Log ──
