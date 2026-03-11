@@ -99,7 +99,7 @@ async def transcribe_voice(file_path: str) -> str:
     return transcript.text
 
 
-async def extract_and_update(transcript: str, bot=None, source: str = "voice_note") -> str:
+async def extract_and_update(transcript: str, bot=None, source: str = "voice_note", coworker: str = "") -> str:
     """Extract prospect data from transcript, update pipeline, return summary."""
     prompt = build_extraction_prompt(transcript)
 
@@ -118,6 +118,8 @@ async def extract_and_update(transcript: str, bot=None, source: str = "voice_not
 
     source_label = "Otter transcript" if source == "otter_transcript" else "voice note"
     tag = "[Otter]" if source == "otter_transcript" else "[Voice]"
+    if coworker:
+        tag = f"[Voice from {coworker}]"
 
     if not prospects:
         return f"Could not extract prospect data from your {source_label}.\n\nTry again or add manually with /add."
@@ -146,15 +148,19 @@ async def extract_and_update(transcript: str, bot=None, source: str = "voice_not
             db.update_prospect(name, updates)
             results.append(f"Updated {existing['name']} — added {source_label} details")
         else:
+            prospect_source = f"Referral from {coworker}" if coworker else p.get("source", source)
+            notes = p.get("notes", "")
+            if coworker:
+                notes = f"{notes} | Added by {coworker}" if notes else f"Added by {coworker}"
             db.add_prospect({
                 "name": name,
                 "phone": p.get("phone", ""),
                 "email": p.get("email", ""),
-                "source": p.get("source", source),
+                "source": prospect_source,
                 "priority": p.get("priority", "Warm"),
                 "stage": p.get("stage", "New Lead"),
                 "product": p.get("product", ""),
-                "notes": p.get("notes", ""),
+                "notes": notes,
             })
             # Score and schedule follow-up for new prospects
             from intake import _score_and_schedule
@@ -181,23 +187,17 @@ async def extract_and_update(transcript: str, bot=None, source: str = "voice_not
 
 
 async def handle_voice_message(update, context):
-    """Telegram handler for voice messages."""
-    # Admin-only — check via TELEGRAM_CHAT_ID
+    """Telegram handler for voice messages. Admin gets full processing, coworkers can add leads."""
     admin_id = os.environ.get("TELEGRAM_CHAT_ID", "")
-    if admin_id and str(update.effective_chat.id) != str(admin_id):
-        await update.message.reply_text(
-            "You have access to /quote and /add only.\n"
-            "Try: /quote disability office worker 50k income 3k benefit\n"
-            "Or: /add John Smith, interested in life insurance"
-        )
-        return
+    is_admin = not admin_id or str(update.effective_chat.id) == str(admin_id)
+    coworker_name = "" if is_admin else (update.effective_user.first_name or "Coworker")
 
     voice = update.message.voice or update.message.audio
     if not voice:
         return
 
     chat_id = update.effective_chat.id
-    logger.info(f"Voice message received, duration: {voice.duration}s")
+    logger.info(f"Voice message received from {'admin' if is_admin else coworker_name}, duration: {voice.duration}s")
 
     await update.message.reply_text("Got your voice note, processing...")
 
@@ -218,12 +218,22 @@ async def handle_voice_message(update, context):
         # Save raw transcript before extraction so nothing is lost on failure
         db.add_interaction({
             "prospect": "",
-            "source": "voice_note_raw",
+            "source": f"voice_note_raw{'_' + coworker_name if coworker_name else ''}",
             "raw_text": transcript,
         })
 
-        result = await extract_and_update(transcript)
+        result = await extract_and_update(transcript, coworker=coworker_name)
         await update.message.reply_text(result)
+
+        # Notify Marc when a coworker adds leads via voice
+        if coworker_name and admin_id:
+            try:
+                await context.bot.send_message(
+                    chat_id=admin_id,
+                    text=f"New lead added by {coworker_name} (voice note):\n{result}"
+                )
+            except Exception as e:
+                logger.warning(f"Could not notify admin: {e}")
 
     except Exception as e:
         logger.error(f"Voice handler error: {e}")

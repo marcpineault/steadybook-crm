@@ -1317,7 +1317,7 @@ async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 try:
                     await context.bot.send_message(
                         chat_id=ADMIN_CHAT_ID,
-                        text=f"New disability prospect added by {coworker}:\n{user_msg}"
+                        text=f"New lead added by {coworker}:\n{user_msg}"
                     )
                 except Exception as e:
                     logger.warning(f"Could not notify admin: {e}")
@@ -1679,6 +1679,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "  /quote term 35 male nonsmoker 500k 20yr\n\n"
             "/add — add a prospect for Marc\n"
             "  /add John Smith, interested in life insurance, 35 years old\n\n"
+            "You can also send a voice note about a prospect and it will be added automatically.\n\n"
             "Marc will be notified when you add a prospect."
         )
         return
