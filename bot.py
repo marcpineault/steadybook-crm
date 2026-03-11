@@ -45,7 +45,7 @@ async def _require_admin(update) -> bool:
         return True
     await update.message.reply_text(
         "You have access to /quote and /start only.\n"
-        "Try: /quote disability female 30 office worker 50k income 3k benefit\n"
+        "Try: /quote disability office worker 50k income 3k benefit\n"
         "Or: /quote term 35 male nonsmoker 500k 20yr"
     )
     return False
@@ -366,10 +366,10 @@ def _get_age_band(age: int) -> str:
     return ""
 
 
-def get_disability_quote(age: int, gender: str, occupation: str, income: int,
+def get_disability_quote(age: int = 0, gender: str = "", occupation: str = "", income: int = 0,
                          benefit: int = 0, wait_days: str = "30",
                          benefit_period: str = "5", coverage_type: str = "24hour") -> str:
-    """Look up Edge Benefits disability insurance rates."""
+    """Look up Edge Benefits disability insurance rates. Age and gender optional (needed for illness rates only)."""
     data = _load_edge_rates()
     if not data:
         return "Edge Benefits rate data not loaded. Check edge_benefits_rates.json."
@@ -481,28 +481,41 @@ def get_disability_quote(age: int, gender: str, occupation: str, income: int,
         benefit = max_benefit
     benefit = min(benefit, max_benefit)
 
-    sex_code = "0" if gender.lower().startswith("m") else "1"
+    has_gender = bool(gender and gender.strip())
+    has_age = bool(age and age > 0)
+    sex_code = "0" if has_gender and gender.lower().startswith("m") else "1"
     cov_code = "0" if coverage_type == "24hour" else "1"
     gender_label = "Male" if sex_code == "0" else "Female"
 
     matched_title = occ_lower if occ_lower != occupation.lower().strip() else occupation.title()
+    demo_str = f"{age}{gender_label[0]}, " if has_age and has_gender else ""
     lines = [
         f"EDGE BENEFITS DISABILITY QUOTE",
         f"━━━━━━━━━━━━━━━━",
-        f"  {age}{gender_label[0]}, {matched_title}",
+        f"  {demo_str}{matched_title}",
         f"  Risk Class: {risk_class} | Income: ${income:,}/yr",
         f"  Max eligible benefit: ${max_benefit:,}/mo",
         "",
     ]
 
-    # Injury rate (not age-dependent)
-    inj_key = f"DIPR-{risk_class}-{benefit}-{sex_code}-{wait_days}-{benefit_period}-{cov_code}-0"
-    inj_rate = rates.get(inj_key)
+    # Injury rate (not age-dependent, but needs gender for rate key)
+    # Show both male and female rates if gender not provided
+    if has_gender:
+        inj_key = f"DIPR-{risk_class}-{benefit}-{sex_code}-{wait_days}-{benefit_period}-{cov_code}-0"
+        inj_rate = rates.get(inj_key)
+    else:
+        inj_key_m = f"DIPR-{risk_class}-{benefit}-0-{wait_days}-{benefit_period}-{cov_code}-0"
+        inj_key_f = f"DIPR-{risk_class}-{benefit}-1-{wait_days}-{benefit_period}-{cov_code}-0"
+        inj_rate_m = rates.get(inj_key_m)
+        inj_rate_f = rates.get(inj_key_f)
+        inj_rate = None  # handled below
 
-    # Illness rate (age-banded)
-    age_band = _get_age_band(age)
-    ill_key = f"DIPR_ILL-{risk_class}-{benefit}-{age_band}-{sex_code}-{wait_days}-{benefit_period}"
-    ill_rate = rates.get(ill_key)
+    # Illness rate (age-banded) — only if age and gender provided
+    ill_rate = None
+    if has_age and has_gender:
+        age_band = _get_age_band(age)
+        ill_key = f"DIPR_ILL-{risk_class}-{benefit}-{age_band}-{sex_code}-{wait_days}-{benefit_period}"
+        ill_rate = rates.get(ill_key)
 
     wait_label = EDGE_WAIT_LABELS.get(wait_days, f"{wait_days} days")
     period_label = EDGE_PERIOD_LABELS.get(benefit_period, benefit_period)
@@ -511,20 +524,34 @@ def get_disability_quote(age: int, gender: str, occupation: str, income: int,
     lines.append(f"  ${benefit:,}/mo benefit | {wait_label} wait | {period_label} | {cov_label}")
     lines.append("")
 
-    if inj_rate:
-        lines.append(f"  Injury Only: ${inj_rate:.2f}/mo")
+    if has_gender:
+        if inj_rate:
+            lines.append(f"  Injury Only: ${inj_rate:.2f}/mo")
+        else:
+            lines.append(f"  Injury rate not found for this combination.")
     else:
-        lines.append(f"  Injury rate not found for this combination.")
+        if inj_rate_m or inj_rate_f:
+            if inj_rate_m:
+                lines.append(f"  Injury Only (Male): ${inj_rate_m:.2f}/mo")
+            if inj_rate_f:
+                lines.append(f"  Injury Only (Female): ${inj_rate_f:.2f}/mo")
+        else:
+            lines.append(f"  Injury rate not found for this combination.")
+
+    if not has_age or not has_gender:
+        lines.append("")
+        lines.append("(Provide age and gender for illness + injury combined rates)")
 
     # Show comparison table for different benefit amounts (injury only)
     lines.append("")
     lines.append("Other benefit amounts (Injury Only):")
+    lookup_sex = sex_code if has_gender else "0"
     for alt in EDGE_BENEFITS:
         if alt == benefit:
             continue
         if alt > max_benefit:
             break
-        alt_inj = rates.get(f"DIPR-{risk_class}-{alt}-{sex_code}-{wait_days}-{benefit_period}-{cov_code}-0")
+        alt_inj = rates.get(f"DIPR-{risk_class}-{alt}-{lookup_sex}-{wait_days}-{benefit_period}-{cov_code}-0")
         if alt_inj:
             lines.append(f"  ${alt:,}/mo: ${alt_inj:.2f}/mo")
 
@@ -949,16 +976,16 @@ TOOLS = [
         "smoker": {"type": "boolean"}, "term": {"type": "string"},
         "amount": {"type": "integer"}, "health": {"type": "string"},
     }, ["age", "gender", "smoker", "term", "amount"]),
-    _tool("get_disability_quote", "Look up Edge Benefits disability insurance quotes. Returns injury-only rates.", {
-        "age": {"type": "integer", "description": "Age of the person"},
-        "gender": {"type": "string", "description": "M or F"},
+    _tool("get_disability_quote", "Look up Edge Benefits disability insurance quotes. Age and gender are optional — injury rates don't need them, illness rates do.", {
+        "age": {"type": "integer", "description": "Age of the person (optional — only needed for illness rates)"},
+        "gender": {"type": "string", "description": "M or F (optional — only needed for illness rates)"},
         "occupation": {"type": "string", "description": "Job title (e.g. office worker, nurse, teacher)"},
         "income": {"type": "integer", "description": "Annual income in dollars (e.g. 50000, NOT monthly)"},
         "benefit": {"type": "integer", "description": "Desired monthly benefit amount in dollars (e.g. 3000 for $3,000/mo). 0 = auto-calculate max eligible."},
         "wait_days": {"type": "string", "description": "Waiting period: 0, 30, or 112 days. Default 30."},
         "benefit_period": {"type": "string", "description": "Benefit period: 2 (2yr), 5 (5yr), or 70 (to age 70). Default 5."},
         "coverage_type": {"type": "string", "description": "24hour or non-occupational. Default 24hour."},
-    }, ["age", "gender", "occupation", "income"]),
+    }, ["occupation", "income"]),
 ]
 
 TOOL_FUNCTIONS = {
@@ -983,7 +1010,7 @@ TOOL_FUNCTIONS = {
     "log_win_loss": lambda args: log_win_loss(args["prospect_name"], args["outcome"], args["reason"]),
     "get_win_loss_stats": lambda _: get_win_loss_stats(),
     "get_term_quote": lambda args: get_term_quote(args["age"], args["gender"], args.get("smoker", False), args["term"], args["amount"], args.get("health", "regular")),
-    "get_disability_quote": lambda args: get_disability_quote(args["age"], args["gender"], args["occupation"], args["income"], args.get("benefit", 0), args.get("wait_days", "30"), args.get("benefit_period", "5"), args.get("coverage_type", "24hour")),
+    "get_disability_quote": lambda args: get_disability_quote(args.get("age", 0), args.get("gender", ""), args["occupation"], args["income"], args.get("benefit", 0), args.get("wait_days", "30"), args.get("benefit_period", "5"), args.get("coverage_type", "24hour")),
 }
 
 FORMATTING_RULE = "Reply in plain text only. No markdown, no bold, no italic, no bullet points, no numbered lists, no emojis. Write like texting. Keep it short."
@@ -1142,7 +1169,7 @@ async def cmd_quote(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_msg = update.message.text.replace("/quote", "", 1).strip()
     if not user_msg:
         await update.message.reply_text(
-            "Usage: /quote disability female 30 office worker 50k income 3k benefit\n"
+            "Usage: /quote disability office worker 50k income 3k benefit\n"
             "Or: /quote term 35 male nonsmoker 500k 20yr"
         )
         return
@@ -1522,7 +1549,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "Welcome! You have access to insurance quotes.\n\n"
             "/quote — get insurance quotes\n"
-            "  /quote disability female 30 office worker 50k income 3k benefit\n"
+            "  /quote disability office worker 50k income 3k benefit\n"
             "  /quote term 35 male nonsmoker 500k 20yr\n\n"
             "Just type /quote followed by the details!"
         )
@@ -1531,7 +1558,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Hey Marc! Here are your commands:\n\n"
         "/quote — insurance quotes\n"
-        "  /quote disability female 30 office worker 50k income 3k benefit\n"
+        "  /quote disability office worker 50k income 3k benefit\n"
         "  /quote term 35 male nonsmoker 500k 20yr\n\n"
         "/add — add a prospect\n"
         "  /add John Smith, 300k AUM, wealth management, hot, referral\n\n"
