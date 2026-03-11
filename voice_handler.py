@@ -188,7 +188,7 @@ async def handle_voice_message(update, context):
         await update.message.reply_text(
             "You have access to /quote and /add only.\n"
             "Try: /quote disability office worker 50k income 3k benefit\n"
-            "Or: /add John Smith, office worker, 50k income"
+            "Or: /add John Smith, interested in life insurance"
         )
         return
 

@@ -46,7 +46,7 @@ async def _require_admin(update) -> bool:
     await update.message.reply_text(
         "You have access to /quote and /add only.\n"
         "Try: /quote disability office worker 50k income 3k benefit\n"
-        "Or: /add John Smith, office worker, 50k income"
+        "Or: /add John Smith, interested in life insurance"
     )
     return False
 
@@ -1263,14 +1263,14 @@ async def cmd_quote(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ── /add command ──
 
-PROMPT_ADD_COWORKER = """You help add disability insurance prospects to Marc's CRM pipeline. Today is {{today}}.
+PROMPT_ADD_COWORKER = """You help add prospects to Marc's CRM pipeline. Today is {{today}}.
 
 {{formatting}}
 
 The prospect is being added by a coworker: {coworker_name}.
 
 Parse their message and call add_prospect with:
-- product: MUST be "Disability Insurance" (coworkers can only add disability prospects)
+- product: guess from context — "Life Insurance", "Disability Insurance", "Wealth Management", "Home Insurance", "Auto Insurance", "Commercial Insurance", etc.
 - source: "Referral from {coworker_name}"
 - stage: guess from context — just met = "Discovery Call", wants quote = "Needs Analysis", else = "New Lead"
 - priority: guess — interested = "Hot", mentioned = "Warm", else = "Cold"
@@ -1287,11 +1287,11 @@ async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_msg = update.message.text.replace("/add", "", 1).strip()
 
     if not is_admin:
-        # Coworkers can only add disability prospects
+        # Coworkers can add prospects
         if not user_msg:
             await update.message.reply_text(
-                "Add a disability prospect:\n"
-                "/add John Smith, office worker, 50k income, interested in disability"
+                "Add a prospect:\n"
+                "/add John Smith, interested in life insurance, 35 years old"
             )
             return
 
@@ -1673,12 +1673,12 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _is_admin(update):
         await update.message.reply_text(
-            "Welcome! You have access to quotes and adding disability prospects.\n\n"
+            "Welcome! You have access to quotes and adding prospects.\n\n"
             "/quote — get insurance quotes\n"
             "  /quote disability office worker 50k income 3k benefit\n"
             "  /quote term 35 male nonsmoker 500k 20yr\n\n"
-            "/add — add a disability prospect\n"
-            "  /add John Smith, office worker, 50k income, interested in disability\n\n"
+            "/add — add a prospect for Marc\n"
+            "  /add John Smith, interested in life insurance, 35 years old\n\n"
             "Marc will be notified when you add a prospect."
         )
         return
