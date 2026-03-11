@@ -1255,6 +1255,13 @@ async def cmd_lead(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ── Free-form message handler ──
 
+def _is_otter_transcript(text: str) -> bool:
+    """Detect if a message is an Otter.ai transcript from Zapier."""
+    markers = ["Title:", "Abstract summary:", "Outline:", "Action items:"]
+    matches = sum(1 for m in markers if m.lower() in text.lower())
+    return matches >= 2
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle free-form text messages."""
     user_msg = update.message.text
@@ -1263,6 +1270,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     chat_id = update.effective_chat.id
     logger.info(f"Received: {user_msg}")
+
+    # Detect Otter.ai transcripts from Zapier and process as call transcripts
+    if _is_otter_transcript(user_msg):
+        logger.info("Detected Otter.ai transcript — processing as call transcript")
+        try:
+            await update.message.reply_text("Got an Otter transcript, processing...")
+            from voice_handler import extract_and_update
+            db.add_interaction({
+                "prospect": "",
+                "source": "otter_transcript",
+                "raw_text": user_msg[:5000],
+            })
+            result = await extract_and_update(user_msg)
+            await update.message.reply_text(result)
+        except Exception as e:
+            logger.error(f"Otter transcript error: {e}")
+            await update.message.reply_text(f"Error processing transcript: {str(e)[:200]}")
+        return
 
     try:
         history = _get_history(chat_id)
@@ -1450,7 +1475,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/stats — win/loss stats\n"
         "/export — download pipeline database\n"
         "/lead — paste in a referral or lead email\n\n"
-        "Send a voice message after any call/meeting and I'll auto-update your pipeline.\n\n"
+        "Send a voice message after any call/meeting and I'll auto-update your pipeline.\n"
+        "Otter.ai transcripts from Zapier are auto-processed too.\n\n"
         "You can also type anything and I'll figure it out:\n"
         "  move Sarah to discovery call\n"
         "  meeting with John Thursday 2pm\n"
