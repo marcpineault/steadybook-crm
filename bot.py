@@ -58,6 +58,27 @@ def read_pipeline():
     return db.read_pipeline()
 
 
+def _create_task_from_chat(args: dict) -> str:
+    """Create a task from the general chat handler. Assigns to admin by default."""
+    task_data = {
+        "title": args.get("title", ""),
+        "prospect": args.get("prospect", ""),
+        "due_date": args.get("due_date"),
+        "remind_at": args.get("remind_at"),
+        "assigned_to": ADMIN_CHAT_ID,
+        "created_by": ADMIN_CHAT_ID,
+    }
+    result = db.add_task(task_data)
+    if result:
+        parts = [f"Task #{result['id']} created: {result['title']}"]
+        if result.get("due_date"):
+            parts.append(f"Due: {result['due_date']}")
+        if result.get("remind_at"):
+            parts.append(f"Reminder: {result['remind_at']}")
+        return ". ".join(parts)
+    return "Error: could not create task (missing title?)."
+
+
 def add_prospect(data: dict) -> str:
     """Add a new prospect (via SQLite)."""
     return db.add_prospect(data)
@@ -1099,6 +1120,12 @@ TOOLS = [
         "benefit_period": {"type": "string", "description": "Benefit period: 2 (2yr), 5 (5yr), or 70 (to age 70). OMIT to show all options."},
         "coverage_type": {"type": "string", "description": "24hour or non-occupational. Default 24hour."},
     }, ["occupation", "income"]),
+    _tool("create_task", "Create a new task, to-do item, or reminder. Use when the user says 'remind me', 'I need to', 'don't forget to', etc.", {
+        "title": {"type": "string", "description": "The task title — what needs to be done"},
+        "prospect": {"type": "string", "description": "Prospect name if this task is related to a prospect. Empty string if general task."},
+        "due_date": {"type": "string", "description": "Due date in YYYY-MM-DD format. Null if no due date."},
+        "remind_at": {"type": "string", "description": "Reminder datetime in YYYY-MM-DD HH:MM format (Eastern Time). Null if no reminder. For 'in X minutes', calculate the actual datetime."},
+    }, ["title"]),
 ]
 
 # Task management tools (used by /todo command)
@@ -1139,6 +1166,7 @@ TOOL_FUNCTIONS = {
     "get_win_loss_stats": lambda _: get_win_loss_stats(),
     "get_term_quote": lambda args: get_term_quote(args["age"], args["gender"], args.get("smoker", False), args["term"], args["amount"], args.get("health", "regular")),
     "get_disability_quote": lambda args: get_disability_quote(args.get("age", 0), args.get("gender", ""), args["occupation"], args["income"], args.get("benefit", 0), args.get("wait_days", "30"), args.get("benefit_period", "5"), args.get("coverage_type", "24hour")),
+    "create_task": lambda args: _create_task_from_chat(args),
 }
 
 FORMATTING_RULE = "Reply in plain text only. No markdown, no bold, no italic, no bullet points, no numbered lists, no emojis. Write like texting. Keep it short."
@@ -1170,13 +1198,15 @@ Guess fields from context:
 
 After adding, ask ONE follow-up if product type or dollar amount is missing. Don't ask for phone or email."""
 
-PROMPT_GENERAL = """You are Marc's sales CRM assistant. He is a financial planner in London, Ontario. Today is {today}.
+PROMPT_GENERAL = """You are Marc's sales CRM assistant. He is a financial planner in London, Ontario. Today is {today}. Current time zone is Eastern Time (ET).
 
 {formatting}
 
 Use context from earlier messages. When Marc gives a short reply, figure out what he means from conversation history. Never claim you did something you didn't actually do via a tool call.
 
 After completing an action, you may ask ONE follow-up if something important is missing. Don't ask for phone or email.
+
+IMPORTANT: When Marc says "remind me", "I need to", "don't forget", or anything that sounds like a task or reminder, call create_task immediately. For "remind me in X minutes/hours", calculate the actual ET datetime for remind_at. For "remind me tomorrow", set remind_at to tomorrow at 9:00 AM ET. Always set remind_at when a reminder is requested.
 
 Commands Marc might use:
 - move/update prospect stages
@@ -1186,7 +1216,8 @@ Commands Marc might use:
 - log calls, activities
 - draft emails
 - process meeting transcripts
-- mark priorities"""
+- mark priorities
+- create tasks and reminders (remind me, todo, I need to...)"""
 
 PROMPT_COWORKER = """You are an assistant for Marc's insurance team at Co-operators in London, Ontario. Today is {today}.
 
