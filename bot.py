@@ -1564,7 +1564,7 @@ async def cmd_call(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ── /todo, /tasks, /done — task management ──
 
-PROMPT_TODO = """You help create tasks and to-do items. Today is {today}.
+PROMPT_TODO = """You help create tasks and to-do items. Today is {today}. All times are Eastern Time (ET).
 
 {formatting}
 

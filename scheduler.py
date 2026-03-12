@@ -697,28 +697,35 @@ async def followup_reminder():
 
 async def check_task_reminders():
     """Check for tasks with remind_at <= now and send reminders."""
-    if not _bot:
+    if not _bot or not CHAT_ID:
         return
 
     try:
-        now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+        now_str = datetime.now(ET).strftime("%Y-%m-%d %H:%M")
         tasks = db.get_reminder_tasks(now_str)
 
         for t in tasks:
-            chat_id = t.get("assigned_to")
-            if not chat_id:
-                chat_id = CHAT_ID  # fallback to admin
-
             due_str = f" (due {t['due_date']})" if t.get("due_date") else ""
             prospect_str = f" [{t['prospect']}]" if t.get("prospect") else ""
             msg = f"Reminder: {t['title']}{prospect_str}{due_str}"
 
+            # Always send to admin CHAT_ID (most reliable)
             try:
-                await _bot.send_message(chat_id=chat_id, text=msg)
+                await _bot.send_message(chat_id=CHAT_ID, text=msg)
                 db.clear_reminder(t["id"])
-                logger.info(f"Task reminder sent: #{t['id']} to {chat_id}")
+                logger.info(f"Task reminder sent: #{t['id']} to admin {CHAT_ID}")
             except Exception as e:
-                logger.warning(f"Could not send task reminder #{t['id']}: {e}")
+                logger.error(f"Could not send task reminder #{t['id']} to {CHAT_ID}: {e}")
+                continue
+
+            # Also notify the assignee if different from admin
+            assignee = t.get("assigned_to", "")
+            if assignee and assignee != CHAT_ID:
+                try:
+                    await _bot.send_message(chat_id=assignee, text=msg)
+                    logger.info(f"Task reminder also sent to assignee {assignee}")
+                except Exception as e:
+                    logger.warning(f"Could not send task reminder to assignee {assignee}: {e}")
 
     except Exception as e:
         logger.error(f"Task reminder check failed: {e}")
