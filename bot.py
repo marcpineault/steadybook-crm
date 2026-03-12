@@ -44,10 +44,11 @@ async def _require_admin(update) -> bool:
     if _is_admin(update):
         return True
     await update.message.reply_text(
-        "You have access to /quote, /add, /status, and /msg.\n"
+        "You have access to /quote, /add, /status, /msg, /todo, /tasks, and /done.\n"
         "Try: /quote disability office worker 50k income 3k benefit\n"
         "Or: /add John Smith, interested in life insurance\n"
-        "Or: /msg Hey Marc, can we chat about the Johnson file?"
+        "Or: /msg Hey Marc, can we chat about the Johnson file?\n"
+        "Or: /todo send brochure to John by Friday"
     )
     return False
 
@@ -1100,6 +1101,19 @@ TOOLS = [
     }, ["occupation", "income"]),
 ]
 
+# Task management tools (used by /todo command)
+TASK_TOOLS = [
+    _tool("create_task", "Create a new task/to-do item.", {
+        "title": {"type": "string", "description": "The task title — what needs to be done"},
+        "prospect": {"type": "string", "description": "Prospect name if this task is related to a prospect. Empty string if general task."},
+        "due_date": {"type": "string", "description": "Due date in YYYY-MM-DD format. Null if no due date."},
+        "remind_at": {"type": "string", "description": "Reminder datetime in YYYY-MM-DD HH:MM format. Null if no reminder."},
+    }, ["title"]),
+    _tool("lookup_prospect", "Look up a single prospect by name. Returns their details.", {
+        "name": {"type": "string", "description": "Prospect name to search for"},
+    }, ["name"]),
+]
+
 TOOL_FUNCTIONS = {
     "read_pipeline": lambda _: json.dumps(read_pipeline(), default=str),
     "lookup_prospect": lambda args: lookup_prospect(args["name"]),
@@ -1548,6 +1562,185 @@ async def cmd_call(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Something went wrong: {str(e)[:200]}")
 
 
+# ── /todo, /tasks, /done — task management ──
+
+PROMPT_TODO = """You help create tasks and to-do items. Today is {today}.
+
+{formatting}
+
+The user wants to create a task. Parse their message to extract:
+1. title — the core task (required)
+2. prospect — a prospect/client name if mentioned (use lookup_prospect to verify). Empty string if not prospect-related.
+3. due_date — in YYYY-MM-DD format if a date is mentioned ("by Friday", "March 15", "tomorrow", "next week" = next Monday)
+4. remind_at — in YYYY-MM-DD HH:MM format if they want a reminder ("remind me Thursday 9am"). Default to 09:00 if time not specified.
+
+If the user says "@marc" or "for marc", note that in your response — the caller will handle assignment.
+
+Call create_task with the parsed fields. Reply with a SHORT confirmation showing what was created. One or two lines max."""
+
+
+async def cmd_todo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /todo command — create a task."""
+    user_msg = update.message.text
+    for prefix in ("/todo", "/td"):
+        if user_msg.lower().startswith(prefix):
+            user_msg = user_msg[len(prefix):].strip()
+            break
+
+    if not user_msg:
+        await update.message.reply_text(
+            "Create a task:\n"
+            "/todo send John the brochure by Friday\n"
+            "/todo renew E&O insurance by March 20 remind me March 19 9am\n"
+            "/todo @marc review Sarah's application"
+        )
+        return
+
+    chat_id = str(update.effective_chat.id)
+    is_admin = _is_admin(update)
+    logger.info(f"/todo from {chat_id}: {user_msg}")
+
+    try:
+        messages = [{"role": "system", "content": _build_prompt(PROMPT_TODO)}]
+        messages.append({"role": "user", "content": user_msg})
+
+        response = client.chat.completions.create(
+            model="gpt-5",
+            max_completion_tokens=512,
+            tools=TASK_TOOLS,
+            tool_choice="auto",
+            messages=messages,
+        )
+
+        msg = response.choices[0].message
+
+        # Process tool calls (max 4 rounds)
+        tool_rounds = 0
+        while msg.tool_calls and tool_rounds < 4:
+            tool_rounds += 1
+            messages.append(msg)
+
+            for tool_call in msg.tool_calls:
+                tool_name = tool_call.function.name
+                try:
+                    tool_input = json.loads(tool_call.function.arguments)
+                except json.JSONDecodeError as e:
+                    messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": f"Error: {e}"})
+                    continue
+
+                logger.info(f"/todo tool: {tool_name}({json.dumps(tool_input)})")
+
+                if tool_name == "create_task":
+                    assigned_to = chat_id
+                    if "@marc" in user_msg.lower() or "for marc" in user_msg.lower():
+                        assigned_to = ADMIN_CHAT_ID
+                    elif not is_admin:
+                        assigned_to = chat_id
+
+                    task_data = {
+                        "title": tool_input.get("title", user_msg),
+                        "prospect": tool_input.get("prospect", ""),
+                        "due_date": tool_input.get("due_date"),
+                        "remind_at": tool_input.get("remind_at"),
+                        "assigned_to": assigned_to,
+                        "created_by": chat_id,
+                    }
+                    result = db.add_task(task_data)
+                    if result:
+                        messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": f"Task #{result['id']} created successfully."})
+                    else:
+                        messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": "Error: could not create task (missing title?)."})
+
+                elif tool_name == "lookup_prospect":
+                    with pipeline_lock:
+                        p = TOOL_FUNCTIONS["lookup_prospect"](tool_input)
+                    messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": str(p)})
+                else:
+                    messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": f"Unknown tool: {tool_name}"})
+
+            response = client.chat.completions.create(
+                model="gpt-5",
+                max_completion_tokens=512,
+                tools=TASK_TOOLS,
+                messages=messages,
+            )
+            msg = response.choices[0].message
+
+        reply = msg.content or "Task created!"
+        _save_history(chat_id, f"[todo] {user_msg}", reply)
+        await update.message.reply_text(reply)
+
+    except Exception as e:
+        logger.error(f"/todo error: {e}")
+        await update.message.reply_text(f"Something went wrong: {str(e)[:200]}")
+
+
+async def cmd_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /tasks command — list pending tasks."""
+    chat_id = str(update.effective_chat.id)
+    is_admin = _is_admin(update)
+
+    if is_admin:
+        tasks = db.get_tasks()
+    else:
+        tasks = db.get_tasks(assigned_to=chat_id)
+
+    if not tasks:
+        await update.message.reply_text("No pending tasks. Use /todo to add one!")
+        return
+
+    today = date.today()
+    lines = ["Your tasks:\n"] if not is_admin else ["All tasks:\n"]
+
+    for t in tasks:
+        due = t.get("due_date")
+        if due:
+            try:
+                due_dt = datetime.strptime(due, "%Y-%m-%d").date()
+                days_diff = (due_dt - today).days
+                if days_diff < 0:
+                    emoji = "\U0001f534"  # red circle
+                    due_str = f"due {due} — {abs(days_diff)}d overdue"
+                elif days_diff == 0:
+                    emoji = "\U0001f7e1"  # yellow circle
+                    due_str = "due today"
+                else:
+                    emoji = "\U0001f4cb"  # clipboard
+                    due_str = f"due {due}"
+            except ValueError:
+                emoji = "\U0001f4cb"
+                due_str = f"due {due}"
+        else:
+            emoji = "\U0001f4cb"
+            due_str = "no due date"
+
+        prospect_str = f" [{t['prospect']}]" if t.get("prospect") else ""
+        lines.append(f"{emoji} #{t['id']} {t['title']}{prospect_str} ({due_str})")
+
+    lines.append("\nReply /done <id> to complete")
+    await update.message.reply_text("\n".join(lines))
+
+
+async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /done command — complete a task."""
+    user_msg = update.message.text.replace("/done", "", 1).strip()
+    chat_id = str(update.effective_chat.id)
+    is_admin = _is_admin(update)
+
+    if not user_msg:
+        await update.message.reply_text("Usage: /done <task id>\nExample: /done 12")
+        return
+
+    try:
+        task_id = int(user_msg.split()[0])
+    except ValueError:
+        await update.message.reply_text("Please provide a task ID number. Use /tasks to see your tasks.")
+        return
+
+    result = db.complete_task(task_id, chat_id, is_admin=is_admin)
+    await update.message.reply_text(result)
+
+
 # ── /pipeline, /overdue, /meetings, /calls — direct tool commands ──
 
 async def cmd_pipeline(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1961,6 +2154,10 @@ def build_application():
     app.add_handler(CommandHandler("msg", cmd_msg))
     app.add_handler(CommandHandler("call", cmd_call))
     app.add_handler(CommandHandler("log", cmd_call))  # alias
+    app.add_handler(CommandHandler("todo", cmd_todo))
+    app.add_handler(CommandHandler("td", cmd_todo))    # alias
+    app.add_handler(CommandHandler("tasks", cmd_tasks))
+    app.add_handler(CommandHandler("done", cmd_done))
     app.add_handler(CommandHandler("pipeline", cmd_pipeline))
     app.add_handler(CommandHandler("overdue", cmd_overdue))
     app.add_handler(CommandHandler("meetings", cmd_meetings))
