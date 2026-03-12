@@ -129,6 +129,44 @@ def api_list_prospects():
     return jsonify(prospects)
 
 
+@app.route("/api/task", methods=["POST"])
+@_require_auth
+def api_add_task():
+    data = request.json
+    if not data or not data.get("title"):
+        return jsonify({"error": "Title required"}), 400
+    result = db.add_task(data)
+    if result:
+        return jsonify({"ok": True, "task": result})
+    return jsonify({"error": "Could not create task"}), 400
+
+
+@app.route("/api/tasks")
+@_require_auth
+def api_list_tasks():
+    status = request.args.get("status", "pending")
+    assigned_to = request.args.get("assigned_to")
+    prospect = request.args.get("prospect")
+    tasks = db.get_tasks(assigned_to=assigned_to, status=status, prospect=prospect)
+    return jsonify(tasks)
+
+
+@app.route("/api/task/<int:task_id>/complete", methods=["PUT"])
+@_require_auth
+def api_complete_task(task_id):
+    result = db.complete_task(task_id, "", is_admin=True)
+    return jsonify({"ok": True, "message": result})
+
+
+@app.route("/api/task/<int:task_id>", methods=["DELETE"])
+@_require_auth
+def api_delete_task(task_id):
+    result = db.delete_task(task_id, "", is_admin=True)
+    if "not found" in result.lower():
+        return jsonify({"error": result}), 404
+    return jsonify({"ok": True, "message": result})
+
+
 def calc_fyc(premium, product):
     """Calculate First Year Commission from premium and product term.
     Term 20/25/30: Premium * 11.11 * 0.5
@@ -187,6 +225,8 @@ def fmt_money_full(val):
 def dashboard():
     csrf_token = _generate_csrf_token()
     prospects, activities, meetings, book_entries = read_data()
+    all_tasks = db.get_tasks(status="pending")
+    completed_tasks_recent = db.get_tasks(status="completed", limit=10)
     today = date.today()
     now = datetime.now()
 
@@ -572,6 +612,46 @@ def dashboard():
 
     product_labels = list(product_counts.keys())
     product_values = list(product_counts.values())
+
+    # Build task rows for Tasks tab
+    today_str = today.strftime("%Y-%m-%d")
+    task_rows = ""
+    for t in all_tasks:
+        due = t.get("due_date") or ""
+        row_class = ""
+        due_display = ""
+        if due:
+            if due < today_str:
+                row_class = "overdue"
+                try:
+                    days_late = (today - datetime.strptime(due, "%Y-%m-%d").date()).days
+                except ValueError:
+                    days_late = 0
+                due_display = f'{_esc(due)} <span style="color:#E74C3C">({days_late}d overdue)</span>'
+            elif due == today_str:
+                row_class = "due-today"
+                due_display = '<span style="color:#F39C12;font-weight:600">Today</span>'
+            else:
+                due_display = _esc(due)
+
+        prospect_display = _esc(t.get("prospect", ""))
+        task_rows += f"""<tr class="{row_class}">
+            <td style="text-align:center"><input type="checkbox" onchange="completeTask({t['id']}, this)" style="width:18px;height:18px;cursor:pointer"></td>
+            <td>{_esc(t['title'])}</td>
+            <td>{prospect_display}</td>
+            <td>{due_display}</td>
+            <td style="text-align:center"><button onclick="deleteTask({t['id']})" style="background:none;border:none;color:#E74C3C;cursor:pointer;font-size:16px">\u2715</button></td>
+        </tr>"""
+
+    completed_rows = ""
+    for t in completed_tasks_recent:
+        completed_rows += f"""<tr style="opacity:0.5;text-decoration:line-through">
+            <td style="text-align:center">\u2705</td>
+            <td>{_esc(t['title'])}</td>
+            <td>{_esc(t.get('prospect', ''))}</td>
+            <td>{_esc((t.get('completed_at') or '')[:10])}</td>
+            <td></td>
+        </tr>"""
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -1106,6 +1186,7 @@ tr:hover {{ background: #f8f9fa; }}
         <button class="tab-btn" onclick="showTab('forecast')">Revenue Forecast</button>
         <button class="tab-btn" onclick="showTab('funnel')">Conversion Funnel</button>
         <button class="tab-btn" onclick="showTab('scoreboard')">Activity Score</button>
+        <button class="tab-btn" onclick="showTab('tasks')">Tasks</button>
     </div>
 
     <!-- ═══ TAB 1: PIPELINE (existing) ═══ -->
@@ -1340,6 +1421,29 @@ tr:hover {{ background: #f8f9fa; }}
 
     </div><!-- end tab-scoreboard -->
 
+    <!-- ═══ TAB 5: TASKS ═══ -->
+    <div class="tab-content" id="tab-tasks">
+        <div class="section" style="margin-top:24px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                <h2 style="margin:0">Tasks</h2>
+                <button onclick="openAddTask()" style="background:#27AE60;color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:14px">+ Add Task</button>
+            </div>
+            <table>
+                <thead><tr>
+                    <th style="width:40px"></th>
+                    <th>Task</th>
+                    <th>Prospect</th>
+                    <th>Due Date</th>
+                    <th style="width:40px"></th>
+                </tr></thead>
+                <tbody>{task_rows}</tbody>
+            </table>
+            {'<div class="empty-state"><p>No pending tasks. Add one above or use /todo in Telegram!</p></div>' if not task_rows else ''}
+        </div>
+
+        {'<div class="section"><h2>Recently Completed</h2><table><thead><tr><th style="width:40px"></th><th>Task</th><th>Prospect</th><th>Completed</th><th style="width:40px"></th></tr></thead><tbody>' + completed_rows + '</tbody></table></div>' if completed_rows else ''}
+    </div><!-- end tab-tasks -->
+
 </div>
 
 <!-- Edit Modal -->
@@ -1399,6 +1503,27 @@ tr:hover {{ background: #f8f9fa; }}
         <button class="btn btn-danger left" id="deleteBtn" onclick="deleteProspect()">Delete</button>
         <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
         <button class="btn btn-primary" onclick="saveProspect()">Save</button>
+    </div>
+</div>
+</div>
+
+<!-- Task Modal -->
+<div class="modal-overlay" id="taskModal">
+<div class="modal" style="max-width:500px">
+    <h2>Add Task</h2>
+    <div class="form-row">
+        <div style="flex:1"><label>Task</label><input id="tTitle" type="text" placeholder="What needs to be done?"></div>
+    </div>
+    <div class="form-row">
+        <div><label>Prospect (optional)</label><input id="tProspect" type="text" placeholder="Prospect name"></div>
+        <div><label>Due Date</label><input id="tDue" type="date"></div>
+    </div>
+    <div class="form-row">
+        <div><label>Reminder</label><input id="tRemind" type="datetime-local"></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+        <button onclick="saveTask()" style="background:#27AE60;color:#fff;border:none;padding:10px 24px;border-radius:6px;cursor:pointer">Save</button>
+        <button onclick="closeTaskModal()" style="background:#95A5A6;color:#fff;border:none;padding:10px 24px;border-radius:6px;cursor:pointer">Cancel</button>
     </div>
 </div>
 </div>
@@ -1536,6 +1661,62 @@ async function deleteProspect() {{
 document.getElementById('editModal').addEventListener('click', function(e) {{
     if (e.target === this) closeModal();
 }});
+
+// Task management
+function openAddTask() {{
+    document.getElementById('tTitle').value = '';
+    document.getElementById('tProspect').value = '';
+    document.getElementById('tDue').value = '';
+    document.getElementById('tRemind').value = '';
+    document.getElementById('taskModal').classList.add('active');
+    document.getElementById('tTitle').focus();
+}}
+
+function closeTaskModal() {{
+    document.getElementById('taskModal').classList.remove('active');
+}}
+
+document.getElementById('taskModal').addEventListener('click', function(e) {{
+    if (e.target === this) closeTaskModal();
+}});
+
+async function saveTask() {{
+    const title = document.getElementById('tTitle').value.trim();
+    if (!title) {{ alert('Task title is required'); return; }}
+    const data = {{
+        title: title,
+        prospect: document.getElementById('tProspect').value.trim(),
+        due_date: document.getElementById('tDue').value || null,
+        remind_at: document.getElementById('tRemind').value ? document.getElementById('tRemind').value.replace('T', ' ') : null,
+        assigned_to: '',
+        created_by: '',
+    }};
+    try {{
+        const res = await fetch('/api/task', {{ method: 'POST', headers: {{'Content-Type': 'application/json', 'X-CSRF-Token': _csrfToken}}, body: JSON.stringify(data) }});
+        const result = await res.json();
+        if (result.ok) {{ closeTaskModal(); location.reload(); }}
+        else alert(result.error || 'Error creating task');
+    }} catch(e) {{ alert('Error: ' + e.message); }}
+}}
+
+async function completeTask(id, checkbox) {{
+    try {{
+        const res = await fetch('/api/task/' + id + '/complete', {{ method: 'PUT', headers: {{'X-CSRF-Token': _csrfToken}} }});
+        const result = await res.json();
+        if (result.ok) {{ location.reload(); }}
+        else {{ checkbox.checked = false; alert(result.error || 'Error'); }}
+    }} catch(e) {{ checkbox.checked = false; alert('Error: ' + e.message); }}
+}}
+
+async function deleteTask(id) {{
+    if (!confirm('Delete this task?')) return;
+    try {{
+        const res = await fetch('/api/task/' + id, {{ method: 'DELETE', headers: {{'X-CSRF-Token': _csrfToken}} }});
+        const result = await res.json();
+        if (result.ok) {{ location.reload(); }}
+        else alert(result.error || 'Error');
+    }} catch(e) {{ alert('Error: ' + e.message); }}
+}}
 
 // Forecast charts (lazy init)
 function initForecastCharts() {{
