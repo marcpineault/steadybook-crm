@@ -621,10 +621,16 @@ def dashboard():
     product_labels = list(product_counts.keys())
     product_values = list(product_counts.values())
 
-    # Build task rows for Tasks tab
+    # Build task data for Tasks tab
     today_str = today.strftime("%Y-%m-%d")
-    task_rows = ""
-    for t in all_tasks:
+    week_ago_str = (today - timedelta(days=7)).strftime("%Y-%m-%d")
+
+    overdue_tasks = [t for t in all_tasks if t.get("due_date") and t["due_date"] < today_str]
+    due_today_tasks = [t for t in all_tasks if t.get("due_date") and t["due_date"] == today_str]
+    upcoming_tasks = [t for t in all_tasks if not t.get("due_date") or t["due_date"] > today_str]
+    completed_this_week = [t for t in completed_tasks_recent if t.get("completed_at", "") >= week_ago_str]
+
+    def _task_row(t, show_due=True):
         due = t.get("due_date") or ""
         row_class = ""
         due_display = ""
@@ -635,30 +641,34 @@ def dashboard():
                     days_late = (today - datetime.strptime(due, "%Y-%m-%d").date()).days
                 except ValueError:
                     days_late = 0
-                due_display = f'{_esc(due)} <span style="color:#E74C3C">({days_late}d overdue)</span>'
+                due_display = f'{_esc(due)} <span style="color:#E74C3C">({days_late}d late)</span>'
             elif due == today_str:
                 row_class = "due-today"
                 due_display = '<span style="color:#F39C12;font-weight:600">Today</span>'
             else:
                 due_display = _esc(due)
-
-        prospect_display = _esc(t.get("prospect", ""))
-        task_rows += f"""<tr class="{row_class}">
+        prospect_display = f'<a style="color:#3498DB" href="javascript:void(0)">{_esc(t["prospect"])}</a>' if t.get("prospect") else ""
+        remind_icon = ' <span title="Reminder set" style="color:#F39C12">&#9200;</span>' if t.get("remind_at") else ""
+        due_cell = f"<td>{due_display}</td>" if show_due else ""
+        return f"""<tr class="{row_class}">
             <td style="text-align:center"><input type="checkbox" onchange="completeTask({t['id']}, this)" style="width:18px;height:18px;cursor:pointer"></td>
-            <td>{_esc(t['title'])}</td>
+            <td>{_esc(t['title'])}{remind_icon}</td>
             <td>{prospect_display}</td>
-            <td>{due_display}</td>
-            <td style="text-align:center"><button onclick="deleteTask({t['id']})" style="background:none;border:none;color:#E74C3C;cursor:pointer;font-size:16px">\u2715</button></td>
+            {due_cell}
+            <td style="text-align:center"><button onclick="deleteTask({t['id']})" style="background:none;border:none;color:#E74C3C;cursor:pointer;font-size:16px">&#10005;</button></td>
         </tr>"""
+
+    overdue_task_rows = "".join(_task_row(t) for t in overdue_tasks)
+    due_today_task_rows = "".join(_task_row(t, show_due=False) for t in due_today_tasks)
+    upcoming_task_rows = "".join(_task_row(t) for t in upcoming_tasks)
 
     completed_rows = ""
     for t in completed_tasks_recent:
-        completed_rows += f"""<tr style="opacity:0.5;text-decoration:line-through">
-            <td style="text-align:center">\u2705</td>
-            <td>{_esc(t['title'])}</td>
+        completed_rows += f"""<tr style="opacity:0.6">
+            <td style="text-align:center;color:#27AE60">&#10003;</td>
+            <td style="text-decoration:line-through;color:#7f8c8d">{_esc(t['title'])}</td>
             <td>{_esc(t.get('prospect', ''))}</td>
             <td>{_esc((t.get('completed_at') or '')[:10])}</td>
-            <td></td>
         </tr>"""
 
     html = f"""<!DOCTYPE html>
@@ -1432,15 +1442,37 @@ tr:hover {{ background: #f8f9fa; }}
 
     <!-- ═══ TAB 5: TASKS ═══ -->
     <div class="tab-content" id="tab-tasks">
-        <div class="section" style="margin-top:24px">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-                <h2 style="margin:0">Tasks</h2>
-                <button onclick="openAddTask()" style="background:#27AE60;color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:14px">+ Add Task</button>
+
+        <div class="kpi-grid" style="grid-template-columns: repeat(4, 1fr); margin-top:24px">
+            <div class="kpi-card {'red' if len(overdue_tasks) > 0 else ''}">
+                <div class="kpi-label">Overdue</div>
+                <div class="kpi-value">{len(overdue_tasks)}</div>
             </div>
-            {'<table><thead><tr><th style="width:40px"></th><th>Task</th><th>Prospect</th><th>Due Date</th><th style="width:40px"></th></tr></thead><tbody>' + task_rows + '</tbody></table>' if task_rows else '<div class="empty-state"><p>No pending tasks. Add one above or use /todo in Telegram!</p></div>'}
+            <div class="kpi-card {'gold' if len(due_today_tasks) > 0 else ''}">
+                <div class="kpi-label">Due Today</div>
+                <div class="kpi-value">{len(due_today_tasks)}</div>
+            </div>
+            <div class="kpi-card blue">
+                <div class="kpi-label">Pending</div>
+                <div class="kpi-value">{len(all_tasks)}</div>
+            </div>
+            <div class="kpi-card green">
+                <div class="kpi-label">Done This Week</div>
+                <div class="kpi-value">{len(completed_this_week)}</div>
+            </div>
         </div>
 
-        {'<div class="section"><h2>Recently Completed</h2><table><thead><tr><th style="width:40px"></th><th>Task</th><th>Prospect</th><th>Completed</th><th style="width:40px"></th></tr></thead><tbody>' + completed_rows + '</tbody></table></div>' if completed_rows else ''}
+        {'<div class="section"><h2>Overdue <span class="count" style="color:#E74C3C">(' + str(len(overdue_tasks)) + ')</span></h2><table><tr><th style="width:40px"></th><th>Task</th><th>Prospect</th><th>Due Date</th><th style="width:40px"></th></tr>' + overdue_task_rows + '</table></div>' if overdue_tasks else ''}
+
+        {'<div class="section"><h2>Due Today <span class="count" style="color:#F39C12">(' + str(len(due_today_tasks)) + ')</span></h2><table><tr><th style="width:40px"></th><th>Task</th><th>Prospect</th><th style="width:40px"></th></tr>' + due_today_task_rows + '</table></div>' if due_today_tasks else ''}
+
+        <div class="section">
+            <h2 style="display:flex;justify-content:space-between;align-items:center">Upcoming & No Date <span class="count">({len(upcoming_tasks)})</span> <button onclick="openAddTask()" style="background:#27AE60;color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:14px">+ Add Task</button></h2>
+            {'<table><tr><th style="width:40px"></th><th>Task</th><th>Prospect</th><th>Due Date</th><th style="width:40px"></th></tr>' + upcoming_task_rows + '</table>' if upcoming_tasks else '<div class="empty-state"><p>No upcoming tasks. Add one above or use /todo in Telegram!</p></div>'}
+        </div>
+
+        {'<div class="section"><h2>Recently Completed <span class="count">(' + str(len(completed_tasks_recent)) + ')</span></h2><table><tr><th style="width:40px"></th><th>Task</th><th>Prospect</th><th>Completed</th></tr>' + completed_rows + '</table></div>' if completed_rows else ''}
+
     </div><!-- end tab-tasks -->
 
 </div>
