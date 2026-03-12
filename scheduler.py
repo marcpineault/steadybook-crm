@@ -715,11 +715,10 @@ async def check_task_reminders():
 
             try:
                 await _bot.send_message(chat_id=chat_id, text=msg)
+                db.clear_reminder(t["id"])
                 logger.info(f"Task reminder sent: #{t['id']} to {chat_id}")
             except Exception as e:
                 logger.warning(f"Could not send task reminder #{t['id']}: {e}")
-
-            db.clear_reminder(t["id"])
 
     except Exception as e:
         logger.error(f"Task reminder check failed: {e}")

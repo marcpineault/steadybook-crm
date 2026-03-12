@@ -2107,7 +2107,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "/quote — insurance quotes\n"
             "/add — add a prospect\n"
             "/status — check on a prospect\n"
-            "/msg — send Marc a message\n\n"
+            "/msg — send Marc a message\n"
+            "/todo — create a task\n"
+            "/tasks — view your tasks\n"
+            "/done <id> — complete a task\n\n"
             "Marc gets notified when you add a lead."
         )
         return
@@ -2122,6 +2125,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/call — quick call log\n"
         "  /call John Smith - voicemail\n"
         "  /call Sarah - booked discovery call\n\n"
+        "/todo — create a task\n"
+        "  /todo send John the brochure by Friday\n"
+        "  /todo renew E&O insurance by March 20 remind me March 19 9am\n\n"
+        "/tasks — view pending tasks\n"
+        "/done <id> — mark a task complete\n\n"
         "/pipeline — see your deals\n"
         "/priority — ranked call list with scores\n"
         "/overdue — who needs follow-up\n"

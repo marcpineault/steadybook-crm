@@ -135,6 +135,11 @@ def api_add_task():
     data = request.json
     if not data or not data.get("title"):
         return jsonify({"error": "Title required"}), 400
+    # Default assigned_to to admin chat ID for dashboard-created tasks
+    if not data.get("assigned_to"):
+        import os as _os
+        data["assigned_to"] = _os.environ.get("TELEGRAM_CHAT_ID", "")
+        data["created_by"] = data["assigned_to"]
     result = db.add_task(data)
     if result:
         return jsonify({"ok": True, "task": result})
@@ -225,8 +230,11 @@ def fmt_money_full(val):
 def dashboard():
     csrf_token = _generate_csrf_token()
     prospects, activities, meetings, book_entries = read_data()
-    all_tasks = db.get_tasks(status="pending")
-    completed_tasks_recent = db.get_tasks(status="completed", limit=10)
+    try:
+        all_tasks = db.get_tasks(status="pending")
+        completed_tasks_recent = db.get_tasks(status="completed", limit=10)
+    except Exception:
+        all_tasks, completed_tasks_recent = [], []
     today = date.today()
     now = datetime.now()
 
@@ -748,6 +756,7 @@ tr:hover {{ background: #f8f9fa; }}
 .money {{ font-family: 'SF Mono', 'Consolas', monospace; text-align: right; }}
 .notes {{ color: #7f8c8d; font-size: 12px; max-width: 200px; }}
 .overdue {{ color: #e74c3c; font-weight: 600; }}
+.due-today {{ background-color: #fffbec !important; }}
 
 .two-col {{ display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }}
 
@@ -1428,17 +1437,7 @@ tr:hover {{ background: #f8f9fa; }}
                 <h2 style="margin:0">Tasks</h2>
                 <button onclick="openAddTask()" style="background:#27AE60;color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:14px">+ Add Task</button>
             </div>
-            <table>
-                <thead><tr>
-                    <th style="width:40px"></th>
-                    <th>Task</th>
-                    <th>Prospect</th>
-                    <th>Due Date</th>
-                    <th style="width:40px"></th>
-                </tr></thead>
-                <tbody>{task_rows}</tbody>
-            </table>
-            {'<div class="empty-state"><p>No pending tasks. Add one above or use /todo in Telegram!</p></div>' if not task_rows else ''}
+            {'<table><thead><tr><th style="width:40px"></th><th>Task</th><th>Prospect</th><th>Due Date</th><th style="width:40px"></th></tr></thead><tbody>' + task_rows + '</tbody></table>' if task_rows else '<div class="empty-state"><p>No pending tasks. Add one above or use /todo in Telegram!</p></div>'}
         </div>
 
         {'<div class="section"><h2>Recently Completed</h2><table><thead><tr><th style="width:40px"></th><th>Task</th><th>Prospect</th><th>Completed</th><th style="width:40px"></th></tr></thead><tbody>' + completed_rows + '</tbody></table></div>' if completed_rows else ''}
@@ -1511,8 +1510,8 @@ tr:hover {{ background: #f8f9fa; }}
 <div class="modal-overlay" id="taskModal">
 <div class="modal" style="max-width:500px">
     <h2>Add Task</h2>
-    <div class="form-row">
-        <div style="flex:1"><label>Task</label><input id="tTitle" type="text" placeholder="What needs to be done?"></div>
+    <div style="margin-bottom:12px">
+        <label>Task</label><input id="tTitle" type="text" placeholder="What needs to be done?" style="width:100%">
     </div>
     <div class="form-row">
         <div><label>Prospect (optional)</label><input id="tProspect" type="text" placeholder="Prospect name"></div>
