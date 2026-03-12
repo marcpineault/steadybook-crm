@@ -210,11 +210,28 @@ def api_prospect_detail(name):
                            or name.lower() in a.get("prospect", "").lower()]
     interactions = db.read_interactions(limit=100, prospect=name)
     tasks = db.get_tasks(prospect=name, status=None, limit=50)
+    # Calculate health score and next action
+    from datetime import date as _date
+    _today = _date.today()
+    _lam = {}
+    for a in activities:
+        _n = a.get("prospect", "").strip().lower()
+        if _n and a.get("date"):
+            try:
+                _ad = datetime.strptime(a["date"].split(" ")[0], "%Y-%m-%d").date()
+                if _n not in _lam or _ad > _lam[_n]:
+                    _lam[_n] = _ad
+            except (ValueError, IndexError):
+                pass
+    health = _calc_health_score(prospect, _lam, _today)
+    next_action = STAGE_NEXT_ACTION.get(prospect.get("stage", ""), "Keep following up")
     return jsonify({
         "prospect": prospect,
         "activities": prospect_activities[:20],
         "interactions": interactions[:20],
         "tasks": tasks,
+        "health_score": health,
+        "next_action": next_action,
     })
 
 
@@ -304,6 +321,200 @@ def _build_focus_banner(overdue_followups, overdue_tasks, due_today_tasks, today
     if not items:
         return '<div style="background:#f0faf8;border:1px solid #1abc9c;border-radius:8px;padding:12px 20px;margin-bottom:16px;font-size:14px;color:#27AE60"><strong>&#10003; All clear!</strong> No urgent items today.</div>'
     return '<div style="background:#fef9f0;border:1px solid #F39C12;border-radius:8px;padding:12px 20px;margin-bottom:16px;font-size:14px"><strong>Today\'s Focus:</strong> ' + ' &nbsp;|&nbsp; '.join(items) + '</div>'
+
+
+def _build_rec_html(rec):
+    """Build HTML for a single AI recommendation."""
+    level, text, prospect_name = rec
+    colors = {"critical": "#E74C3C", "warning": "#F39C12", "action": "#3498DB", "suggestion": "#8E44AD"}
+    icons = {"critical": "&#9888;", "warning": "&#9888;", "action": "&#10148;", "suggestion": "&#128161;"}
+    color = colors.get(level, "#7f8c8d")
+    icon = icons.get(level, "")
+    esc_name = _html.escape(prospect_name).replace("'", "\\'") if prospect_name else ""
+    click = f' onclick="openProspectDetail(\'{esc_name}\')" style="cursor:pointer"' if prospect_name else ""
+    return f'<div style="padding:10px 12px;margin-bottom:8px;border-left:3px solid {color};background:#fafafa;border-radius:0 6px 6px 0;font-size:13px"{click}>{icon} {_html.escape(text)}</div>'
+
+
+STAGE_ORDER = ["New Lead", "Contacted", "Discovery Call", "Needs Analysis",
+               "Plan Presentation", "Proposal Sent", "Negotiation"]
+
+STAGE_NEXT_ACTION = {
+    "New Lead": "Make first contact — call or email to introduce yourself",
+    "Contacted": "Schedule a discovery call to understand their needs",
+    "Discovery Call": "Complete needs analysis — gather financial details",
+    "Needs Analysis": "Prepare and present a financial plan",
+    "Plan Presentation": "Send formal proposal with recommendations",
+    "Proposal Sent": "Follow up on proposal — address questions",
+    "Negotiation": "Close the deal — get paperwork signed",
+}
+
+
+def _calc_health_score(prospect, last_activity_map, today):
+    """Calculate prospect health score 0-100 based on engagement signals."""
+    score = 50  # baseline
+
+    # Recency of contact (±30 points)
+    pname = prospect["name"].strip().lower()
+    last = last_activity_map.get(pname)
+    if last:
+        days_idle = (today - last).days
+        if days_idle == 0:
+            score += 30
+        elif days_idle <= 3:
+            score += 20
+        elif days_idle <= 7:
+            score += 10
+        elif days_idle <= 14:
+            score -= 5
+        elif days_idle <= 30:
+            score -= 15
+        else:
+            score -= 30
+    else:
+        score -= 20  # no activity at all
+
+    # Priority boost (+10)
+    if prospect.get("priority") == "Hot":
+        score += 10
+    elif prospect.get("priority") == "Warm":
+        score += 5
+
+    # Stage progression (+10 for advanced stages)
+    stage = prospect.get("stage", "")
+    if stage in ("Proposal Sent", "Negotiation"):
+        score += 10
+    elif stage in ("Plan Presentation", "Needs Analysis"):
+        score += 5
+
+    # Overdue follow-up penalty (-15)
+    fu = prospect.get("next_followup", "")
+    if fu and fu != "None":
+        try:
+            fu_date = datetime.strptime(fu.split(" ")[0], "%Y-%m-%d").date()
+            if fu_date < today:
+                days_late = (today - fu_date).days
+                score -= min(15, days_late * 2)
+        except (ValueError, IndexError):
+            pass
+
+    # Has revenue/AUM data (+5)
+    try:
+        if float(str(prospect.get("revenue", 0)).replace("$", "").replace(",", "")) > 0:
+            score += 5
+    except (ValueError, TypeError):
+        pass
+
+    return max(0, min(100, score))
+
+
+def _health_badge(score):
+    if score >= 70:
+        return f'<span style="background:#27AE60;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">{score}</span>'
+    elif score >= 40:
+        return f'<span style="background:#F39C12;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">{score}</span>'
+    else:
+        return f'<span style="background:#E74C3C;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">{score}</span>'
+
+
+def _build_ai_recommendations(active, overdue, overdue_tasks, stale_prospects, last_activity_map, today, meetings):
+    """Build prioritized AI recommendation list."""
+    recs = []
+    today_str = today.strftime("%Y-%m-%d")
+
+    # 1. Overdue follow-ups on hot/warm leads — highest priority
+    for p in overdue:
+        if p.get("priority") in ("Hot", "Warm"):
+            fu = p.get("next_followup", "").split(" ")[0]
+            try:
+                days_late = (today - datetime.strptime(fu, "%Y-%m-%d").date()).days
+            except (ValueError, IndexError):
+                days_late = 0
+            rev = ""
+            try:
+                r = float(str(p.get("revenue", 0)).replace("$", "").replace(",", ""))
+                if r > 0:
+                    rev = f" (${r:,.0f} at stake)"
+            except (ValueError, TypeError):
+                pass
+            recs.append(("critical", f"Call {p['name']} — {p['priority']} lead, {days_late}d overdue{rev}", p["name"]))
+
+    # 2. Deals in advanced stages going cold
+    for p_info, days_idle in stale_prospects[:5]:
+        if p_info.get("stage") in ("Proposal Sent", "Negotiation", "Plan Presentation"):
+            rev = ""
+            try:
+                r = float(str(p_info.get("revenue", 0)).replace("$", "").replace(",", ""))
+                if r > 0:
+                    rev = f" — ${r:,.0f} revenue"
+                else:
+                    a = float(str(p_info.get("aum", 0)).replace("$", "").replace(",", ""))
+                    if a > 0:
+                        rev = f" — ${a:,.0f} AUM"
+            except (ValueError, TypeError):
+                pass
+            recs.append(("warning", f"Re-engage {p_info['name']} — {p_info['stage']}, {days_idle}d idle{rev}", p_info["name"]))
+
+    # 3. Overdue tasks
+    for t in overdue_tasks[:3]:
+        recs.append(("warning", f"Overdue task: {t['title']}" + (f" ({t.get('prospect', '')})" if t.get("prospect") else ""), t.get("prospect", "")))
+
+    # 4. New leads with no activity
+    for p in active:
+        if p.get("stage") == "New Lead":
+            pname = p["name"].strip().lower()
+            if pname not in last_activity_map:
+                recs.append(("action", f"First contact needed: {p['name']} — new lead, no activity yet", p["name"]))
+
+    # 5. Stage-based suggestions for hot leads
+    for p in active:
+        if p.get("priority") == "Hot" and p not in overdue:
+            stage = p.get("stage", "")
+            action = STAGE_NEXT_ACTION.get(stage)
+            if action and p["name"] not in [r[2] for r in recs]:
+                recs.append(("suggestion", f"{p['name']}: {action}", p["name"]))
+
+    return recs[:10]
+
+
+def _calc_activity_streak(activities, today):
+    """Calculate consecutive days with at least one activity."""
+    if not activities:
+        return 0
+    activity_dates = set()
+    for a in activities:
+        try:
+            d = a.get("date", "").split(" ")[0]
+            if d:
+                activity_dates.add(d)
+        except (ValueError, IndexError):
+            pass
+    streak = 0
+    check = today
+    while check.strftime("%Y-%m-%d") in activity_dates:
+        streak += 1
+        check -= timedelta(days=1)
+    return streak
+
+
+def _calc_deal_velocity(prospects, activities):
+    """Calculate average days deals spend in the pipeline."""
+    total_days = 0
+    count = 0
+    for p in prospects:
+        if p.get("stage") in ("Closed-Won", "Closed-Lost"):
+            fc = p.get("first_contact", "")
+            ua = p.get("updated_at", "")
+            if fc and ua:
+                try:
+                    start = datetime.strptime(fc.split(" ")[0], "%Y-%m-%d").date()
+                    end = datetime.strptime(ua.split(" ")[0], "%Y-%m-%d").date()
+                    days = (end - start).days
+                    if days >= 0:
+                        total_days += days
+                        count += 1
+                except (ValueError, IndexError):
+                    pass
+    return total_days // count if count > 0 else 0
 
 
 @app.route("/")
@@ -666,6 +877,58 @@ def dashboard():
     # Today's meetings
     todays_meetings = [m for m in meetings if m.get("date") == today_str and m.get("status", "").lower() != "cancelled"]
 
+    # Build task categorizations (needed by intelligence + tasks tab)
+    week_ago_str = (today - timedelta(days=7)).strftime("%Y-%m-%d")
+    overdue_tasks = [t for t in all_tasks if t.get("due_date") and t["due_date"] < today_str]
+    due_today_tasks = [t for t in all_tasks if t.get("due_date") and t["due_date"] == today_str]
+    upcoming_tasks = [t for t in all_tasks if not t.get("due_date") or t["due_date"] > today_str]
+    completed_this_week = [t for t in completed_tasks_recent if t.get("completed_at", "") >= week_ago_str]
+
+    # ── Intelligence computations ──
+    # Health scores
+    health_scores = {}
+    for p in active:
+        health_scores[p["name"]] = _calc_health_score(p, last_activity_map, today)
+
+    # AI recommendations
+    ai_recs = _build_ai_recommendations(active, overdue, overdue_tasks, stale_prospects, last_activity_map, today, meetings)
+
+    # Activity streak
+    activity_streak = _calc_activity_streak(activities, today)
+
+    # Deal velocity
+    deal_velocity = _calc_deal_velocity(prospects, activities)
+
+    # Revenue at risk (stale prospects with revenue)
+    revenue_at_risk = 0
+    for p_info, days_idle in stale_prospects:
+        try:
+            r = float(str(p_info.get("revenue", 0)).replace("$", "").replace(",", ""))
+            revenue_at_risk += r
+        except (ValueError, TypeError):
+            pass
+    aum_at_risk = 0
+    for p_info, days_idle in stale_prospects:
+        try:
+            a = float(str(p_info.get("aum", 0)).replace("$", "").replace(",", ""))
+            aum_at_risk += a
+        except (ValueError, TypeError):
+            pass
+
+    # Stuck deals (same stage for 21+ days based on updated_at)
+    stuck_deals = []
+    for p in active:
+        ua = p.get("updated_at", "")
+        if ua:
+            try:
+                last_update = datetime.strptime(ua.split(" ")[0], "%Y-%m-%d").date()
+                days_stuck = (today - last_update).days
+                if days_stuck >= 21 and p.get("stage") not in ("New Lead", "Nurture"):
+                    stuck_deals.append((p, days_stuck))
+            except (ValueError, IndexError):
+                pass
+    stuck_deals.sort(key=lambda x: -x[1])
+
     # Build prospect rows
     prospect_rows = ""
     for p in active:
@@ -693,10 +956,14 @@ def dashboard():
         else:
             idle_display = '<span style="color:#95A5A6">—</span>'
 
+        hscore = health_scores.get(p["name"], 50)
+        hbadge = _health_badge(hscore)
+
         p_json_escaped = _esc_json_attr(json.dumps(p))
         esc_detail_name = _esc(p["name"]).replace("'", "\\'")
         prospect_rows += f"""<tr class="editable-row" data-prospect="{p_json_escaped}" onclick="openEdit(JSON.parse(this.dataset.prospect))" style="cursor:pointer">
             <td class="name-cell"><a href="javascript:void(0)" onclick="event.stopPropagation();openProspectDetail('{esc_detail_name}')" style="color:#2c3e50;font-weight:600;text-decoration:none;border-bottom:2px solid #1abc9c">{_esc(p["name"])}</a></td>
+            <td style="text-align:center">{hbadge}</td>
             <td><span class="badge" style="background:{pri_bg}">{_esc(p["priority"])}</span></td>
             <td><span class="badge" style="background:{stage_bg};color:{stage_fg}">{_esc(p["stage"])}</span></td>
             <td>{_esc(p["product"])}</td>
@@ -761,14 +1028,7 @@ def dashboard():
     product_labels = list(product_counts.keys())
     product_values = list(product_counts.values())
 
-    # Build task data for Tasks tab
-    week_ago_str = (today - timedelta(days=7)).strftime("%Y-%m-%d")
-
-    overdue_tasks = [t for t in all_tasks if t.get("due_date") and t["due_date"] < today_str]
-    due_today_tasks = [t for t in all_tasks if t.get("due_date") and t["due_date"] == today_str]
-    upcoming_tasks = [t for t in all_tasks if not t.get("due_date") or t["due_date"] > today_str]
-    completed_this_week = [t for t in completed_tasks_recent if t.get("completed_at", "") >= week_ago_str]
-
+    # Build task rows for Tasks tab
     def _task_row(t, show_due=True):
         due = t.get("due_date") or ""
         row_class = ""
@@ -1370,11 +1630,44 @@ tr:hover {{ background: #f8f9fa; }}
         </div>
     </div>
 
+    <!-- Intelligence Section -->
+    <div class="two-col" style="margin-top:24px">
+        <div class="section" style="border-left:4px solid #8E44AD">
+            <h2 style="color:#8E44AD">AI Recommends</h2>
+            {''.join(_build_rec_html(r) for r in ai_recs) if ai_recs else '<div class="empty-state"><p>All caught up! No urgent recommendations.</p></div>'}
+        </div>
+        <div class="section">
+            <h2>Intelligence</h2>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                <div style="padding:12px;background:#f8f9fa;border-radius:8px;text-align:center">
+                    <div style="font-size:11px;color:#7f8c8d;text-transform:uppercase">Activity Streak</div>
+                    <div style="font-size:28px;font-weight:700;color:{'#27AE60' if activity_streak >= 3 else '#F39C12' if activity_streak >= 1 else '#E74C3C'}">{activity_streak}d</div>
+                    <div style="font-size:11px;color:#7f8c8d">{'On fire!' if activity_streak >= 5 else 'Keep it going!' if activity_streak >= 1 else 'Log an activity today'}</div>
+                </div>
+                <div style="padding:12px;background:#f8f9fa;border-radius:8px;text-align:center">
+                    <div style="font-size:11px;color:#7f8c8d;text-transform:uppercase">Avg Deal Velocity</div>
+                    <div style="font-size:28px;font-weight:700;color:#3498DB">{deal_velocity}d</div>
+                    <div style="font-size:11px;color:#7f8c8d">days to close</div>
+                </div>
+                <div style="padding:12px;background:{'#fef0f0' if revenue_at_risk > 0 else '#f8f9fa'};border-radius:8px;text-align:center">
+                    <div style="font-size:11px;color:#7f8c8d;text-transform:uppercase">Revenue at Risk</div>
+                    <div style="font-size:28px;font-weight:700;color:{'#E74C3C' if revenue_at_risk > 0 else '#27AE60'}">{fmt_money(revenue_at_risk)}</div>
+                    <div style="font-size:11px;color:#7f8c8d">{len(stale_prospects)} stale deal{'s' if len(stale_prospects) != 1 else ''}</div>
+                </div>
+                <div style="padding:12px;background:{'#fef0f0' if stuck_deals else '#f8f9fa'};border-radius:8px;text-align:center">
+                    <div style="font-size:11px;color:#7f8c8d;text-transform:uppercase">Stuck Deals</div>
+                    <div style="font-size:28px;font-weight:700;color:{'#E74C3C' if stuck_deals else '#27AE60'}">{len(stuck_deals)}</div>
+                    <div style="font-size:11px;color:#7f8c8d">{'21+ days same stage' if stuck_deals else 'all moving'}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {'<div class="section"><h2>Overdue Follow-Ups <span class="count">(' + str(len(overdue)) + ')</span></h2><table><tr><th>Prospect</th><th>Was Due</th><th>Status</th><th>Phone</th><th>Reschedule</th></tr>' + overdue_rows + '</table></div>' if overdue else ''}
 
     <div class="section">
         <h2 style="display:flex;justify-content:space-between;align-items:center">Active Pipeline <span class="count">({len(active)} deals)</span> <button class="btn btn-primary" onclick="openAdd()">+ Add Prospect</button></h2>
-        {'<div style="margin-bottom:12px"><input type="text" id="prospectSearch" placeholder="Search prospects..." oninput="filterProspects(this.value)" style="width:100%;max-width:300px;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px"></div><table id="prospectTable"><tr><th>Prospect</th><th>Priority</th><th>Stage</th><th>Product</th><th>AUM</th><th>Premium</th><th>Follow-Up</th><th>Last Touch</th><th>Notes</th></tr>' + prospect_rows + '</table>' if active else '<div class="empty-state"><p>No active deals yet. Text your Telegram bot to add prospects.</p></div>'}
+        {'<div style="margin-bottom:12px"><input type="text" id="prospectSearch" placeholder="Search prospects..." oninput="filterProspects(this.value)" style="width:100%;max-width:300px;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px"></div><table id="prospectTable"><tr><th>Prospect</th><th>Health</th><th>Priority</th><th>Stage</th><th>Product</th><th>AUM</th><th>Premium</th><th>Follow-Up</th><th>Last Touch</th><th>Notes</th></tr>' + prospect_rows + '</table>' if active else '<div class="empty-state"><p>No active deals yet. Text your Telegram bot to add prospects.</p></div>'}
     </div>
 
     <div class="two-col">
@@ -1988,8 +2281,16 @@ async function openProspectDetail(name) {{
         if (data.error) {{ document.getElementById('detailContent').innerHTML = '<p>Error: ' + data.error + '</p>'; return; }}
         let html = '';
 
-        // Prospect info
+        // Health + Next Action
         const p = data.prospect;
+        const hs = data.health_score || 0;
+        const hColor = hs >= 70 ? '#27AE60' : hs >= 40 ? '#F39C12' : '#E74C3C';
+        html += '<div style="display:flex;gap:12px;margin-bottom:16px">';
+        html += '<div style="flex:0 0 80px;text-align:center;padding:12px;background:#f8f9fa;border-radius:8px"><div style="font-size:11px;color:#7f8c8d;text-transform:uppercase">Health</div><div style="font-size:32px;font-weight:700;color:' + hColor + '">' + hs + '</div></div>';
+        if (data.next_action) html += '<div style="flex:1;padding:12px;background:#f0f0ff;border-radius:8px;border-left:3px solid #8E44AD"><div style="font-size:11px;color:#8E44AD;text-transform:uppercase;font-weight:600">Recommended Next Action</div><div style="font-size:14px;margin-top:4px">' + data.next_action + '</div></div>';
+        html += '</div>';
+
+        // Prospect info
         html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;margin-bottom:20px;padding:12px;background:#f8f9fa;border-radius:8px">';
         html += '<div><strong>Phone:</strong> ' + (p.phone || '—') + '</div>';
         html += '<div><strong>Email:</strong> ' + (p.email || '—') + '</div>';
