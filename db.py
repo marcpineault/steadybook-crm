@@ -568,6 +568,31 @@ def get_tasks(assigned_to=None, status="pending", prospect=None, limit=50):
     return _rows_to_dicts(rows)
 
 
+def update_task(task_id: int, updates: dict, updated_by: str = "", is_admin: bool = False) -> str:
+    """Update a task's fields. Only assignee or admin can update."""
+    allowed = {"title", "prospect", "due_date", "remind_at", "notes"}
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        if not row:
+            return f"Task {task_id} not found."
+        if not is_admin and row["assigned_to"] != updated_by:
+            return f"Not authorized to update task {task_id}."
+        safe_fields = {}
+        for field, value in updates.items():
+            if field not in allowed:
+                continue
+            if field == "remind_at" and value and isinstance(value, str):
+                value = value.replace("T", " ")
+            safe_fields[field] = value
+        if not safe_fields:
+            return f"No valid updates for task {task_id}."
+        validated_fields = [f for f in safe_fields if f in allowed]
+        set_clauses = ", ".join(f'"{field}" = ?' for field in validated_fields)
+        values = [safe_fields[f] for f in validated_fields] + [task_id]
+        conn.execute(f"UPDATE tasks SET {set_clauses} WHERE id = ?", values)
+    return f"Updated task {task_id}."
+
+
 def complete_task(task_id: int, completed_by: str, is_admin: bool = False) -> str:
     """Mark a task as completed. Only assignee or admin can complete."""
     with get_db() as conn:

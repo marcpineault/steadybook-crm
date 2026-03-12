@@ -129,6 +129,18 @@ def api_list_prospects():
     return jsonify(prospects)
 
 
+@app.route("/api/prospect/update", methods=["PUT"])
+@_require_auth
+def api_update_prospect_by_name():
+    data = request.json
+    if not data or not data.get("name") or not data.get("updates"):
+        return jsonify({"error": "Name and updates required"}), 400
+    result = db.update_prospect(data["name"], data["updates"])
+    if "not found" in result.lower():
+        return jsonify({"error": result}), 404
+    return jsonify({"ok": True, "message": result})
+
+
 @app.route("/api/task", methods=["POST"])
 @_require_auth
 def api_add_task():
@@ -154,6 +166,18 @@ def api_list_tasks():
     prospect = request.args.get("prospect")
     tasks = db.get_tasks(assigned_to=assigned_to, status=status, prospect=prospect)
     return jsonify(tasks)
+
+
+@app.route("/api/task/<int:task_id>", methods=["PUT"])
+@_require_auth
+def api_update_task(task_id):
+    data = request.json
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+    result = db.update_task(task_id, data, is_admin=True)
+    if "not found" in result.lower():
+        return jsonify({"error": result}), 404
+    return jsonify({"ok": True, "message": result})
 
 
 @app.route("/api/task/<int:task_id>/complete", methods=["PUT"])
@@ -224,6 +248,24 @@ def fmt_money_full(val):
         return f"${float(str(val).replace('$','').replace(',','')):,.0f}"
     except (ValueError, TypeError):
         return "$0"
+
+
+def _build_focus_banner(overdue_followups, overdue_tasks, due_today_tasks, todays_meetings, stale_prospects):
+    """Build the Today's Focus smart banner with actionable alerts."""
+    items = []
+    if overdue_followups:
+        items.append(f'<span style="color:#E74C3C">&#9888; {len(overdue_followups)} overdue follow-up{"s" if len(overdue_followups) != 1 else ""}</span>')
+    if overdue_tasks:
+        items.append(f'<span style="color:#E74C3C">&#9888; {len(overdue_tasks)} overdue task{"s" if len(overdue_tasks) != 1 else ""}</span>')
+    if due_today_tasks:
+        items.append(f'<span style="color:#F39C12">&#128203; {len(due_today_tasks)} task{"s" if len(due_today_tasks) != 1 else ""} due today</span>')
+    if todays_meetings:
+        items.append(f'<span style="color:#3498DB">&#128197; {len(todays_meetings)} meeting{"s" if len(todays_meetings) != 1 else ""} today</span>')
+    if stale_prospects:
+        items.append(f'<span style="color:#E67E22">&#128164; {len(stale_prospects)} prospect{"s" if len(stale_prospects) != 1 else ""} going cold (14+ days idle)</span>')
+    if not items:
+        return '<div style="background:#f0faf8;border:1px solid #1abc9c;border-radius:8px;padding:12px 20px;margin-bottom:16px;font-size:14px;color:#27AE60"><strong>&#10003; All clear!</strong> No urgent items today.</div>'
+    return '<div style="background:#fef9f0;border:1px solid #F39C12;border-radius:8px;padding:12px 20px;margin-bottom:16px;font-size:14px"><strong>Today\'s Focus:</strong> ' + ' &nbsp;|&nbsp; '.join(items) + '</div>'
 
 
 @app.route("/")
@@ -550,6 +592,41 @@ def dashboard():
         if pr:
             product_counts[pr] = product_counts.get(pr, 0) + 1
 
+    # Build "days since last activity" lookup per prospect
+    last_activity_map = {}
+    for a in activities:
+        name = a.get("prospect", "").strip().lower()
+        if name and a.get("date"):
+            try:
+                ad = datetime.strptime(a["date"].split(" ")[0], "%Y-%m-%d").date()
+                if name not in last_activity_map or ad > last_activity_map[name]:
+                    last_activity_map[name] = ad
+            except (ValueError, IndexError):
+                pass
+
+    # Stale prospects: no activity in 14+ days
+    stale_prospects = []
+    for p in active:
+        pname = p["name"].strip().lower()
+        last = last_activity_map.get(pname)
+        if last:
+            days_idle = (today - last).days
+            if days_idle >= 14:
+                stale_prospects.append((p, days_idle))
+        else:
+            # No activity at all — check created_at
+            try:
+                created = datetime.strptime(p.get("created_at", "")[:10], "%Y-%m-%d").date()
+                days_idle = (today - created).days
+                if days_idle >= 14:
+                    stale_prospects.append((p, days_idle))
+            except (ValueError, IndexError):
+                stale_prospects.append((p, 999))
+    stale_prospects.sort(key=lambda x: -x[1])
+
+    # Today's meetings
+    todays_meetings = [m for m in meetings if m.get("date") == today_str and m.get("status", "").lower() != "cancelled"]
+
     # Build prospect rows
     prospect_rows = ""
     for p in active:
@@ -561,6 +638,22 @@ def dashboard():
         fu_class = "overdue" if is_overdue else ""
         fu_display = p["next_followup"].split(" ")[0] if p["next_followup"] and p["next_followup"] != "None" else ""
 
+        # Days since last touch
+        pname_lower = p["name"].strip().lower()
+        last_touch = last_activity_map.get(pname_lower)
+        if last_touch:
+            idle_days = (today - last_touch).days
+            if idle_days == 0:
+                idle_display = '<span style="color:#27AE60">Today</span>'
+            elif idle_days <= 7:
+                idle_display = f'{idle_days}d'
+            elif idle_days <= 14:
+                idle_display = f'<span style="color:#F39C12">{idle_days}d</span>'
+            else:
+                idle_display = f'<span style="color:#E74C3C;font-weight:600">{idle_days}d</span>'
+        else:
+            idle_display = '<span style="color:#95A5A6">—</span>'
+
         p_json_escaped = _esc_json_attr(json.dumps(p))
         prospect_rows += f"""<tr class="editable-row" data-prospect="{p_json_escaped}" onclick="openEdit(JSON.parse(this.dataset.prospect))" style="cursor:pointer">
             <td class="name-cell">{_esc(p["name"])}</td>
@@ -570,6 +663,7 @@ def dashboard():
             <td class="money">{fmt_money_full(p["aum"])}</td>
             <td class="money">{fmt_money_full(p["revenue"])}</td>
             <td class="{fu_class}">{_esc(fu_display)}</td>
+            <td style="text-align:center">{idle_display}</td>
             <td class="notes">{_esc(p["notes"][:60])}{'...' if len(p["notes"]) > 60 else ''}</td>
         </tr>"""
 
@@ -603,11 +697,17 @@ def dashboard():
             days_late = (today - datetime.strptime(fu, "%Y-%m-%d").date()).days
         except (ValueError, IndexError):
             days_late = "?"
+        esc_name = _esc(p["name"]).replace("'", "\\'")
         overdue_rows += f"""<tr>
             <td class="name-cell">{_esc(p["name"])}</td>
             <td>{_esc(fu)}</td>
             <td class="overdue">{days_late} days late</td>
             <td>{_esc(p["phone"])}</td>
+            <td style="white-space:nowrap">
+                <button onclick="event.stopPropagation();quickReschedule('{esc_name}', 0)" style="background:#27AE60;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px" title="Reschedule to today">Today</button>
+                <button onclick="event.stopPropagation();quickReschedule('{esc_name}', 1)" style="background:#3498DB;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px" title="Reschedule to tomorrow">+1d</button>
+                <button onclick="event.stopPropagation();quickReschedule('{esc_name}', 7)" style="background:#8E44AD;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px" title="Reschedule to next week">+1w</button>
+            </td>
         </tr>"""
 
     # Chart data as JSON-like strings for inline JS
@@ -650,9 +750,10 @@ def dashboard():
         prospect_display = f'<a style="color:#3498DB" href="javascript:void(0)">{_esc(t["prospect"])}</a>' if t.get("prospect") else ""
         remind_icon = ' <span title="Reminder set" style="color:#F39C12">&#9200;</span>' if t.get("remind_at") else ""
         due_cell = f"<td>{due_display}</td>" if show_due else ""
+        remind_val = _esc(t.get("remind_at") or "").replace(" ", "T")
         return f"""<tr class="{row_class}">
             <td style="text-align:center"><input type="checkbox" onchange="completeTask({t['id']}, this)" style="width:18px;height:18px;cursor:pointer"></td>
-            <td>{_esc(t['title'])}{remind_icon}</td>
+            <td><a href="javascript:void(0)" onclick="openEditTask({t['id']}, '{_esc_json_attr(_esc(t['title']))}', '{_esc(t.get('prospect') or '')}', '{_esc(due)}', '{remind_val}', '{_esc(t.get('notes') or '')}')" style="color:inherit;text-decoration:none;border-bottom:1px dashed #bdc3c7">{_esc(t['title'])}</a>{remind_icon}</td>
             <td>{prospect_display}</td>
             {due_cell}
             <td style="text-align:center"><button onclick="deleteTask({t['id']})" style="background:none;border:none;color:#E74C3C;cursor:pointer;font-size:16px">&#10005;</button></td>
@@ -1200,6 +1301,8 @@ tr:hover {{ background: #f8f9fa; }}
         </div>
     </div>
 
+    {_build_focus_banner(overdue, overdue_tasks, due_today_tasks, todays_meetings, stale_prospects)}
+
     <div class="tab-nav">
         <button class="tab-btn active" onclick="showTab('pipeline')">Pipeline</button>
         <button class="tab-btn" onclick="showTab('forecast')">Revenue Forecast</button>
@@ -1226,11 +1329,11 @@ tr:hover {{ background: #f8f9fa; }}
         </div>
     </div>
 
-    {'<div class="section"><h2>Overdue Follow-Ups <span class="count">(' + str(len(overdue)) + ')</span></h2><table><tr><th>Prospect</th><th>Was Due</th><th>Status</th><th>Phone</th></tr>' + overdue_rows + '</table></div>' if overdue else ''}
+    {'<div class="section"><h2>Overdue Follow-Ups <span class="count">(' + str(len(overdue)) + ')</span></h2><table><tr><th>Prospect</th><th>Was Due</th><th>Status</th><th>Phone</th><th>Reschedule</th></tr>' + overdue_rows + '</table></div>' if overdue else ''}
 
     <div class="section">
         <h2 style="display:flex;justify-content:space-between;align-items:center">Active Pipeline <span class="count">({len(active)} deals)</span> <button class="btn btn-primary" onclick="openAdd()">+ Add Prospect</button></h2>
-        {'<table><tr><th>Prospect</th><th>Priority</th><th>Stage</th><th>Product</th><th>AUM</th><th>Premium</th><th>Follow-Up</th><th>Notes</th></tr>' + prospect_rows + '</table>' if active else '<div class="empty-state"><p>No active deals yet. Text your Telegram bot to add prospects.</p></div>'}
+        {'<div style="margin-bottom:12px"><input type="text" id="prospectSearch" placeholder="Search prospects..." oninput="filterProspects(this.value)" style="width:100%;max-width:300px;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px"></div><table id="prospectTable"><tr><th>Prospect</th><th>Priority</th><th>Stage</th><th>Product</th><th>AUM</th><th>Premium</th><th>Follow-Up</th><th>Last Touch</th><th>Notes</th></tr>' + prospect_rows + '</table>' if active else '<div class="empty-state"><p>No active deals yet. Text your Telegram bot to add prospects.</p></div>'}
     </div>
 
     <div class="two-col">
@@ -1541,7 +1644,8 @@ tr:hover {{ background: #f8f9fa; }}
 <!-- Task Modal -->
 <div class="modal-overlay" id="taskModal">
 <div class="modal" style="max-width:500px">
-    <h2>Add Task</h2>
+    <h2 id="taskModalTitle">Add Task</h2>
+    <input type="hidden" id="tEditId" value="">
     <div style="margin-bottom:12px">
         <label>Task</label><input id="tTitle" type="text" placeholder="What needs to be done?" style="width:100%">
     </div>
@@ -1552,9 +1656,12 @@ tr:hover {{ background: #f8f9fa; }}
     <div class="form-row">
         <div><label>Reminder</label><input id="tRemind" type="datetime-local"></div>
     </div>
-    <div style="display:flex;gap:8px;margin-top:16px">
+    <label>Notes</label>
+    <textarea id="tNotes" rows="3" style="width:100%;margin-bottom:8px" placeholder="Optional notes..."></textarea>
+    <div style="display:flex;gap:8px;margin-top:8px">
         <button onclick="saveTask()" style="background:#27AE60;color:#fff;border:none;padding:10px 24px;border-radius:6px;cursor:pointer">Save</button>
         <button onclick="closeTaskModal()" style="background:#95A5A6;color:#fff;border:none;padding:10px 24px;border-radius:6px;cursor:pointer">Cancel</button>
+        <button id="tDeleteBtn" onclick="deleteTask(document.getElementById('tEditId').value)" style="background:#E74C3C;color:#fff;border:none;padding:10px 24px;border-radius:6px;cursor:pointer;margin-left:auto;display:none">Delete</button>
     </div>
 </div>
 </div>
@@ -1695,10 +1802,27 @@ document.getElementById('editModal').addEventListener('click', function(e) {{
 
 // Task management
 function openAddTask() {{
+    document.getElementById('tEditId').value = '';
     document.getElementById('tTitle').value = '';
     document.getElementById('tProspect').value = '';
     document.getElementById('tDue').value = '';
     document.getElementById('tRemind').value = '';
+    document.getElementById('tNotes').value = '';
+    document.getElementById('taskModalTitle').textContent = 'Add Task';
+    document.getElementById('tDeleteBtn').style.display = 'none';
+    document.getElementById('taskModal').classList.add('active');
+    document.getElementById('tTitle').focus();
+}}
+
+function openEditTask(id, title, prospect, due, remind, notes) {{
+    document.getElementById('tEditId').value = id;
+    document.getElementById('tTitle').value = title;
+    document.getElementById('tProspect').value = prospect;
+    document.getElementById('tDue').value = due;
+    document.getElementById('tRemind').value = remind;
+    document.getElementById('tNotes').value = notes;
+    document.getElementById('taskModalTitle').textContent = 'Edit Task';
+    document.getElementById('tDeleteBtn').style.display = 'inline-block';
     document.getElementById('taskModal').classList.add('active');
     document.getElementById('tTitle').focus();
 }}
@@ -1714,19 +1838,26 @@ document.getElementById('taskModal').addEventListener('click', function(e) {{
 async function saveTask() {{
     const title = document.getElementById('tTitle').value.trim();
     if (!title) {{ alert('Task title is required'); return; }}
+    const editId = document.getElementById('tEditId').value;
     const data = {{
         title: title,
         prospect: document.getElementById('tProspect').value.trim(),
         due_date: document.getElementById('tDue').value || null,
         remind_at: document.getElementById('tRemind').value ? document.getElementById('tRemind').value.replace('T', ' ') : null,
-        assigned_to: '',
-        created_by: '',
+        notes: document.getElementById('tNotes').value.trim(),
     }};
     try {{
-        const res = await fetch('/api/task', {{ method: 'POST', headers: {{'Content-Type': 'application/json', 'X-CSRF-Token': _csrfToken}}, body: JSON.stringify(data) }});
+        let res;
+        if (editId) {{
+            res = await fetch('/api/task/' + editId, {{ method: 'PUT', headers: {{'Content-Type': 'application/json', 'X-CSRF-Token': _csrfToken}}, body: JSON.stringify(data) }});
+        }} else {{
+            data.assigned_to = '';
+            data.created_by = '';
+            res = await fetch('/api/task', {{ method: 'POST', headers: {{'Content-Type': 'application/json', 'X-CSRF-Token': _csrfToken}}, body: JSON.stringify(data) }});
+        }}
         const result = await res.json();
         if (result.ok) {{ closeTaskModal(); location.reload(); }}
-        else alert(result.error || 'Error creating task');
+        else alert(result.error || 'Error saving task');
     }} catch(e) {{ alert('Error: ' + e.message); }}
 }}
 
@@ -1744,8 +1875,38 @@ async function deleteTask(id) {{
     try {{
         const res = await fetch('/api/task/' + id, {{ method: 'DELETE', headers: {{'X-CSRF-Token': _csrfToken}} }});
         const result = await res.json();
-        if (result.ok) {{ location.reload(); }}
+        if (result.ok) {{ closeTaskModal(); location.reload(); }}
         else alert(result.error || 'Error');
+    }} catch(e) {{ alert('Error: ' + e.message); }}
+}}
+
+// Prospect search/filter
+function filterProspects(query) {{
+    const table = document.getElementById('prospectTable');
+    if (!table) return;
+    const rows = table.querySelectorAll('tr');
+    const q = query.toLowerCase();
+    rows.forEach((row, i) => {{
+        if (i === 0) return; // skip header
+        const text = row.textContent.toLowerCase();
+        row.style.display = text.includes(q) ? '' : 'none';
+    }});
+}}
+
+// Quick reschedule follow-up
+async function quickReschedule(prospectName, days) {{
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    const dateStr = d.toISOString().split('T')[0];
+    try {{
+        const res = await fetch('/api/prospect/update', {{
+            method: 'PUT',
+            headers: {{'Content-Type': 'application/json', 'X-CSRF-Token': _csrfToken}},
+            body: JSON.stringify({{ name: prospectName, updates: {{ next_followup: dateStr }} }})
+        }});
+        const result = await res.json();
+        if (result.ok) location.reload();
+        else alert(result.error || 'Error rescheduling');
     }} catch(e) {{ alert('Error: ' + e.message); }}
 }}
 

@@ -145,6 +145,31 @@ def test_get_reminder_tasks():
     assert tasks[0]["title"] == "Remind me"
 
 
+def test_update_task():
+    t = db.add_task({"title": "Original", "prospect": "John", "assigned_to": "111", "created_by": "111"})
+    result = db.update_task(t["id"], {"title": "Updated", "due_date": "2026-03-20", "notes": "Call back"}, "111")
+    assert "Updated" in result
+    tasks = db.get_tasks(assigned_to="111")
+    updated = [x for x in tasks if x["id"] == t["id"]][0]
+    assert updated["title"] == "Updated"
+    assert updated["due_date"] == "2026-03-20"
+    assert updated["notes"] == "Call back"
+
+
+def test_update_task_wrong_user():
+    t = db.add_task({"title": "Protected", "assigned_to": "111", "created_by": "111"})
+    result = db.update_task(t["id"], {"title": "Hacked"}, "999")
+    assert "not authorized" in result.lower()
+
+
+def test_update_task_normalizes_remind_at():
+    t = db.add_task({"title": "Remind edit", "assigned_to": "111", "created_by": "111"})
+    db.update_task(t["id"], {"remind_at": "2026-03-15T10:00"}, "111")
+    tasks = db.get_reminder_tasks("2026-03-15 11:00")
+    assert len(tasks) == 1
+    assert tasks[0]["remind_at"] == "2026-03-15 10:00"
+
+
 def test_clear_reminder():
     t = db.add_task({
         "title": "Clear me",
