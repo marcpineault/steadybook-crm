@@ -158,6 +158,14 @@ def api_add_task():
     return jsonify({"error": "Could not create task"}), 400
 
 
+@app.route("/api/tasks/debug")
+def api_debug_tasks():
+    """Debug endpoint to see all tasks in DB (no auth for quick checking)."""
+    pending = db.get_tasks(status="pending", limit=50)
+    completed = db.get_tasks(status="completed", limit=10)
+    return jsonify({"pending": pending, "completed": completed, "pending_count": len(pending), "completed_count": len(completed)})
+
+
 @app.route("/api/tasks")
 @_require_auth
 def api_list_tasks():

@@ -65,11 +65,13 @@ def _create_task_from_chat(args: dict) -> str:
         "prospect": args.get("prospect", ""),
         "due_date": args.get("due_date"),
         "remind_at": args.get("remind_at"),
-        "assigned_to": ADMIN_CHAT_ID,
-        "created_by": ADMIN_CHAT_ID,
+        "assigned_to": str(ADMIN_CHAT_ID),
+        "created_by": str(ADMIN_CHAT_ID),
     }
+    logger.info(f"create_task from chat: {task_data}")
     result = db.add_task(task_data)
     if result:
+        logger.info(f"Task created from chat: #{result['id']} remind_at={result.get('remind_at')}")
         parts = [f"Task #{result['id']} created: {result['title']}"]
         if result.get("due_date"):
             parts.append(f"Due: {result['due_date']}")
@@ -1639,11 +1641,12 @@ async def cmd_todo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             model="gpt-5",
             max_completion_tokens=512,
             tools=TASK_TOOLS,
-            tool_choice="auto",
+            tool_choice="required",
             messages=messages,
         )
 
         msg = response.choices[0].message
+        task_created = False
 
         # Process tool calls (max 4 rounds)
         tool_rounds = 0
@@ -1673,11 +1676,14 @@ async def cmd_todo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         "prospect": tool_input.get("prospect", ""),
                         "due_date": tool_input.get("due_date"),
                         "remind_at": tool_input.get("remind_at"),
-                        "assigned_to": assigned_to,
-                        "created_by": chat_id,
+                        "assigned_to": str(assigned_to),
+                        "created_by": str(chat_id),
                     }
+                    logger.info(f"/todo creating task: {task_data}")
                     result = db.add_task(task_data)
                     if result:
+                        task_created = True
+                        logger.info(f"/todo task created: #{result['id']}")
                         messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": f"Task #{result['id']} created successfully."})
                     else:
                         messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": "Error: could not create task (missing title?)."})
@@ -1693,11 +1699,32 @@ async def cmd_todo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 model="gpt-5",
                 max_completion_tokens=512,
                 tools=TASK_TOOLS,
+                tool_choice="auto",
                 messages=messages,
             )
             msg = response.choices[0].message
 
-        reply = msg.content or "Task created!"
+        # Fallback: if GPT didn't create a task, create one directly from the text
+        if not task_created:
+            logger.warning(f"/todo fallback: GPT didn't call create_task, creating directly from: {user_msg}")
+            assigned_to = chat_id
+            if "@marc" in user_msg.lower() or "for marc" in user_msg.lower():
+                assigned_to = ADMIN_CHAT_ID
+            elif not is_admin:
+                assigned_to = chat_id
+            fallback_task = db.add_task({
+                "title": user_msg,
+                "assigned_to": str(assigned_to),
+                "created_by": str(chat_id),
+            })
+            if fallback_task:
+                logger.info(f"/todo fallback task created: #{fallback_task['id']}")
+                reply = f"Task #{fallback_task['id']} created: {user_msg}"
+            else:
+                reply = msg.content or "Could not create task."
+        else:
+            reply = msg.content or "Task created!"
+
         _save_history(chat_id, f"[todo] {user_msg}", reply)
         await update.message.reply_text(reply)
 
