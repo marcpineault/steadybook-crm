@@ -167,6 +167,20 @@ def init_db():
                 action_items TEXT DEFAULT '',
                 created_at TEXT DEFAULT (datetime('now'))
             );
+
+            CREATE TABLE IF NOT EXISTS tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                prospect TEXT DEFAULT '',
+                due_date TEXT,
+                remind_at TEXT,
+                assigned_to TEXT DEFAULT '',
+                created_by TEXT DEFAULT '',
+                status TEXT DEFAULT 'pending',
+                notes TEXT DEFAULT '',
+                created_at TEXT DEFAULT (datetime('now')),
+                completed_at TEXT
+            );
         """)
     logger.info(f"Database initialized at {DB_PATH}")
 
@@ -488,6 +502,129 @@ def read_interactions(limit: int = 50, prospect: str = ""):
                 "SELECT * FROM interactions ORDER BY id DESC LIMIT ?", (limit,)
             ).fetchall()
     return _rows_to_dicts(rows)
+
+
+# ── Tasks CRUD ──
+
+def add_task(data: dict):
+    """Add a task. Returns the created task as dict, or None if no title."""
+    title = data.get("title", "").strip()
+    if not title:
+        return None
+
+    with get_db() as conn:
+        cursor = conn.execute(
+            """INSERT INTO tasks
+               (title, prospect, due_date, remind_at, assigned_to, created_by, notes)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                title,
+                data.get("prospect", ""),
+                data.get("due_date"),
+                data.get("remind_at"),
+                data.get("assigned_to", ""),
+                data.get("created_by", ""),
+                data.get("notes", ""),
+            ),
+        )
+        task_id = cursor.lastrowid
+        row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+    return _row_to_dict(row)
+
+
+def get_tasks(assigned_to=None, status="pending", prospect=None, limit=50):
+    """Get tasks with filters. Orders by due_date ASC (nulls last), then created_at DESC."""
+    conditions = []
+    params = []
+
+    if status:
+        conditions.append("status = ?")
+        params.append(status)
+    if assigned_to:
+        conditions.append("assigned_to = ?")
+        params.append(assigned_to)
+    if prospect:
+        conditions.append("LOWER(prospect) LIKE ?")
+        params.append(f"%{prospect.lower()}%")
+
+    where = " AND ".join(conditions) if conditions else "1=1"
+    params.append(limit)
+
+    with get_db() as conn:
+        rows = conn.execute(
+            f"""SELECT * FROM tasks WHERE {where}
+                ORDER BY
+                    CASE WHEN due_date IS NULL THEN 1 ELSE 0 END,
+                    due_date ASC,
+                    created_at DESC
+                LIMIT ?""",
+            params,
+        ).fetchall()
+    return _rows_to_dicts(rows)
+
+
+def complete_task(task_id: int, completed_by: str, is_admin: bool = False) -> str:
+    """Mark a task as completed. Only assignee or admin can complete."""
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        if not row:
+            return f"Task {task_id} not found."
+        if not is_admin and row["assigned_to"] != completed_by:
+            return f"Not authorized to complete task {task_id}."
+        conn.execute(
+            "UPDATE tasks SET status = 'completed', completed_at = datetime('now') WHERE id = ?",
+            (task_id,),
+        )
+    return f"Completed: {row['title']}"
+
+
+def delete_task(task_id: int, deleted_by: str, is_admin: bool = False) -> str:
+    """Delete a task. Only assignee or admin can delete."""
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        if not row:
+            return f"Task {task_id} not found."
+        if not is_admin and row["assigned_to"] != deleted_by:
+            return f"Not authorized to delete task {task_id}."
+        conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+    return f"Deleted: {row['title']}"
+
+
+def get_due_tasks(date_str: str):
+    """Get pending tasks due on a specific date."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM tasks WHERE due_date = ? AND status = 'pending' ORDER BY created_at",
+            (date_str,),
+        ).fetchall()
+    return _rows_to_dicts(rows)
+
+
+def get_overdue_tasks():
+    """Get pending tasks with due_date before today."""
+    today = date.today().strftime("%Y-%m-%d")
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM tasks WHERE due_date < ? AND status = 'pending' ORDER BY due_date ASC",
+            (today,),
+        ).fetchall()
+    return _rows_to_dicts(rows)
+
+
+def get_reminder_tasks(now_str: str):
+    """Get pending tasks with remind_at <= now that haven't been cleared."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM tasks WHERE remind_at IS NOT NULL AND remind_at <= ? AND status = 'pending' ORDER BY remind_at",
+            (now_str,),
+        ).fetchall()
+    return _rows_to_dicts(rows)
+
+
+def clear_reminder(task_id: int):
+    """Clear remind_at after firing so it doesn't repeat."""
+    with get_db() as conn:
+        conn.execute("UPDATE tasks SET remind_at = NULL WHERE id = ?", (task_id,))
 
 
 # ── Migration from Excel ──
