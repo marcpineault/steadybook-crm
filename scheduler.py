@@ -703,6 +703,14 @@ async def check_task_reminders():
     try:
         now_str = datetime.now(ET).strftime("%Y-%m-%d %H:%M")
         tasks = db.get_reminder_tasks(now_str)
+        if tasks:
+            logger.info(f"Task reminders: found {len(tasks)} tasks due at {now_str}")
+        else:
+            # Log all pending tasks with remind_at for debugging
+            all_with_reminders = db.get_tasks(status="pending")
+            reminders = [(t["id"], t["title"], t["remind_at"]) for t in all_with_reminders if t.get("remind_at")]
+            if reminders:
+                logger.info(f"Task reminders: now={now_str}, no matches. Pending reminders: {reminders}")
 
         for t in tasks:
             due_str = f" (due {t['due_date']})" if t.get("due_date") else ""

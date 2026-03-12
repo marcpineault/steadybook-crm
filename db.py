@@ -512,6 +512,11 @@ def add_task(data: dict):
     if not title:
         return None
 
+    # Normalize remind_at to "YYYY-MM-DD HH:MM" (replace T from datetime-local inputs)
+    remind_at = data.get("remind_at")
+    if remind_at and isinstance(remind_at, str):
+        remind_at = remind_at.replace("T", " ")
+
     with get_db() as conn:
         cursor = conn.execute(
             """INSERT INTO tasks
@@ -521,7 +526,7 @@ def add_task(data: dict):
                 title,
                 data.get("prospect", ""),
                 data.get("due_date"),
-                data.get("remind_at"),
+                remind_at,
                 data.get("assigned_to", ""),
                 data.get("created_by", ""),
                 data.get("notes", ""),
@@ -612,11 +617,12 @@ def get_overdue_tasks():
 
 
 def get_reminder_tasks(now_str: str):
-    """Get pending tasks with remind_at <= now that haven't been cleared."""
+    """Get pending tasks with remind_at <= now that haven't been cleared.
+    Normalizes remind_at by replacing 'T' with space for consistent comparison."""
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT * FROM tasks WHERE remind_at IS NOT NULL AND remind_at <= ? AND status = 'pending' ORDER BY remind_at",
-            (now_str,),
+            "SELECT * FROM tasks WHERE remind_at IS NOT NULL AND REPLACE(remind_at, 'T', ' ') <= ? AND status = 'pending' ORDER BY remind_at",
+            (now_str.replace("T", " "),),
         ).fetchall()
     return _rows_to_dicts(rows)
 
