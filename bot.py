@@ -58,6 +58,25 @@ def read_pipeline():
     return db.read_pipeline()
 
 
+def _parse_relative_time(text: str):
+    """Parse 'in X minutes/hours' from text and return YYYY-MM-DD HH:MM ET string, or None."""
+    import re as _re
+    import pytz
+    et = pytz.timezone("US/Eastern")
+    now_et = datetime.now(et)
+    m = _re.search(r'in\s+(\d+)\s*(min|minute|minutes|hour|hours|hr|hrs)', text.lower())
+    if m:
+        num = int(m.group(1))
+        unit = m.group(2)
+        if unit.startswith("h"):
+            delta = timedelta(hours=num)
+        else:
+            delta = timedelta(minutes=num)
+        remind_time = now_et + delta
+        return remind_time.strftime("%Y-%m-%d %H:%M")
+    return None
+
+
 def _create_task_from_chat(args: dict) -> str:
     """Create a task from the general chat handler. Assigns to admin by default."""
     task_data = {
@@ -1200,7 +1219,7 @@ Guess fields from context:
 
 After adding, ask ONE follow-up if product type or dollar amount is missing. Don't ask for phone or email."""
 
-PROMPT_GENERAL = """You are Marc's sales CRM assistant. He is a financial planner in London, Ontario. Today is {today}. Current time zone is Eastern Time (ET).
+PROMPT_GENERAL = """You are Marc's sales CRM assistant. He is a financial planner in London, Ontario. Today is {today}. Current time is {now} Eastern Time (ET).
 
 {formatting}
 
@@ -1208,7 +1227,7 @@ Use context from earlier messages. When Marc gives a short reply, figure out wha
 
 After completing an action, you may ask ONE follow-up if something important is missing. Don't ask for phone or email.
 
-IMPORTANT: When Marc says "remind me", "I need to", "don't forget", or anything that sounds like a task or reminder, call create_task immediately. For "remind me in X minutes/hours", calculate the actual ET datetime for remind_at. For "remind me tomorrow", set remind_at to tomorrow at 9:00 AM ET. Always set remind_at when a reminder is requested.
+IMPORTANT: When Marc says "remind me", "I need to", "don't forget", or anything that sounds like a task or reminder, call create_task immediately. For "in X minutes", calculate: current time {now} + X minutes = remind_at in YYYY-MM-DD HH:MM format. For "remind me tomorrow", set remind_at to tomorrow at 09:00. ALWAYS populate remind_at when any time reference is given. Never leave remind_at null if a time is mentioned.
 
 Commands Marc might use:
 - move/update prospect stages
@@ -1246,7 +1265,16 @@ Keep it conversational and brief."""
 COWORKER_TOOL_NAMES = {"lookup_prospect", "add_prospect", "auto_set_follow_up", "get_disability_quote", "get_term_quote", "message_marc"}
 
 def _build_prompt(template):
-    return template.format(today=date.today().strftime("%Y-%m-%d"), formatting=FORMATTING_RULE)
+    from datetime import datetime as _dt
+    import pytz
+    et = pytz.timezone("US/Eastern")
+    now_et = _dt.now(et).strftime("%Y-%m-%d %H:%M")
+
+    class _SafeDict(dict):
+        def __missing__(self, key):
+            return "{" + key + "}"
+
+    return template.format_map(_SafeDict(today=date.today().strftime("%Y-%m-%d"), now=now_et, formatting=FORMATTING_RULE))
 
 
 # ── Conversation history ──
@@ -1597,7 +1625,7 @@ async def cmd_call(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ── /todo, /tasks, /done — task management ──
 
-PROMPT_TODO = """You help create tasks and to-do items. Today is {today}. All times are Eastern Time (ET).
+PROMPT_TODO = """You help create tasks and to-do items. Today is {today}. The current time is {now}. All times are Eastern Time (ET).
 
 {formatting}
 
@@ -1605,7 +1633,14 @@ The user wants to create a task. Parse their message to extract:
 1. title — the core task (required)
 2. prospect — a prospect/client name if mentioned (use lookup_prospect to verify). Empty string if not prospect-related.
 3. due_date — in YYYY-MM-DD format if a date is mentioned ("by Friday", "March 15", "tomorrow", "next week" = next Monday)
-4. remind_at — in YYYY-MM-DD HH:MM format if they want a reminder ("remind me Thursday 9am"). Default to 09:00 if time not specified.
+4. remind_at — CRITICAL: in YYYY-MM-DD HH:MM format. You MUST set this whenever:
+   - "in X minutes/hours" → calculate exact ET datetime from current time {now}
+   - "remind me" anything → set remind_at
+   - "at 3pm", "tomorrow 9am" → convert to YYYY-MM-DD HH:MM
+   - If no specific time but a due_date exists, set remind_at to due_date at 09:00
+   - Default to 09:00 if time not specified
+
+IMPORTANT: If the message contains ANY time reference ("in 5 minutes", "at 3pm", "tomorrow"), you MUST populate remind_at. Never leave it null when a time is mentioned.
 
 If the user says "@marc" or "for marc", note that in your response — the caller will handle assignment.
 
@@ -1712,8 +1747,11 @@ async def cmd_todo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 assigned_to = ADMIN_CHAT_ID
             elif not is_admin:
                 assigned_to = chat_id
+            # Try to parse "in X minutes/hours" from the message
+            fallback_remind = _parse_relative_time(user_msg)
             fallback_task = db.add_task({
                 "title": user_msg,
+                "remind_at": fallback_remind,
                 "assigned_to": str(assigned_to),
                 "created_by": str(chat_id),
             })
