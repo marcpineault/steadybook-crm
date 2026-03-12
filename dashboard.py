@@ -188,6 +188,36 @@ def api_update_task(task_id):
     return jsonify({"ok": True, "message": result})
 
 
+@app.route("/api/activity", methods=["POST"])
+@_require_auth
+def api_add_activity():
+    data = request.json
+    if not data or not data.get("action"):
+        return jsonify({"error": "Action required"}), 400
+    result = db.add_activity(data)
+    return jsonify({"ok": True, "message": result})
+
+
+@app.route("/api/prospect/<name>/detail")
+@_require_auth
+def api_prospect_detail(name):
+    """Get full prospect detail: info + activities + tasks + interactions."""
+    prospect = db.get_prospect_by_name(name)
+    if not prospect:
+        return jsonify({"error": "Not found"}), 404
+    activities = db.read_activities(limit=200)
+    prospect_activities = [a for a in activities if a.get("prospect", "").lower() == name.lower()
+                           or name.lower() in a.get("prospect", "").lower()]
+    interactions = db.read_interactions(limit=100, prospect=name)
+    tasks = db.get_tasks(prospect=name, status=None, limit=50)
+    return jsonify({
+        "prospect": prospect,
+        "activities": prospect_activities[:20],
+        "interactions": interactions[:20],
+        "tasks": tasks,
+    })
+
+
 @app.route("/api/task/<int:task_id>/complete", methods=["PUT"])
 @_require_auth
 def api_complete_task(task_id):
@@ -664,8 +694,9 @@ def dashboard():
             idle_display = '<span style="color:#95A5A6">—</span>'
 
         p_json_escaped = _esc_json_attr(json.dumps(p))
+        esc_detail_name = _esc(p["name"]).replace("'", "\\'")
         prospect_rows += f"""<tr class="editable-row" data-prospect="{p_json_escaped}" onclick="openEdit(JSON.parse(this.dataset.prospect))" style="cursor:pointer">
-            <td class="name-cell">{_esc(p["name"])}</td>
+            <td class="name-cell"><a href="javascript:void(0)" onclick="event.stopPropagation();openProspectDetail('{esc_detail_name}')" style="color:#2c3e50;font-weight:600;text-decoration:none;border-bottom:2px solid #1abc9c">{_esc(p["name"])}</a></td>
             <td><span class="badge" style="background:{pri_bg}">{_esc(p["priority"])}</span></td>
             <td><span class="badge" style="background:{stage_bg};color:{stage_fg}">{_esc(p["stage"])}</span></td>
             <td>{_esc(p["product"])}</td>
@@ -755,7 +786,8 @@ def dashboard():
                 due_display = '<span style="color:#F39C12;font-weight:600">Today</span>'
             else:
                 due_display = _esc(due)
-        prospect_display = f'<a style="color:#3498DB" href="javascript:void(0)">{_esc(t["prospect"])}</a>' if t.get("prospect") else ""
+        task_prospect_esc = _esc(t.get("prospect", "")).replace("'", "\\'")
+        prospect_display = f'<a style="color:#3498DB" href="javascript:void(0)" onclick="event.stopPropagation();openProspectDetail(\'{task_prospect_esc}\')">{_esc(t["prospect"])}</a>' if t.get("prospect") else ""
         remind_icon = ' <span title="Reminder set" style="color:#F39C12">&#9200;</span>' if t.get("remind_at") else ""
         due_cell = f"<td>{due_display}</td>" if show_due else ""
         remind_val = _esc(t.get("remind_at") or "").replace(" ", "T")
@@ -786,6 +818,7 @@ def dashboard():
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="csrf-token" content="{csrf_token}">
+<meta http-equiv="refresh" content="300">
 <title>Calm Money — Pipeline Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <style>
@@ -1674,6 +1707,59 @@ tr:hover {{ background: #f8f9fa; }}
 </div>
 </div>
 
+<!-- Prospect Detail Panel -->
+<div class="modal-overlay" id="detailModal">
+<div class="modal" style="max-width:700px;max-height:85vh;overflow-y:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <h2 id="detailTitle" style="margin:0">Prospect Detail</h2>
+        <div style="display:flex;gap:8px">
+            <button onclick="quickLogActivity('Call')" style="background:#27AE60;color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px">Log Call</button>
+            <button onclick="quickLogActivity('Email')" style="background:#3498DB;color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px">Log Email</button>
+            <button onclick="quickLogActivity('Meeting')" style="background:#8E44AD;color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px">Log Meeting</button>
+        </div>
+    </div>
+    <div id="detailContent" style="font-size:14px"><div class="empty-state"><p>Loading...</p></div></div>
+    <div style="margin-top:16px;text-align:right">
+        <button onclick="closeDetail()" style="background:#95A5A6;color:#fff;border:none;padding:8px 20px;border-radius:6px;cursor:pointer">Close</button>
+    </div>
+</div>
+</div>
+
+<!-- Quick Log Activity Modal -->
+<div class="modal-overlay" id="logModal">
+<div class="modal" style="max-width:450px">
+    <h2 id="logTitle">Log Activity</h2>
+    <input type="hidden" id="logProspect" value="">
+    <input type="hidden" id="logAction" value="">
+    <div style="margin-bottom:12px">
+        <label>Outcome</label>
+        <select id="logOutcome" style="width:100%">
+            <option value="">—</option>
+            <option>Connected - Interested</option>
+            <option>Connected - Not Interested</option>
+            <option>Left Voicemail</option>
+            <option>No Answer</option>
+            <option>Email Sent</option>
+            <option>Email Reply Received</option>
+            <option>Meeting Booked</option>
+            <option>Meeting Completed</option>
+            <option>Follow-up Needed</option>
+            <option>Other</option>
+        </select>
+    </div>
+    <div style="margin-bottom:12px">
+        <label>Next Step</label>
+        <input id="logNextStep" type="text" placeholder="e.g. Follow up next week" style="width:100%">
+    </div>
+    <label>Notes</label>
+    <textarea id="logNotes" rows="2" style="width:100%;margin-bottom:8px" placeholder="Optional notes..."></textarea>
+    <div style="display:flex;gap:8px;margin-top:8px">
+        <button onclick="submitLog()" style="background:#27AE60;color:#fff;border:none;padding:10px 24px;border-radius:6px;cursor:pointer">Save</button>
+        <button onclick="closeLogModal()" style="background:#95A5A6;color:#fff;border:none;padding:10px 24px;border-radius:6px;cursor:pointer">Cancel</button>
+    </div>
+</div>
+</div>
+
 <script>
 // Tab switching
 function showTab(name) {{
@@ -1884,6 +1970,105 @@ async function deleteTask(id) {{
         const res = await fetch('/api/task/' + id, {{ method: 'DELETE', headers: {{'X-CSRF-Token': _csrfToken}} }});
         const result = await res.json();
         if (result.ok) {{ closeTaskModal(); location.reload(); }}
+        else alert(result.error || 'Error');
+    }} catch(e) {{ alert('Error: ' + e.message); }}
+}}
+
+// Prospect detail panel
+let _detailProspect = '';
+
+async function openProspectDetail(name) {{
+    _detailProspect = name;
+    document.getElementById('detailTitle').textContent = name;
+    document.getElementById('detailContent').innerHTML = '<div class="empty-state"><p>Loading...</p></div>';
+    document.getElementById('detailModal').classList.add('active');
+    try {{
+        const res = await fetch('/api/prospect/' + encodeURIComponent(name) + '/detail', {{ headers: {{'X-CSRF-Token': _csrfToken}} }});
+        const data = await res.json();
+        if (data.error) {{ document.getElementById('detailContent').innerHTML = '<p>Error: ' + data.error + '</p>'; return; }}
+        let html = '';
+
+        // Prospect info
+        const p = data.prospect;
+        html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;margin-bottom:20px;padding:12px;background:#f8f9fa;border-radius:8px">';
+        html += '<div><strong>Phone:</strong> ' + (p.phone || '—') + '</div>';
+        html += '<div><strong>Email:</strong> ' + (p.email || '—') + '</div>';
+        html += '<div><strong>Stage:</strong> ' + (p.stage || '—') + '</div>';
+        html += '<div><strong>Priority:</strong> ' + (p.priority || '—') + '</div>';
+        html += '<div><strong>Product:</strong> ' + (p.product || '—') + '</div>';
+        html += '<div><strong>Follow-up:</strong> ' + (p.next_followup || '—') + '</div>';
+        if (p.notes) html += '<div style="grid-column:1/-1"><strong>Notes:</strong> ' + p.notes + '</div>';
+        html += '</div>';
+
+        // Tasks
+        if (data.tasks && data.tasks.length > 0) {{
+            html += '<h3 style="margin:16px 0 8px;font-size:15px">Tasks (' + data.tasks.length + ')</h3>';
+            html += '<table style="font-size:13px"><tr><th>Task</th><th>Due</th><th>Status</th></tr>';
+            data.tasks.forEach(t => {{
+                const style = t.status === 'completed' ? 'text-decoration:line-through;opacity:0.6' : '';
+                html += '<tr style="' + style + '"><td>' + t.title + '</td><td>' + (t.due_date || '—') + '</td><td>' + t.status + '</td></tr>';
+            }});
+            html += '</table>';
+        }}
+
+        // Activities
+        if (data.activities && data.activities.length > 0) {{
+            html += '<h3 style="margin:16px 0 8px;font-size:15px">Activity Log (' + data.activities.length + ')</h3>';
+            html += '<table style="font-size:13px"><tr><th>Date</th><th>Action</th><th>Outcome</th><th>Next</th></tr>';
+            data.activities.forEach(a => {{
+                html += '<tr><td>' + (a.date || '').split(' ')[0] + '</td><td>' + (a.action || '') + '</td><td>' + (a.outcome || '') + '</td><td>' + (a.next_step || '') + '</td></tr>';
+            }});
+            html += '</table>';
+        }}
+
+        // Interactions
+        if (data.interactions && data.interactions.length > 0) {{
+            html += '<h3 style="margin:16px 0 8px;font-size:15px">Interactions (' + data.interactions.length + ')</h3>';
+            data.interactions.forEach(i => {{
+                html += '<div style="padding:8px;margin-bottom:8px;background:#f8f9fa;border-radius:6px;font-size:13px">';
+                html += '<div style="color:#7f8c8d;font-size:11px">' + (i.date || '') + ' via ' + (i.source || '?') + '</div>';
+                html += '<div>' + (i.summary || i.raw_text || '').substring(0, 200) + '</div>';
+                html += '</div>';
+            }});
+        }}
+
+        if (!data.tasks?.length && !data.activities?.length && !data.interactions?.length) {{
+            html += '<div class="empty-state"><p>No activity yet. Log a call or email to get started.</p></div>';
+        }}
+
+        document.getElementById('detailContent').innerHTML = html;
+    }} catch(e) {{ document.getElementById('detailContent').innerHTML = '<p>Error loading: ' + e.message + '</p>'; }}
+}}
+
+function closeDetail() {{ document.getElementById('detailModal').classList.remove('active'); }}
+document.getElementById('detailModal').addEventListener('click', function(e) {{ if (e.target === this) closeDetail(); }});
+
+// Quick log activity
+function quickLogActivity(action) {{
+    document.getElementById('logProspect').value = _detailProspect;
+    document.getElementById('logAction').value = action;
+    document.getElementById('logTitle').textContent = 'Log ' + action + ': ' + _detailProspect;
+    document.getElementById('logOutcome').value = '';
+    document.getElementById('logNextStep').value = '';
+    document.getElementById('logNotes').value = '';
+    document.getElementById('logModal').classList.add('active');
+}}
+
+function closeLogModal() {{ document.getElementById('logModal').classList.remove('active'); }}
+document.getElementById('logModal').addEventListener('click', function(e) {{ if (e.target === this) closeLogModal(); }});
+
+async function submitLog() {{
+    const data = {{
+        prospect: document.getElementById('logProspect').value,
+        action: document.getElementById('logAction').value,
+        outcome: document.getElementById('logOutcome').value,
+        next_step: document.getElementById('logNextStep').value,
+        notes: document.getElementById('logNotes').value.trim(),
+    }};
+    try {{
+        const res = await fetch('/api/activity', {{ method: 'POST', headers: {{'Content-Type': 'application/json', 'X-CSRF-Token': _csrfToken}}, body: JSON.stringify(data) }});
+        const result = await res.json();
+        if (result.ok) {{ closeLogModal(); openProspectDetail(_detailProspect); }}
         else alert(result.error || 'Error');
     }} catch(e) {{ alert('Error: ' + e.message); }}
 }}
