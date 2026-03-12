@@ -278,6 +278,7 @@ def dashboard():
     except Exception:
         all_tasks, completed_tasks_recent = [], []
     today = date.today()
+    today_str = today.strftime("%Y-%m-%d")
     now = datetime.now()
 
     active = [p for p in prospects if p["stage"] not in ("Closed-Won", "Closed-Lost", "")]
@@ -722,7 +723,6 @@ def dashboard():
     product_values = list(product_counts.values())
 
     # Build task data for Tasks tab
-    today_str = today.strftime("%Y-%m-%d")
     week_ago_str = (today - timedelta(days=7)).strftime("%Y-%m-%d")
 
     overdue_tasks = [t for t in all_tasks if t.get("due_date") and t["due_date"] < today_str]
