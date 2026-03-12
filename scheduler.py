@@ -219,6 +219,24 @@ async def _morning_briefing_inner():
     lines.append("PIPELINE:")
     lines.append(f"  Active: {len(active)} | AUM: ${total_aum:,.0f} | Premium: ${total_rev:,.0f} | Hot: {hot_count}")
 
+    # Tasks due today and overdue
+    try:
+        overdue_tasks = db.get_overdue_tasks()
+        due_today_tasks = db.get_due_tasks(today.strftime("%Y-%m-%d"))
+
+        if overdue_tasks or due_today_tasks:
+            lines.append("")
+            lines.append("TASKS:")
+            for t in overdue_tasks:
+                days_late = (today - datetime.strptime(t["due_date"], "%Y-%m-%d").date()).days
+                prospect_str = f" [{t['prospect']}]" if t.get("prospect") else ""
+                lines.append(f"  OVERDUE ({days_late}d): {t['title']}{prospect_str}")
+            for t in due_today_tasks:
+                prospect_str = f" [{t['prospect']}]" if t.get("prospect") else ""
+                lines.append(f"  Due today: {t['title']}{prospect_str}")
+    except Exception as e:
+        logger.warning(f"Could not load tasks for briefing: {e}")
+
     msg = "\n".join(lines)
     await _bot.send_message(chat_id=CHAT_ID, text=msg)
     logger.info("Morning briefing (Money Moves) sent.")
@@ -284,6 +302,19 @@ async def auto_nag():
                 _mark_nagged(nag_state, mkey, "meeting_prep")
     except Exception as e:
         logger.warning(f"Could not check tomorrow's meetings for nag: {e}")
+
+    # 5. Overdue tasks
+    try:
+        overdue_tasks = db.get_overdue_tasks()
+        for t in overdue_tasks:
+            task_key = f"task_{t['id']}"
+            if _can_nag(nag_state, task_key, "overdue_task"):
+                days_late = (today - datetime.strptime(t["due_date"], "%Y-%m-%d").date()).days
+                prospect_str = f" ({t['prospect']})" if t.get("prospect") else ""
+                alerts.append(f"  TASK OVERDUE: {t['title']}{prospect_str} — {days_late} days late")
+                _mark_nagged(nag_state, task_key, "overdue_task")
+    except Exception as e:
+        logger.warning(f"Could not check overdue tasks for nag: {e}")
 
     _save_nag_state(nag_state)
 
@@ -662,6 +693,38 @@ async def followup_reminder():
         logger.error(f"Follow-up reminder failed: {e}")
 
 
+# ── Task Reminders ──
+
+async def check_task_reminders():
+    """Check for tasks with remind_at <= now and send reminders."""
+    if not _bot:
+        return
+
+    try:
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+        tasks = db.get_reminder_tasks(now_str)
+
+        for t in tasks:
+            chat_id = t.get("assigned_to")
+            if not chat_id:
+                chat_id = CHAT_ID  # fallback to admin
+
+            due_str = f" (due {t['due_date']})" if t.get("due_date") else ""
+            prospect_str = f" [{t['prospect']}]" if t.get("prospect") else ""
+            msg = f"Reminder: {t['title']}{prospect_str}{due_str}"
+
+            try:
+                await _bot.send_message(chat_id=chat_id, text=msg)
+                logger.info(f"Task reminder sent: #{t['id']} to {chat_id}")
+            except Exception as e:
+                logger.warning(f"Could not send task reminder #{t['id']}: {e}")
+
+            db.clear_reminder(t["id"])
+
+    except Exception as e:
+        logger.error(f"Task reminder check failed: {e}")
+
+
 # ── Scheduler entry point ──
 
 def start_scheduler(telegram_app, event_loop=None):
@@ -748,5 +811,14 @@ def start_scheduler(telegram_app, event_loop=None):
         name="Weekly Performance Report",
     )
 
+    # Task reminders — check every 60 seconds
+    scheduler.add_job(
+        check_task_reminders,
+        "interval",
+        seconds=60,
+        id="task_reminders",
+        name="Task Reminder Check",
+    )
+
     scheduler.start()
-    logger.info("Scheduler started — briefing 8AM, follow-ups 9:30AM, nag 9-5, midday 12:30PM, EOD 5:30PM, weekly Sun 7PM ET.")
+    logger.info("Scheduler started — briefing 8AM, follow-ups 9:30AM, nag 9-5, midday 12:30PM, EOD 5:30PM, weekly Sun 7PM, task reminders every 60s ET.")
