@@ -94,8 +94,9 @@ def test_email_inbound_rejects_bad_secret():
     app = create_test_app()
     with app.test_client() as c:
         resp = c.post(
-            "/api/email-inbound?secret=wrong",
+            "/api/email-inbound",
             json={"headers": {"Subject": "Test"}, "plain": "hello"},
+            headers={"X-CloudMailin-Secret": "wrong"},
         )
         assert resp.status_code == 401
 
@@ -127,7 +128,8 @@ def test_email_inbound_processes_cloudmailin_payload(monkeypatch):
     app = create_test_app()
     with app.test_client() as c:
         resp = c.post(
-            "/api/email-inbound?secret=test-cloudmailin-secret",
+            "/api/email-inbound",
+            headers={"X-CloudMailin-Secret": "test-cloudmailin-secret"},
             json={
                 "envelope": {"from": "marc@cooperators.ca", "to": "abc@cloudmailin.net"},
                 "headers": {

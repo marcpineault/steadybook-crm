@@ -25,6 +25,13 @@ TELEGRAM_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 OPENAI_KEY = os.environ["OPENAI_API_KEY"]
 ADMIN_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
+if not ADMIN_CHAT_ID:
+    logger.warning("TELEGRAM_CHAT_ID not set — admin-only commands will be disabled for all users")
+if not os.environ.get("DASHBOARD_API_KEY"):
+    logger.warning("DASHBOARD_API_KEY not set — dashboard API has no key-based authentication")
+if not os.environ.get("INTAKE_WEBHOOK_SECRET"):
+    logger.warning("INTAKE_WEBHOOK_SECRET not set — intake webhook will reject all requests")
+
 # DATA_DIR kept for migration path reference
 DATA_DIR = os.environ.get("DATA_DIR", "")
 

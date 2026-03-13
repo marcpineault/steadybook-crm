@@ -1,5 +1,6 @@
 import html as _html
 import hmac
+import logging
 import os
 import re
 import secrets
@@ -28,20 +29,47 @@ def _esc_json_attr(val):
 
 
 DASHBOARD_API_KEY = os.environ.get("DASHBOARD_API_KEY", "")
+if not DASHBOARD_API_KEY:
+    logging.getLogger(__name__).warning(
+        "DASHBOARD_API_KEY not set — dashboard API endpoints will require CSRF tokens only"
+    )
 
-# In-memory set of valid CSRF tokens (generated per dashboard page load)
-_csrf_tokens: set = set()
+# CSRF tokens with expiry timestamps for proper lifecycle management.
+# Each token expires after _CSRF_TOKEN_TTL seconds.
+_csrf_tokens: dict = {}  # token -> expiry timestamp
+_csrf_lock = threading.Lock()
 _MAX_CSRF_TOKENS = 200
+_CSRF_TOKEN_TTL = 3600  # 1 hour
 
 
 def _generate_csrf_token() -> str:
-    """Generate a CSRF token, store it, and return it."""
+    """Generate a CSRF token with expiry, store it, and return it."""
+    import time
     token = secrets.token_urlsafe(32)
-    # Evict oldest tokens if we hit the limit
-    while len(_csrf_tokens) >= _MAX_CSRF_TOKENS:
-        _csrf_tokens.pop()
-    _csrf_tokens.add(token)
+    now = time.time()
+    with _csrf_lock:
+        # Purge expired tokens
+        expired = [t for t, exp in _csrf_tokens.items() if exp < now]
+        for t in expired:
+            del _csrf_tokens[t]
+        # Evict oldest tokens if we hit the limit
+        while len(_csrf_tokens) >= _MAX_CSRF_TOKENS:
+            oldest = min(_csrf_tokens, key=_csrf_tokens.get)
+            del _csrf_tokens[oldest]
+        _csrf_tokens[token] = now + _CSRF_TOKEN_TTL
     return token
+
+
+def _validate_csrf_token(token: str) -> bool:
+    """Validate a CSRF token (checks existence and expiry)."""
+    import time
+    with _csrf_lock:
+        expiry = _csrf_tokens.get(token)
+        if expiry is not None and expiry >= time.time():
+            return True
+        # Remove expired token if present
+        _csrf_tokens.pop(token, None)
+    return False
 
 
 def _require_auth(f):
@@ -52,9 +80,9 @@ def _require_auth(f):
         api_key = request.headers.get("X-API-Key", "")
         if DASHBOARD_API_KEY and api_key and hmac.compare_digest(api_key, DASHBOARD_API_KEY):
             return f(*args, **kwargs)
-        # Check CSRF token (for dashboard UI)
+        # Check CSRF token (for dashboard UI) — validates existence and expiry
         csrf_token = request.headers.get("X-CSRF-Token", "")
-        if csrf_token and csrf_token in _csrf_tokens:
+        if csrf_token and _validate_csrf_token(csrf_token):
             return f(*args, **kwargs)
         return jsonify({"error": "Unauthorized"}), 401
     return decorated
@@ -70,6 +98,15 @@ def _set_security_headers(response):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data:; "
+        "connect-src 'self'; "
+        "frame-ancestors 'none'"
+    )
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
     return response
 
 STAGE_COLORS = {
@@ -159,8 +196,9 @@ def api_add_task():
 
 
 @app.route("/api/tasks/debug")
+@_require_auth
 def api_debug_tasks():
-    """Debug endpoint to see all tasks in DB (no auth for quick checking)."""
+    """Debug endpoint to see all tasks in DB."""
     pending = db.get_tasks(status="pending", limit=50)
     completed = db.get_tasks(status="completed", limit=10)
     return jsonify({"pending": pending, "completed": completed, "pending_count": len(pending), "completed_count": len(completed)})

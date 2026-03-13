@@ -189,7 +189,9 @@ async def extract_and_update(transcript: str, bot=None, source: str = "voice_not
 async def handle_voice_message(update, context):
     """Telegram handler for voice messages. Admin gets full processing, coworkers can add leads."""
     admin_id = os.environ.get("TELEGRAM_CHAT_ID", "")
-    is_admin = not admin_id or str(update.effective_chat.id) == str(admin_id)
+    # Only grant admin if TELEGRAM_CHAT_ID is configured and matches the sender.
+    # When TELEGRAM_CHAT_ID is unset, no one gets admin privileges.
+    is_admin = bool(admin_id) and str(update.effective_chat.id) == str(admin_id)
     coworker_name = "" if is_admin else (update.effective_user.first_name or "Coworker")
 
     voice = update.message.voice or update.message.audio
