@@ -1379,6 +1379,22 @@ async def _llm_respond(update, messages, tools=None):
                     except Exception:
                         logger.exception("Memory extraction failed for %s (non-blocking)", prospect_name)
 
+            # Trigger follow-up draft for activity-related tools
+            if tool_name == "add_activity" and "prospect" in tool_input:
+                try:
+                    import follow_up as fu
+                    fu_prospect = tool_input.get("prospect", "")
+                    fu_summary = f"{tool_input.get('action', '')} — {tool_input.get('outcome', '')}"
+                    fu_draft = fu.generate_follow_up_draft(
+                        prospect_name=fu_prospect,
+                        activity_summary=fu_summary,
+                        activity_type=tool_input.get("action", "activity"),
+                    )
+                    if fu_draft:
+                        logger.info("Follow-up draft generated for %s (queue #%s)", fu_prospect, fu_draft["queue_id"])
+                except Exception:
+                    logger.exception("Follow-up draft generation failed (non-blocking)")
+
             messages.append({
                 "role": "tool",
                 "tool_call_id": tool_call.id,

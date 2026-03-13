@@ -197,6 +197,25 @@ async def extract_and_update(transcript: str, bot=None, source: str = "voice_not
         except Exception:
             logger.exception("Memory extraction failed for %s (non-blocking)", name)
 
+        # Auto-draft follow-up email
+        try:
+            import follow_up as fu
+            activity_summary = f"Voice note ({source}): {transcript[:300]}"
+            fu_draft = fu.generate_follow_up_draft(
+                prospect_name=name,
+                activity_summary=activity_summary,
+                activity_type=f"Voice note ({source})",
+            )
+            if fu_draft:
+                logger.info("Follow-up draft generated for %s (queue #%s)", name, fu_draft["queue_id"])
+        except Exception:
+            logger.exception("Follow-up draft failed for %s (non-blocking)", name)
+
+        # Check for urgency signals in transcript
+        urgency_keywords = ["urgent", "asap", "emergency", "right away", "immediately", "time sensitive", "deadline"]
+        if any(kw in transcript.lower() for kw in urgency_keywords):
+            logger.info("URGENCY detected in voice note for %s", name)
+
     summary = f"{source_label.title()} processed:\n" + "\n".join(f"  {r}" for r in results)
     return summary
 
