@@ -756,6 +756,74 @@ async def send_meeting_prep_docs():
         logger.exception("Meeting prep doc check failed")
 
 
+# ── Weekly Content Plan ──
+
+async def weekly_content_plan():
+    """Generate and send weekly content plan every Sunday at 6PM."""
+    if not _bot or not CHAT_ID:
+        return
+
+    try:
+        import content_engine
+        import approval_queue
+
+        plan = content_engine.generate_weekly_plan()
+        if not plan:
+            await _bot.send_message(chat_id=CHAT_ID, text="Failed to generate weekly content plan. Use /content plan to try manually.")
+            return
+
+        text = content_engine.format_plan_for_telegram(plan)
+
+        # Store in approval queue
+        draft = approval_queue.add_draft(
+            draft_type="content_plan",
+            channel="social_media",
+            content=text,
+            context="Weekly content plan — approve to generate all posts",
+        )
+
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("Approve & Generate", callback_data=f"content_approve_{draft['id']}"),
+                InlineKeyboardButton("Dismiss", callback_data=f"content_dismiss_{draft['id']}"),
+            ],
+        ])
+
+        msg = await _bot.send_message(chat_id=CHAT_ID, text=text, reply_markup=keyboard)
+        approval_queue.set_telegram_message_id(draft["id"], str(msg.message_id))
+        logger.info("Weekly content plan sent (queue #%s)", draft["id"])
+
+    except Exception:
+        logger.exception("Weekly content plan generation failed")
+
+
+# ── Daily Market Check ──
+
+async def daily_market_check():
+    """Check for market events today and include in context."""
+    if not _bot or not CHAT_ID:
+        return
+
+    try:
+        import market_intel
+        events = market_intel.get_upcoming_events(days_ahead=1)
+        if not events:
+            return
+
+        lines = ["MARKET ALERT — Today's Events:"]
+        for e in events:
+            lines.append(f"  - {e['title']}: {e['description'][:150]}")
+            if e.get("relevance_products"):
+                lines.append(f"    Relevant for: {e['relevance_products']}")
+
+        await _bot.send_message(chat_id=CHAT_ID, text="\n".join(lines))
+        logger.info("Sent market alert for %d events", len(events))
+
+    except Exception:
+        logger.exception("Daily market check failed")
+
+
 # ── Scheduler entry point ──
 
 def start_scheduler(telegram_app, event_loop=None):
@@ -873,5 +941,27 @@ def start_scheduler(telegram_app, event_loop=None):
         name="Meeting Prep Docs",
     )
 
+    # Weekly content plan — Sunday 6PM ET
+    scheduler.add_job(
+        weekly_content_plan,
+        "cron",
+        day_of_week="sun",
+        hour=18,
+        minute=0,
+        id="weekly_content_plan",
+        name="Weekly Content Plan",
+    )
+
+    # Daily market intelligence check — 7:30 AM ET weekdays
+    scheduler.add_job(
+        daily_market_check,
+        "cron",
+        day_of_week="mon-fri",
+        hour=7,
+        minute=30,
+        id="daily_market_check",
+        name="Daily Market Check",
+    )
+
     scheduler.start()
-    logger.info("Scheduler started — briefing 8AM, follow-ups 9:30AM, nag 9-5, midday 12:30PM, EOD 5:30PM, weekly Sun 7PM, task reminders every 60s, meeting prep hourly ET.")
+    logger.info("Scheduler started — briefing 8AM, follow-ups 9:30AM, nag 9-5, midday 12:30PM, EOD 5:30PM, weekly Sun 7PM, content plan Sun 6PM, market check 7:30AM, task reminders every 60s, meeting prep hourly ET.")
