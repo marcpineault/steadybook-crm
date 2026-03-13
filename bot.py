@@ -1986,6 +1986,71 @@ async def cmd_lead(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Error processing lead. Please try again.")
 
 
+async def cmd_memory(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show memory profile for a prospect, or list facts needing review."""
+    if not await _require_admin(update):
+        return
+    text = " ".join(context.args) if context.args else ""
+
+    import memory_engine
+
+    if not text or text.strip().lower() == "review":
+        # Show facts needing review
+        facts = memory_engine.get_facts_needing_review()
+        if not facts:
+            await update.message.reply_text("No facts needing review.")
+            return
+        lines = ["FACTS NEEDING REVIEW:\n"]
+        for f in facts[:10]:
+            lines.append(f"[{f['id']}] {f.get('prospect_name', '?')}: {f['fact']}")
+            lines.append(f"  Category: {f['category']} | Source: {f.get('source', '?')}")
+            lines.append(f"  /confirm {f['id']}  or  /forget {f['id']}")
+            lines.append("")
+        await update.message.reply_text("\n".join(lines))
+        return
+
+    # Look up prospect memory
+    prospect = db.get_prospect_by_name(text)
+    if not prospect:
+        await update.message.reply_text(f"No prospect found matching '{text}'")
+        return
+
+    profile = memory_engine.get_profile_summary_text(prospect["id"])
+    await update.message.reply_text(f"MEMORY: {prospect['name']}\n\n{profile}")
+
+
+async def cmd_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Confirm a memory fact."""
+    if not await _require_admin(update):
+        return
+    import memory_engine
+    if not context.args:
+        await update.message.reply_text("Usage: /confirm <fact_id>")
+        return
+    try:
+        fact_id = int(context.args[0])
+        memory_engine.confirm_fact(fact_id)
+        await update.message.reply_text(f"Fact #{fact_id} confirmed.")
+    except (ValueError, Exception) as e:
+        await update.message.reply_text(f"Error: {e}")
+
+
+async def cmd_forget(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Delete a memory fact."""
+    if not await _require_admin(update):
+        return
+    import memory_engine
+    if not context.args:
+        await update.message.reply_text("Usage: /forget <fact_id>")
+        return
+    try:
+        fact_id = int(context.args[0])
+        memory_engine.delete_fact(fact_id)
+        await update.message.reply_text(f"Fact #{fact_id} forgotten.")
+    except (ValueError, Exception) as e:
+        await update.message.reply_text(f"Error: {e}")
+
+
 # ── Free-form message handler ──
 
 def _is_otter_transcript(text: str) -> bool:
@@ -2323,6 +2388,9 @@ def build_application():
     app.add_handler(CommandHandler("priority", cmd_priority))
     app.add_handler(CommandHandler("p", cmd_priority))  # shortcut
     app.add_handler(CommandHandler("lead", cmd_lead))
+    app.add_handler(CommandHandler("memory", cmd_memory))
+    app.add_handler(CommandHandler("confirm", cmd_confirm))
+    app.add_handler(CommandHandler("forget", cmd_forget))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice_message))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
