@@ -65,7 +65,7 @@ def assemble_briefing_data():
         logger.exception("Market intel failed for briefing (non-blocking)")
         market_events_text = ""
 
-    return {
+    data = {
         "date": today,
         "prospects": active,
         "all_prospects": prospects,
@@ -85,6 +85,15 @@ def assemble_briefing_data():
             "stages": _stage_distribution(active),
         },
     }
+
+    # Learning context from outcome tracking
+    try:
+        import analytics
+        data["learning_context"] = analytics.get_learning_context()
+    except Exception:
+        data["learning_context"] = ""
+
+    return data
 
 
 def _stage_distribution(active_prospects):
@@ -134,6 +143,9 @@ PENDING APPROVALS: {pending_approvals} items in queue
 MARKET INTELLIGENCE:
 {market_events}
 
+WHAT'S WORKING (recent outcome tracking):
+{learning_context}
+
 INSTRUCTIONS:
 1. Start with a pipeline health score (0-100) and one-line trend assessment
 2. Revenue forecast for the month
@@ -142,6 +154,7 @@ INSTRUCTIONS:
 5. Today's call list with brief talking points for each
 6. Mention pending approvals if any
 7. MARKET CONTEXT — if any upcoming events, mention how they affect prospects
+8. Reference recent performance data to prioritize recommendations.
 
 Keep it under 2000 characters. Be specific — use names, numbers, and days."""
 
@@ -243,6 +256,7 @@ def _build_briefing_prompt(data):
         activity_summary=_escape_braces(activity_summary),
         pending_approvals=data["pending_approvals"],
         market_events=_escape_braces(data.get("market_events", "")),
+        learning_context=_escape_braces(data.get("learning_context", "")),
     )
 
 
