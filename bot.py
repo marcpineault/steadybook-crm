@@ -2502,6 +2502,35 @@ async def handle_draft_callback(update, context):
             f"Copy-paste the above into {copy_target}."
         )
 
+        # Record outcome for tracking
+        try:
+            import analytics
+            # Resolve target name from prospect_id (draft has no prospect_name field)
+            _target = draft.get("context", "")[:50]
+            if draft.get("prospect_id"):
+                with db.get_db() as _conn:
+                    _row = _conn.execute("SELECT name FROM prospects WHERE id = ?", (draft["prospect_id"],)).fetchone()
+                    if _row:
+                        _target = _row["name"]
+            outcome = analytics.record_outcome(
+                action_type=draft.get("type", "unknown"),
+                target=_target,
+                sent_at=datetime.now().strftime("%Y-%m-%d"),
+                action_id=None,
+            )
+            track_keyboard = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("Got response", callback_data=f"outcome_response_{outcome['id']}"),
+                    InlineKeyboardButton("Converted!", callback_data=f"outcome_converted_{outcome['id']}"),
+                ],
+            ])
+            await query.message.reply_text(
+                f"Track results for this message (#{outcome['id']})",
+                reply_markup=track_keyboard,
+            )
+        except Exception:
+            logger.exception("Outcome tracking failed for draft #%s", queue_id)
+
     elif action == "dismiss":
         approval_queue.update_draft_status(queue_id, "dismissed")
         await query.edit_message_text(f"Dismissed draft #{queue_id}.")
@@ -2527,6 +2556,41 @@ def _find_audit_entry(queue_id, draft):
         if draft["content"] in (entry.get("content") or ""):
             return entry["id"]
     return None
+
+
+async def handle_outcome_callback(update, context):
+    """Handle outcome tracking button presses."""
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+
+    if not _is_admin(query.from_user.id):
+        return
+
+    import analytics
+
+    if data.startswith("outcome_response_"):
+        outcome_id = int(data.split("_")[-1])
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("Positive", callback_data=f"outcome_rtype_positive_{outcome_id}"),
+                InlineKeyboardButton("Neutral", callback_data=f"outcome_rtype_neutral_{outcome_id}"),
+                InlineKeyboardButton("Negative", callback_data=f"outcome_rtype_negative_{outcome_id}"),
+            ],
+        ])
+        await query.edit_message_text("What kind of response?", reply_markup=keyboard)
+
+    elif data.startswith("outcome_rtype_"):
+        parts = data.split("_")
+        response_type = parts[2]
+        outcome_id = int(parts[3])
+        analytics.update_outcome(outcome_id, response_received=True, response_type=response_type)
+        await query.edit_message_text(f"Logged: {response_type} response for outcome #{outcome_id}")
+
+    elif data.startswith("outcome_converted_"):
+        outcome_id = int(data.split("_")[-1])
+        analytics.update_outcome(outcome_id, response_received=True, response_type="positive", converted=True)
+        await query.edit_message_text(f"Logged: conversion for outcome #{outcome_id}")
 
 
 async def cmd_drafts(update, context):
@@ -3023,6 +3087,34 @@ async def cmd_nurture(update, context):
         await update.message.reply_text("Usage: /nurture, /nurture start <name>, /nurture stop <id>")
 
 
+async def cmd_outcomes(update, context):
+    """View outcome tracking stats: /outcomes or /outcomes insights"""
+    if not await _require_admin(update):
+        return
+
+    import analytics
+
+    args = context.args
+    stats = analytics.get_weekly_stats()
+
+    if stats["total_actions"] == 0:
+        await update.message.reply_text(
+            "No outcomes tracked yet.\n"
+            "Approve drafts to start tracking — you'll see tracking buttons after each approval."
+        )
+        return
+
+    text = analytics.format_stats_for_telegram(stats)
+
+    if args and args[0].lower() == "insights":
+        await update.message.reply_text("Generating insights...")
+        insights = analytics.generate_insights()
+        if insights:
+            text += f"\n\nINSIGHTS:\n{insights[:3000]}"
+
+    await update.message.reply_text(text)
+
+
 def build_application():
     """Build the Telegram Application with all handlers (shared by main and webhook)."""
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
@@ -3061,6 +3153,7 @@ def build_application():
     app.add_handler(CommandHandler("forget", cmd_forget))
     app.add_handler(CommandHandler("drafts", cmd_drafts))
     from telegram.ext import CallbackQueryHandler
+    app.add_handler(CallbackQueryHandler(handle_outcome_callback, pattern=r"^outcome_"))
     app.add_handler(CallbackQueryHandler(handle_draft_callback, pattern=r"^draft_"))
     app.add_handler(CommandHandler("voice", cmd_voice))
     app.add_handler(CommandHandler("content", cmd_content))
@@ -3070,6 +3163,7 @@ def build_application():
     app.add_handler(CommandHandler("trust", cmd_trust))
     app.add_handler(CommandHandler("campaign", cmd_campaign))
     app.add_handler(CommandHandler("nurture", cmd_nurture))
+    app.add_handler(CommandHandler("outcomes", cmd_outcomes))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice_message))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
