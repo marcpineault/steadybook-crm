@@ -17,14 +17,14 @@ logger = logging.getLogger(__name__)
 # Pre-loaded calendar events (static, published annually)
 DEFAULT_EVENTS = [
     # Bank of Canada rate decisions (8 per year, 2026 dates)
-    {"event_type": "rate_decision", "title": "BoC Rate Decision", "date": "2026-01-29", "description": "Bank of Canada interest rate announcement — impacts mortgage and investment conversations", "relevance_products": "Home Insurance,Wealth Management", "recurring": 0},
-    {"event_type": "rate_decision", "title": "BoC Rate Decision", "date": "2026-03-12", "description": "Bank of Canada interest rate announcement", "relevance_products": "Home Insurance,Wealth Management", "recurring": 0},
-    {"event_type": "rate_decision", "title": "BoC Rate Decision", "date": "2026-04-15", "description": "Bank of Canada interest rate announcement", "relevance_products": "Home Insurance,Wealth Management", "recurring": 0},
-    {"event_type": "rate_decision", "title": "BoC Rate Decision", "date": "2026-06-03", "description": "Bank of Canada interest rate announcement", "relevance_products": "Home Insurance,Wealth Management", "recurring": 0},
-    {"event_type": "rate_decision", "title": "BoC Rate Decision", "date": "2026-07-15", "description": "Bank of Canada interest rate announcement", "relevance_products": "Home Insurance,Wealth Management", "recurring": 0},
-    {"event_type": "rate_decision", "title": "BoC Rate Decision", "date": "2026-09-09", "description": "Bank of Canada interest rate announcement", "relevance_products": "Home Insurance,Wealth Management", "recurring": 0},
-    {"event_type": "rate_decision", "title": "BoC Rate Decision", "date": "2026-10-28", "description": "Bank of Canada interest rate announcement", "relevance_products": "Home Insurance,Wealth Management", "recurring": 0},
-    {"event_type": "rate_decision", "title": "BoC Rate Decision", "date": "2026-12-09", "description": "Bank of Canada interest rate announcement", "relevance_products": "Home Insurance,Wealth Management", "recurring": 0},
+    {"event_type": "rate_decision", "title": "BoC Rate Decision", "date": "2026-01-29", "description": "Bank of Canada interest rate announcement — impacts mortgage and investment conversations", "relevance_products": "Wealth Management", "recurring": 0},
+    {"event_type": "rate_decision", "title": "BoC Rate Decision", "date": "2026-03-12", "description": "Bank of Canada interest rate announcement", "relevance_products": "Wealth Management", "recurring": 0},
+    {"event_type": "rate_decision", "title": "BoC Rate Decision", "date": "2026-04-15", "description": "Bank of Canada interest rate announcement", "relevance_products": "Wealth Management", "recurring": 0},
+    {"event_type": "rate_decision", "title": "BoC Rate Decision", "date": "2026-06-03", "description": "Bank of Canada interest rate announcement", "relevance_products": "Wealth Management", "recurring": 0},
+    {"event_type": "rate_decision", "title": "BoC Rate Decision", "date": "2026-07-15", "description": "Bank of Canada interest rate announcement", "relevance_products": "Wealth Management", "recurring": 0},
+    {"event_type": "rate_decision", "title": "BoC Rate Decision", "date": "2026-09-09", "description": "Bank of Canada interest rate announcement", "relevance_products": "Wealth Management", "recurring": 0},
+    {"event_type": "rate_decision", "title": "BoC Rate Decision", "date": "2026-10-28", "description": "Bank of Canada interest rate announcement", "relevance_products": "Wealth Management", "recurring": 0},
+    {"event_type": "rate_decision", "title": "BoC Rate Decision", "date": "2026-12-09", "description": "Bank of Canada interest rate announcement", "relevance_products": "Wealth Management", "recurring": 0},
 
     # Tax deadlines
     {"event_type": "tax_deadline", "title": "RRSP Contribution Deadline", "date": "2026-03-02", "description": "Last day to contribute to RRSP for 2025 tax year", "relevance_products": "Wealth Management", "recurring": 1},
@@ -151,7 +151,8 @@ def format_for_briefing(days_ahead=7):
 
     lines = ["UPCOMING MARKET EVENTS:"]
     for event in events[:5]:
-        days_until = (datetime.strptime(event["date"], "%Y-%m-%d") - datetime.now()).days
+        event_date = datetime.strptime(event["date"], "%Y-%m-%d").date()
+        days_until = (event_date - datetime.now().date()).days
         timing = f"in {days_until} days" if days_until > 1 else ("tomorrow" if days_until == 1 else "today")
         lines.append(f"  - {event['title']} ({timing}): {event['description'][:100]}")
 
@@ -161,7 +162,7 @@ def format_for_briefing(days_ahead=7):
             relevant_names = []
             for p in active_prospects:
                 prospect_product = (p.get("product") or "").lower()
-                if any(rp in prospect_product for rp in relevance_products):
+                if any(rp in prospect_product or prospect_product in rp for rp in relevance_products):
                     relevant_names.append(p["name"])
             if relevant_names:
                 lines.append(f"    Relevant prospects: {', '.join(relevant_names[:5])}")
