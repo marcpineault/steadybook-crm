@@ -47,3 +47,10 @@ def test_trust_config_default():
     # Should have a default row with level 1
     assert row is not None
     assert row["trust_level"] == 1
+
+
+def test_init_db_idempotent_trust_seed():
+    db.init_db()  # second call on existing DB
+    with db.get_db() as conn:
+        count = conn.execute("SELECT COUNT(*) FROM trust_config").fetchone()[0]
+    assert count == 1

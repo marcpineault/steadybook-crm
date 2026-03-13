@@ -277,11 +277,11 @@ def init_db():
         );
         """)
 
-    # Seed default trust level if empty
+    # Seed default trust level (idempotent — skips if any row exists)
     with get_db() as conn:
-        existing = conn.execute("SELECT COUNT(*) FROM trust_config").fetchone()[0]
-        if existing == 0:
-            conn.execute("INSERT INTO trust_config (trust_level, changed_by) VALUES (1, 'system')")
+        conn.execute(
+            "INSERT OR IGNORE INTO trust_config (id, trust_level, changed_by) VALUES (1, 1, 'system')"
+        )
 
     logger.info(f"Database initialized at {DB_PATH}")
 
