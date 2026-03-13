@@ -89,21 +89,49 @@ Each phase is independently valuable and gets its own implementation plan. Later
 | category | TEXT | One of: life_context, financial_context, communication_prefs, relationship_signals, conversation_history, key_dates |
 | fact | TEXT | The extracted fact (e.g., "daughter starts university Sept 2027") |
 | source | TEXT | Where this was learned (e.g., "voice_note_2026-03-10", "meeting_transcript") |
-| confidence | REAL | 0.0-1.0 — how confident the extraction is |
+| needs_review | BOOLEAN | Whether Marc should confirm this fact (set for ambiguous or contradictory extractions) |
 | extracted_at | TEXT | Timestamp |
-| expires_at | TEXT | Optional — for time-sensitive facts |
 
 **Auto-extraction pipeline**:
 1. Every voice note transcription, chat message, meeting transcript, and logged activity passes through a GPT extraction step
 2. GPT receives the existing client profile + new interaction and returns structured facts
-3. New facts are merged into client_memory — duplicates are updated, contradictions are flagged
-4. Low-confidence extractions are flagged for Marc's confirmation
+3. New facts are merged into client_memory — duplicates are updated, contradictions flagged with `needs_review = true`
+4. Facts marked `needs_review` are sent to Marc via Telegram for confirmation ("I think Sarah's daughter starts university in 2027 — is that right?")
 
 **Extraction prompt strategy**:
 - System prompt defines the categories and expected fact types
 - Few-shot examples for each category
 - Instruction to extract only what's explicitly stated or strongly implied — no speculation
 - Instruction to flag when new information contradicts existing facts
+
+**Data migration**: On first run, backfill `client_memory` by processing all existing `prospects.notes` and `interactions.raw_text` through the extraction pipeline. This bootstraps the Memory Engine with years of embedded client knowledge.
+
+### Approval Queue (Database-Backed)
+
+All drafted messages (follow-ups, outreach, content) are persisted in a database table, not just sent as Telegram messages. This ensures nothing is lost if the bot restarts or Marc misses a Telegram notification.
+
+**New database table — `approval_queue`**:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INTEGER PK | Auto-increment |
+| type | TEXT | follow_up, outreach, content, nurture_touch |
+| prospect_id | INTEGER FK | Optional — links to prospects table |
+| channel | TEXT | email_draft, sms, linkedin_dm, content_post |
+| content | TEXT | The drafted message |
+| context | TEXT | Why this was generated (e.g., "post-call follow-up for discovery call") |
+| status | TEXT | pending, approved, edited, dismissed, snoozed, sent |
+| created_at | TEXT | When the draft was generated |
+| acted_on_at | TEXT | When Marc took action |
+| telegram_message_id | TEXT | For linking back to the Telegram notification |
+
+### GPT API Failure Handling
+
+All GPT-dependent flows must handle API failures gracefully:
+- **Compliance filter fails**: Message is held in approval_queue with status "compliance_pending" — never sent without compliance check. Marc is notified.
+- **Content generation fails**: Content calendar shows gap; Marc is notified to write manually or retry.
+- **Memory extraction fails**: Interaction is logged normally; extraction retried on next scheduler run.
+- **Briefing generation fails**: Falls back to current simple morning briefing format (overdue tasks + follow-ups).
 
 ### Strategic Morning Briefing
 
@@ -114,7 +142,7 @@ Each phase is independently valuable and gets its own implementation plan. Later
 1. **Pipeline health score** (0-100) with week-over-week trend
    - Calculated from: deal velocity, stage distribution, follow-up compliance, win rate trend
 2. **Revenue forecast** for the month
-   - Sum of (deal value x stage probability) for all active prospects
+   - Sum of (`revenue` field x stage probability) for all active prospects (uses existing `STAGE_PROBABILITIES` from scoring.py)
 3. **Priority moves** (top 2-3)
    - AI analyzes the full pipeline and recommends the highest-impact actions for today
    - Each recommendation includes reasoning: "Mike has been in Needs Analysis for 6 days — win rate drops 40% after day 5"
@@ -175,8 +203,9 @@ Each phase is independently valuable and gets its own implementation plan. Later
 3. GPT generates a follow-up email/message tailored to the specific conversation
 4. Draft is sent to Marc's Telegram with prospect name, context summary, and the draft
 5. Marc can: Approve (copy-paste to Outlook), Edit (tell AI what to change), Dismiss, or Snooze
-6. If no action within configurable window (default 4 hours), a nudge is sent
-7. Action and outcome logged to audit_log
+6. All drafts persisted in `approval_queue` table — survives bot restarts
+7. If no action within configurable window (default 4 hours, stored in environment variable `FOLLOW_UP_NUDGE_HOURS`), a nudge is sent
+8. Action and outcome logged to audit_log
 
 **Draft quality signals** (feeds into Phase 5 Learning):
 - Track which drafts Marc sends as-is vs edits heavily vs dismisses
@@ -202,17 +231,16 @@ Each phase is independently valuable and gets its own implementation plan. Later
 
 **Expands existing voice_handler.py** to do more with post-call voice notes.
 
-**Current flow**: Voice note → Whisper transcription → GPT extraction → add prospect
+**Current flow**: Voice note → Whisper transcription → GPT extraction → add prospect + log activity + log interaction. This already handles prospect creation and basic activity logging.
 
-**New flow**: Voice note → Whisper transcription → GPT analysis → multi-action execution:
-1. **Update prospect** — stage, notes, priority changes
-2. **Log activity** — action, outcome, next step
-3. **Create task** — follow-up with date/time
-4. **Draft follow-up** — email or message queued for approval
-5. **Update Memory Engine** — extract new facts about the client
-6. **Alert on urgency** — if the voice note indicates something time-sensitive
+**Incremental changes** (what's NEW beyond existing voice_handler.py):
+1. **Update existing prospect** — detect when voice note is about an existing prospect (not just new leads) and update their stage, notes, priority
+2. **Create task** — extract follow-up commitments and create tasks with dates (extends existing task creation)
+3. **Draft follow-up** — auto-generate follow-up email/message, queue in `approval_queue`
+4. **Update Memory Engine** — extract relationship facts into `client_memory` (NEW)
+5. **Alert on urgency** — if the voice note indicates something time-sensitive, send immediate Telegram alert (NEW)
 
-All from a single 30-second voice note. The extraction prompt is designed to identify ALL actionable items and execute them in one pass.
+The extraction prompt is redesigned to identify ALL actionable items and execute them in one pass, using GPT tool calling with the expanded tool set.
 
 ### Microsoft Bookings Integration Enhancement
 
@@ -243,8 +271,8 @@ Generates social media content in Marc's voice for LinkedIn, Facebook, and Insta
 - 1x Timely/reactive post (market events, rate changes, seasonal)
 
 **Voice calibration**:
-- Initial setup: feed the system Marc's existing social posts + voice note samples to establish baseline tone
-- Ongoing: track edits Marc makes to drafts and adjust accordingly
+- Initial setup: Marc provides 10-20 existing social posts as examples. These are stored in a `brand_voice` table and included in every content generation prompt as few-shot examples.
+- Ongoing: when Marc edits a draft before posting, the edited version replaces the original in the brand voice examples. Over time, the examples converge on Marc's actual voice.
 - Tone targets: approachable, confident, not salesy, locally rooted, plain language
 
 **Content generation prompt includes**:
@@ -270,12 +298,13 @@ Generates social media content in Marc's voice for LinkedIn, Facebook, and Insta
 
 **New scheduled job**: Monitors relevant signals daily.
 
-**Sources** (via web search or API):
-- Bank of Canada rate decisions and economic announcements
-- Co-operators product updates and rate changes (manual input or monitored page)
-- Tax deadline calendar (pre-loaded)
-- Seasonal financial planning topics (pre-loaded calendar)
-- Local London, Ontario business news (web search)
+**Sources** (pre-loaded calendars — no web scraping):
+- Bank of Canada rate decision dates (published annually, 8 per year — pre-loaded)
+- Tax deadline calendar (RRSP, TFSA, filing deadlines — pre-loaded)
+- Seasonal financial planning topics (pre-loaded: RRSP season Jan-Mar, tax season Mar-Apr, back-to-school Aug-Sep for life insurance, year-end planning Oct-Dec)
+- Co-operators product updates (Marc inputs manually when he learns of them, or via a simple `/news` command)
+
+Note: Local London news and web scraping are deferred. Marc can manually surface local angles via chat ("housing prices in London dropped, make a post about that").
 
 **Output**: Relevant items included in morning briefing with:
 - The event/news
@@ -297,11 +326,22 @@ Core safety mechanism. All outreach operates on a trust level that Marc controls
 | **2 — Trusted on routine** | Sends standard reminders and confirmations autonomously | Reviews only non-standard or first-contact messages |
 | **3 — Full autonomy** | Handles all routine outreach, escalates exceptions only | Spot-checks weekly, handles escalations |
 
-**Level transitions**: Marc explicitly tells the bot to change level. The system never auto-escalates.
+**Level transitions**: Marc explicitly tells the bot to change level (e.g., `/trust 2`). The system never auto-escalates.
+
+**Compliance filter runs at ALL trust levels.** Even at Level 3, every outgoing message passes through the compliance check. The trust ladder controls whether Marc reviews messages, not whether the system does.
+
+**Available output channels at launch**:
+- **Email drafts** — AI drafts the message, Marc copy-pastes into Outlook (primary channel)
+- **SMS via Twilio** — added when Marc is ready; requires Twilio account setup and CASL compliance (deferred)
+- **LinkedIn DM drafts** — AI drafts, Marc copy-pastes into LinkedIn (manual initially)
+- **Phone call prep** — not a message channel, but AI prepares talking points and adds to call list
+
+Note: Auto-send via SMS/email is a future capability. At launch, all channels are "draft and copy-paste."
 
 **Approval UX in Telegram**:
-- Message shows: recipient, channel (SMS/email draft/etc.), the message content, and context
+- Message shows: recipient, channel, the message content, and context
 - Inline buttons: Approve | Edit | Skip | Snooze
+- All drafts backed by `approval_queue` table — nothing lost if bot restarts
 - Batch mode for campaigns: "Here are 8 messages for your disability cross-sell campaign. Approve all / Review each"
 
 ### Insurance Book Campaign System
@@ -324,6 +364,8 @@ Core safety mechanism. All outreach operates on a trust level that Marc controls
 - All logged to audit_log
 
 ### Lead Nurture Sequences
+
+**Replaces existing `FOLLOW_UP_SEQUENCES` in bot.py** (lines 204-230) which currently define static follow-up timing by stage. The new system is dynamic, personalized, and content-driven rather than just time-based.
 
 **For prospects who enter the pipeline but aren't meeting-ready**:
 
@@ -375,7 +417,7 @@ Core safety mechanism. All outreach operates on a trust level that Marc controls
 
 ### Weekly Insights Digest
 
-**Trigger**: Every Sunday at 6PM ET (sent alongside content calendar).
+**Trigger**: Every Sunday at 6PM ET — combined into a single "Weekly Review" message alongside the content calendar. Replaces the existing `weekly_report` in scheduler.py (currently Sunday 7PM) to avoid notification fatigue.
 
 **Contents**:
 1. **This week's numbers**: Calls made, meetings booked, deals progressed, deals closed
@@ -402,16 +444,34 @@ Core safety mechanism. All outreach operates on a trust level that Marc controls
 
 ---
 
+## Preliminary Refactoring
+
+Before Phase 1 implementation, `bot.py` (2,387 lines) should be decomposed to prevent it from growing past 4,000 lines. Extract into:
+- `tools.py` — GPT tool definitions and dispatch logic
+- `handlers.py` — Telegram command handlers
+- `bot.py` — Application setup, webhook config, and orchestration only
+
+This refactoring is a prerequisite for Phase 1 and should be the first task in the implementation plan.
+
+## GPT Model Strategy
+
+- **Content generation, strategic briefings, meeting prep**: Use `gpt-4.1` (highest quality for client-facing and strategic output)
+- **Memory extraction, compliance filtering**: Use `gpt-4.1-mini` (fast, cheap, structured extraction — consistent with current codebase usage)
+- **Voice transcription**: Continue using Whisper API (existing)
+
 ## Data Model Changes Summary
 
 New tables to add to `db.py`:
 
 1. **`client_memory`** — Enriched client facts extracted from interactions
-2. **`audit_log`** — Every AI action logged for compliance and review
-3. **`outcomes`** — Tracks results of AI actions for the learning loop
-4. **`campaigns`** — Campaign definitions (name, segment criteria, status, type)
-5. **`campaign_messages`** — Individual messages within a campaign (recipient, content, status, response)
-6. **`content_calendar`** — Planned and generated content (date, platform, topic, content, status)
+2. **`approval_queue`** — Persisted draft messages awaiting Marc's review (survives bot restarts)
+3. **`audit_log`** — Every AI action logged for compliance and review
+4. **`outcomes`** — Tracks results of AI actions for the learning loop
+5. **`campaigns`** — Campaign definitions (name, segment criteria, status, type)
+6. **`campaign_messages`** — Individual messages within a campaign (recipient, content, status, response)
+7. **`content_calendar`** — Planned and generated content (date, platform, topic, content, status)
+8. **`brand_voice`** — Example social posts for voice calibration
+9. **`market_calendar`** — Pre-loaded financial events (rate decisions, tax deadlines, seasonal topics)
 
 ## New Modules
 
