@@ -2092,6 +2092,8 @@ tr:hover {{ background: #f8f9fa; }}
 </div>
 
 <script>
+// HTML entity escaping for safe innerHTML rendering
+function _e(s) {{ if (s == null) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }}
 // Tab switching
 function showTab(name) {{
     document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
@@ -2316,7 +2318,7 @@ async function openProspectDetail(name) {{
     try {{
         const res = await fetch('/api/prospect/' + encodeURIComponent(name) + '/detail', {{ headers: {{'X-CSRF-Token': _csrfToken}} }});
         const data = await res.json();
-        if (data.error) {{ document.getElementById('detailContent').innerHTML = '<p>Error: ' + data.error + '</p>'; return; }}
+        if (data.error) {{ document.getElementById('detailContent').innerHTML = '<p>Error: ' + _e(data.error) + '</p>'; return; }}
         let html = '';
 
         // Health + Next Action
@@ -2325,18 +2327,18 @@ async function openProspectDetail(name) {{
         const hColor = hs >= 70 ? '#27AE60' : hs >= 40 ? '#F39C12' : '#E74C3C';
         html += '<div style="display:flex;gap:12px;margin-bottom:16px">';
         html += '<div style="flex:0 0 80px;text-align:center;padding:12px;background:#f8f9fa;border-radius:8px"><div style="font-size:11px;color:#7f8c8d;text-transform:uppercase">Health</div><div style="font-size:32px;font-weight:700;color:' + hColor + '">' + hs + '</div></div>';
-        if (data.next_action) html += '<div style="flex:1;padding:12px;background:#f0f0ff;border-radius:8px;border-left:3px solid #8E44AD"><div style="font-size:11px;color:#8E44AD;text-transform:uppercase;font-weight:600">Recommended Next Action</div><div style="font-size:14px;margin-top:4px">' + data.next_action + '</div></div>';
+        if (data.next_action) html += '<div style="flex:1;padding:12px;background:#f0f0ff;border-radius:8px;border-left:3px solid #8E44AD"><div style="font-size:11px;color:#8E44AD;text-transform:uppercase;font-weight:600">Recommended Next Action</div><div style="font-size:14px;margin-top:4px">' + _e(data.next_action) + '</div></div>';
         html += '</div>';
 
         // Prospect info
         html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;margin-bottom:20px;padding:12px;background:#f8f9fa;border-radius:8px">';
-        html += '<div><strong>Phone:</strong> ' + (p.phone || '—') + '</div>';
-        html += '<div><strong>Email:</strong> ' + (p.email || '—') + '</div>';
-        html += '<div><strong>Stage:</strong> ' + (p.stage || '—') + '</div>';
-        html += '<div><strong>Priority:</strong> ' + (p.priority || '—') + '</div>';
-        html += '<div><strong>Product:</strong> ' + (p.product || '—') + '</div>';
-        html += '<div><strong>Follow-up:</strong> ' + (p.next_followup || '—') + '</div>';
-        if (p.notes) html += '<div style="grid-column:1/-1"><strong>Notes:</strong> ' + p.notes + '</div>';
+        html += '<div><strong>Phone:</strong> ' + _e(p.phone || '—') + '</div>';
+        html += '<div><strong>Email:</strong> ' + _e(p.email || '—') + '</div>';
+        html += '<div><strong>Stage:</strong> ' + _e(p.stage || '—') + '</div>';
+        html += '<div><strong>Priority:</strong> ' + _e(p.priority || '—') + '</div>';
+        html += '<div><strong>Product:</strong> ' + _e(p.product || '—') + '</div>';
+        html += '<div><strong>Follow-up:</strong> ' + _e(p.next_followup || '—') + '</div>';
+        if (p.notes) html += '<div style="grid-column:1/-1"><strong>Notes:</strong> ' + _e(p.notes) + '</div>';
         html += '</div>';
 
         // Tasks
@@ -2345,7 +2347,7 @@ async function openProspectDetail(name) {{
             html += '<table style="font-size:13px"><tr><th>Task</th><th>Due</th><th>Status</th></tr>';
             data.tasks.forEach(t => {{
                 const style = t.status === 'completed' ? 'text-decoration:line-through;opacity:0.6' : '';
-                html += '<tr style="' + style + '"><td>' + t.title + '</td><td>' + (t.due_date || '—') + '</td><td>' + t.status + '</td></tr>';
+                html += '<tr style="' + style + '"><td>' + _e(t.title) + '</td><td>' + _e(t.due_date || '—') + '</td><td>' + _e(t.status) + '</td></tr>';
             }});
             html += '</table>';
         }}
@@ -2355,7 +2357,7 @@ async function openProspectDetail(name) {{
             html += '<h3 style="margin:16px 0 8px;font-size:15px">Activity Log (' + data.activities.length + ')</h3>';
             html += '<table style="font-size:13px"><tr><th>Date</th><th>Action</th><th>Outcome</th><th>Next</th></tr>';
             data.activities.forEach(a => {{
-                html += '<tr><td>' + (a.date || '').split(' ')[0] + '</td><td>' + (a.action || '') + '</td><td>' + (a.outcome || '') + '</td><td>' + (a.next_step || '') + '</td></tr>';
+                html += '<tr><td>' + _e((a.date || '').split(' ')[0]) + '</td><td>' + _e(a.action || '') + '</td><td>' + _e(a.outcome || '') + '</td><td>' + _e(a.next_step || '') + '</td></tr>';
             }});
             html += '</table>';
         }}
@@ -2365,8 +2367,8 @@ async function openProspectDetail(name) {{
             html += '<h3 style="margin:16px 0 8px;font-size:15px">Interactions (' + data.interactions.length + ')</h3>';
             data.interactions.forEach(i => {{
                 html += '<div style="padding:8px;margin-bottom:8px;background:#f8f9fa;border-radius:6px;font-size:13px">';
-                html += '<div style="color:#7f8c8d;font-size:11px">' + (i.date || '') + ' via ' + (i.source || '?') + '</div>';
-                html += '<div>' + (i.summary || i.raw_text || '').substring(0, 200) + '</div>';
+                html += '<div style="color:#7f8c8d;font-size:11px">' + _e(i.date || '') + ' via ' + _e(i.source || '?') + '</div>';
+                html += '<div>' + _e((i.summary || i.raw_text || '').substring(0, 200)) + '</div>';
                 html += '</div>';
             }});
         }}
@@ -2376,7 +2378,7 @@ async function openProspectDetail(name) {{
         }}
 
         document.getElementById('detailContent').innerHTML = html;
-    }} catch(e) {{ document.getElementById('detailContent').innerHTML = '<p>Error loading: ' + e.message + '</p>'; }}
+    }} catch(e) {{ document.getElementById('detailContent').innerHTML = '<p>Error loading: ' + _e(e.message) + '</p>'; }}
 }}
 
 function closeDetail() {{ document.getElementById('detailModal').classList.remove('active'); }}
@@ -2525,16 +2527,22 @@ def register_webhook(flask_app, process_update_fn=None):
     flask_app.register_blueprint(intake_bp)
 
     telegram_webhook_secret = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
+    if not telegram_webhook_secret:
+        logging.getLogger(__name__).warning(
+            "TELEGRAM_WEBHOOK_SECRET not set — webhook endpoint will reject all requests. "
+            "Set this env var to the same value used in bot.set_webhook(secret_token=...)"
+        )
 
     @flask_app.route("/webhook", methods=["POST"])
     def webhook():
         if process_update_fn is None:
             return "Bot not initialized", 503
-        # Validate Telegram's secret_token header if configured
-        if telegram_webhook_secret:
-            token = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
-            if not hmac.compare_digest(token, telegram_webhook_secret):
-                return "Unauthorized", 401
+        # Always validate Telegram's secret_token header — reject if not configured
+        if not telegram_webhook_secret:
+            return "Webhook secret not configured", 503
+        token = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+        if not hmac.compare_digest(token, telegram_webhook_secret):
+            return "Unauthorized", 401
         update_data = request.get_json(force=True, silent=True)
         if not update_data:
             return "ok"

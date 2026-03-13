@@ -150,7 +150,7 @@ async def morning_briefing():
     except Exception as e:
         logger.error(f"Morning briefing failed: {e}")
         try:
-            await _bot.send_message(chat_id=CHAT_ID, text=f"Morning briefing error — check logs. ({str(e)[:100]})")
+            await _bot.send_message(chat_id=CHAT_ID, text="Morning briefing error — check logs.")
         except Exception:
             pass
 
@@ -337,7 +337,7 @@ async def weekly_report():
     except Exception as e:
         logger.error(f"Weekly report failed: {e}")
         try:
-            await _bot.send_message(chat_id=CHAT_ID, text=f"Weekly report error — check logs. ({str(e)[:100]})")
+            await _bot.send_message(chat_id=CHAT_ID, text="Weekly report error — check logs.")
         except Exception:
             pass
 
