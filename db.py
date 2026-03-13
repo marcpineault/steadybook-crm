@@ -215,6 +215,24 @@ def init_db():
                 approved_by      TEXT,
                 outcome          TEXT
             );
+
+            CREATE TABLE IF NOT EXISTS brand_voice (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                platform TEXT NOT NULL DEFAULT 'linkedin',
+                content TEXT NOT NULL,
+                post_type TEXT NOT NULL DEFAULT 'general',
+                created_at TEXT DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS market_calendar (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_type TEXT NOT NULL,
+                title TEXT NOT NULL,
+                date TEXT NOT NULL,
+                description TEXT DEFAULT '',
+                relevance_products TEXT DEFAULT '',
+                recurring INTEGER DEFAULT 0
+            );
         """)
     logger.info(f"Database initialized at {DB_PATH}")
 
