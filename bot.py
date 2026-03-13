@@ -93,6 +93,25 @@ async def _require_admin(update) -> bool:
     return False
 
 
+def get_trust_level():
+    """Get the current trust level (1-3). Defaults to 1."""
+    try:
+        with db.get_db() as conn:
+            row = conn.execute("SELECT trust_level FROM trust_config ORDER BY id DESC LIMIT 1").fetchone()
+            return row["trust_level"] if row else 1
+    except Exception:
+        return 1
+
+
+def set_trust_level(level, changed_by="marc"):
+    """Set the trust level (1-3)."""
+    with db.get_db() as conn:
+        conn.execute(
+            "INSERT INTO trust_config (trust_level, changed_by) VALUES (?, ?)",
+            (level, changed_by),
+        )
+
+
 def read_pipeline():
     """Read all prospects from pipeline (via SQLite)."""
     return db.read_pipeline()
@@ -2791,6 +2810,43 @@ async def handle_content_callback(update, context):
         await query.edit_message_text(f"Content dismissed (#{queue_id}).")
 
 
+async def cmd_trust(update, context):
+    """View or set the AI trust level: /trust or /trust 2"""
+    if not await _require_admin(update):
+        return
+
+    args = context.args
+    current = get_trust_level()
+
+    LEVEL_DESCRIPTIONS = {
+        1: "Training wheels — I draft everything, you approve each message",
+        2: "Trusted on routine — I send standard reminders autonomously, you review first-contact only",
+        3: "Full autonomy — I handle all routine outreach, escalate exceptions only",
+    }
+
+    if not args:
+        desc = LEVEL_DESCRIPTIONS.get(current, "Unknown")
+        await update.message.reply_text(
+            f"Current trust level: {current}\n{desc}\n\n"
+            "Set with: /trust 1, /trust 2, or /trust 3"
+        )
+        return
+
+    try:
+        new_level = int(args[0])
+    except ValueError:
+        await update.message.reply_text("Usage: /trust 1, /trust 2, or /trust 3")
+        return
+
+    if new_level not in (1, 2, 3):
+        await update.message.reply_text("Trust level must be 1, 2, or 3.")
+        return
+
+    set_trust_level(new_level)
+    desc = LEVEL_DESCRIPTIONS.get(new_level, "")
+    await update.message.reply_text(f"Trust level set to {new_level}.\n{desc}")
+
+
 def build_application():
     """Build the Telegram Application with all handlers (shared by main and webhook)."""
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
@@ -2835,6 +2891,7 @@ def build_application():
     app.add_handler(CommandHandler("calendar", cmd_calendar))
     app.add_handler(CommandHandler("news", cmd_calendar))  # alias for /calendar
     app.add_handler(CallbackQueryHandler(handle_content_callback, pattern=r"^content_"))
+    app.add_handler(CommandHandler("trust", cmd_trust))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice_message))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
