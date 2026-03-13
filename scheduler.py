@@ -399,6 +399,23 @@ async def _weekly_report_inner():
     lines.extend(priorities[:3])
     lines.append(f"\nKeep grinding, Marc. 💪")
 
+    # AI-powered weekly insights
+    try:
+        import analytics
+        stats = analytics.get_weekly_stats()
+        if stats["total_actions"] > 0:
+            lines.append("")
+            lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            lines.append("AI INSIGHTS:")
+            lines.append(analytics.format_stats_for_telegram(stats))
+
+            insights = analytics.generate_insights()
+            if insights:
+                lines.append("")
+                lines.append(insights[:1500])
+    except Exception:
+        logger.exception("Insights section failed — sending report without it")
+
     msg = "\n".join(lines)
     await _bot.send_message(chat_id=CHAT_ID, text=msg)
     logger.info("Weekly report sent.")
@@ -949,7 +966,7 @@ def start_scheduler(telegram_app, event_loop=None):
         weekly_report,
         "cron",
         day_of_week="sun",
-        hour=19,
+        hour=18,
         minute=0,
         id="weekly_report",
         name="Weekly Performance Report",
