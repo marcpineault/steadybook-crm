@@ -115,17 +115,20 @@ def generate_prep_doc(prospect_name, meeting_type, meeting_time):
     score_data = ctx["score_data"]
 
     try:
+        # Replace static/short values first, then free-text user data last
+        # to prevent user data containing {placeholder} from corrupting later replacements
         prompt = PREP_DOC_PROMPT.replace("{meeting_type}", meeting_type)
-        prompt = prompt.replace("{prospect_name}", prospect_name)
         prompt = prompt.replace("{meeting_time}", meeting_time)
         prompt = prompt.replace("{stage}", ctx["stage"])
         prompt = prompt.replace("{product}", prospect.get("product", "Not specified"))
         prompt = prompt.replace("{priority}", prospect.get("priority", "N/A"))
+        prompt = prompt.replace("{score}", str(score_data.get("score", 0)))
+        prompt = prompt.replace("{score_reasons}", "; ".join(score_data.get("reasons", [])))
+        # User-sourced free-text last (may contain curly braces)
+        prompt = prompt.replace("{prospect_name}", prospect_name)
         prompt = prompt.replace("{memory_profile}", ctx["memory_profile"])
         prompt = prompt.replace("{interaction_history}", ix_text)
         prompt = prompt.replace("{activity_history}", act_text)
-        prompt = prompt.replace("{score}", str(score_data.get("score", 0)))
-        prompt = prompt.replace("{score_reasons}", "; ".join(score_data.get("reasons", [])))
 
         response = openai_client.chat.completions.create(
             model="gpt-4.1",
