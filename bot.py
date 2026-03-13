@@ -2938,18 +2938,21 @@ async def cmd_campaign(update, context):
             matches = camp.segment_audience(segment)
             generated = 0
             for name in matches[:20]:
-                msg = camp.generate_campaign_message(
-                    prospect_name=name,
-                    campaign_context=campaign["description"],
-                    channel=campaign["channel"],
-                )
-                if msg:
-                    with db.get_db() as conn:
-                        conn.execute(
-                            "INSERT INTO campaign_messages (campaign_id, prospect_name, content, queue_id, wave) VALUES (?, ?, ?, ?, 1)",
-                            (campaign_id, name, msg["content"], msg["queue_id"]),
-                        )
-                    generated += 1
+                try:
+                    msg = camp.generate_campaign_message(
+                        prospect_name=name,
+                        campaign_context=campaign["description"],
+                        channel=campaign["channel"],
+                    )
+                    if msg:
+                        with db.get_db() as conn:
+                            conn.execute(
+                                "INSERT INTO campaign_messages (campaign_id, prospect_name, content, queue_id, wave) VALUES (?, ?, ?, ?, 1)",
+                                (campaign_id, name, msg["content"], msg["queue_id"]),
+                            )
+                        generated += 1
+                except Exception:
+                    logger.exception("Campaign message failed for %s", name)
 
             camp.update_campaign_status(campaign_id, "active")
             await update.message.reply_text(
@@ -3009,6 +3012,10 @@ async def cmd_nurture(update, context):
             await update.message.reply_text("Usage: /nurture stop <sequence_id>")
             return
         seq_id = int(args[1])
+        seq = nurture.get_sequence(seq_id)
+        if not seq:
+            await update.message.reply_text(f"Nurture sequence #{seq_id} not found.")
+            return
         nurture.complete_sequence(seq_id, reason="manual_stop")
         await update.message.reply_text(f"Nurture sequence #{seq_id} stopped.")
 

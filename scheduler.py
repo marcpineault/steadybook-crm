@@ -1008,13 +1008,13 @@ def start_scheduler(telegram_app, event_loop=None):
         name="Daily Market Check",
     )
 
-    # Daily nurture check — 9AM ET weekdays
+    # Daily nurture check — 9:15AM ET weekdays (offset from 9AM auto_nag)
     scheduler.add_job(
         check_nurture_sequences,
         "cron",
         day_of_week="mon-fri",
         hour=9,
-        minute=0,
+        minute=15,
         id="check_nurture_sequences",
         name="Nurture Sequence Check",
     )
