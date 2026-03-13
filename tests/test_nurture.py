@@ -80,6 +80,9 @@ def test_generate_touch(mock_compliance, mock_client):
 
     touch = nurture.generate_touch(seq["id"])
     assert touch is not None
+    assert touch["touch_number"] == 1
+    updated = nurture.get_sequence(seq["id"])
+    assert updated["current_touch"] == 1
     assert "content" in touch
 
 

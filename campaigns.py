@@ -177,23 +177,26 @@ def generate_campaign_message(prospect_name, campaign_context, channel="email_dr
         logger.exception("Campaign message generation failed for %s", prospect_name)
         return None
 
-    # Compliance check
-    comp_result = compliance.check_compliance(content)
-    compliance.log_action(
-        action_type="campaign_message",
-        target=prospect_name,
-        content=content,
-        compliance_check="PASS" if comp_result["passed"] else f"FAIL: {'; '.join(comp_result['issues'])}",
-    )
+    # Compliance check + queue for approval
+    try:
+        comp_result = compliance.check_compliance(content)
+        compliance.log_action(
+            action_type="campaign_message",
+            target=prospect_name,
+            content=content,
+            compliance_check="PASS" if comp_result["passed"] else f"FAIL: {'; '.join(comp_result['issues'])}",
+        )
 
-    # Queue for approval
-    draft = approval_queue.add_draft(
-        draft_type="campaign",
-        channel=channel,
-        content=content,
-        context=f"Campaign: {campaign_context}",
-        prospect_id=prospect["id"] if prospect else None,
-    )
+        draft = approval_queue.add_draft(
+            draft_type="campaign",
+            channel=channel,
+            content=content,
+            context=f"Campaign: {campaign_context}",
+            prospect_id=prospect["id"] if prospect else None,
+        )
+    except Exception:
+        logger.exception("Campaign compliance/queue failed for %s", prospect_name)
+        return None
 
     return {
         "prospect_name": prospect_name,

@@ -174,8 +174,13 @@ def generate_touch(sequence_id):
         prospect_id=seq.get("prospect_id"),
     )
 
-    # Advance sequence
+    # Advance sequence (re-read to guard against concurrent double-fire)
     with db.get_db() as conn:
+        current = conn.execute(
+            "SELECT current_touch FROM nurture_sequences WHERE id = ?", (sequence_id,)
+        ).fetchone()
+        if current is None or current["current_touch"] != seq["current_touch"]:
+            return None  # already advanced by another call
         spacing_idx = min(next_touch, len(TOUCH_SPACING_DAYS)) - 1
         next_date = (datetime.now() + timedelta(days=TOUCH_SPACING_DAYS[spacing_idx])).strftime("%Y-%m-%d")
         conn.execute(
