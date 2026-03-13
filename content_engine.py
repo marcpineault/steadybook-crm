@@ -121,13 +121,14 @@ def generate_post(platform, post_type, topic, context=""):
     type_desc = POST_TYPE_DESCRIPTIONS.get(post_type, POST_TYPE_DESCRIPTIONS["general"])
 
     try:
+        # Static/controlled replacements first, user-sourced free-text last
         prompt = GENERATE_POST_PROMPT.replace("{platform}", platform)
         prompt = prompt.replace("{post_type_description}", type_desc)
         prompt = prompt.replace("{post_type}", post_type)
-        # Static replacements first, user-sourced last
+        # User-sourced data last to prevent placeholder corruption
+        prompt = prompt.replace("{brand_voice_examples}", examples_text)
         prompt = prompt.replace("{topic}", topic)
         prompt = prompt.replace("{context}", context)
-        prompt = prompt.replace("{brand_voice_examples}", examples_text)
 
         response = openai_client.chat.completions.create(
             model="gpt-4.1",

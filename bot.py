@@ -2459,13 +2459,28 @@ async def handle_draft_callback(update, context):
                 comp.update_audit_outcome(audit_id, outcome="approved", approved_by="marc")
         except Exception:
             logger.warning("Could not update audit log for draft #%s", queue_id)
+
+        # Brand voice evolution: approved content posts improve the voice library
+        if draft.get("type") == "content_post" and draft.get("content"):
+            try:
+                import content_engine
+                channel = draft.get("channel", "linkedin_post")
+                platform = channel.replace("_post", "")
+                context_text = draft.get("context", "")
+                post_type = context_text.split(":")[0].strip() if ":" in context_text else "general"
+                content_engine.add_brand_voice_example(platform, draft["content"], post_type)
+                logger.info("Brand voice updated from approved content post #%s", queue_id)
+            except Exception:
+                logger.warning("Brand voice update failed for #%s (non-blocking)", queue_id)
+
         content = draft.get("content", "")
         if len(content) > 3800:
             content = content[:3800] + "\n...(truncated)"
+        copy_target = "Publer" if draft.get("type") == "content_post" else "Outlook"
         await query.edit_message_text(
             f"APPROVED — {draft.get('type', 'draft')} for queue #{queue_id}\n\n"
             f"{content}\n\n"
-            "Copy-paste the above into Outlook."
+            f"Copy-paste the above into {copy_target}."
         )
 
     elif action == "dismiss":
