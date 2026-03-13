@@ -233,7 +233,56 @@ def init_db():
                 relevance_products TEXT DEFAULT '',
                 recurring INTEGER DEFAULT 0
             );
+
+        CREATE TABLE IF NOT EXISTS trust_config (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trust_level INTEGER NOT NULL DEFAULT 1,
+            changed_at TEXT DEFAULT (datetime('now')),
+            changed_by TEXT DEFAULT 'system'
+        );
+
+        CREATE TABLE IF NOT EXISTS campaigns (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            segment_query TEXT DEFAULT '',
+            status TEXT DEFAULT 'draft',
+            channel TEXT DEFAULT 'email_draft',
+            wave_count INTEGER DEFAULT 1,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS campaign_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            campaign_id INTEGER NOT NULL,
+            prospect_name TEXT NOT NULL,
+            content TEXT NOT NULL,
+            status TEXT DEFAULT 'pending',
+            queue_id INTEGER,
+            wave INTEGER DEFAULT 1,
+            created_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (campaign_id) REFERENCES campaigns(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS nurture_sequences (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            prospect_id INTEGER,
+            prospect_name TEXT NOT NULL,
+            status TEXT DEFAULT 'active',
+            current_touch INTEGER DEFAULT 0,
+            total_touches INTEGER DEFAULT 4,
+            next_touch_date TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (prospect_id) REFERENCES prospects(id)
+        );
         """)
+
+    # Seed default trust level if empty
+    with get_db() as conn:
+        existing = conn.execute("SELECT COUNT(*) FROM trust_config").fetchone()[0]
+        if existing == 0:
+            conn.execute("INSERT INTO trust_config (trust_level, changed_by) VALUES (1, 'system')")
+
     logger.info(f"Database initialized at {DB_PATH}")
 
 
