@@ -238,5 +238,8 @@ def backfill_all():
     prospects = db.read_pipeline()
     for p in prospects:
         if p.get("id") and p.get("name"):
-            total += backfill_prospect(p["id"], p["name"])
+            try:
+                total += backfill_prospect(p["id"], p["name"])
+            except Exception:
+                logger.exception("backfill_prospect failed for %s, continuing", p["name"])
     return total

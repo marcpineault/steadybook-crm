@@ -86,7 +86,7 @@ def process_booking(data: dict) -> str:
     try:
         import memory_engine
         prospect_obj = db.get_prospect_by_name(data.get("name", ""))
-        if prospect_obj and data.get("notes"):
+        if prospect_obj:
             memory_engine.extract_facts_from_interaction(
                 prospect_name=prospect_obj["name"],
                 prospect_id=prospect_obj["id"],

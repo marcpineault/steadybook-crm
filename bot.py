@@ -1343,25 +1343,27 @@ async def _llm_respond(update, messages, tools=None):
                                 result += f"\n\nCross-sell: {prospect['name']} has {prospect.get('product', '?')}. Suggest {', '.join(suggestions[:2])} in 30 days."
 
             # Trigger memory extraction for activity-related tools
-            if tool_name in ("add_activity", "update_prospect") and "prospect" in tool_input:
-                try:
-                    import memory_engine as me
-                    prospect_name = tool_input.get("prospect", tool_input.get("name", ""))
-                    prospect_obj = db.get_prospect_by_name(prospect_name)
-                    if prospect_obj:
-                        context_text = " ".join(
-                            m.get("content", "") for m in messages
-                            if isinstance(m.get("content"), str) and m.get("role") == "user"
-                        )
-                        if context_text.strip():
-                            me.extract_facts_from_interaction(
-                                prospect_name=prospect_obj["name"],
-                                prospect_id=prospect_obj["id"],
-                                interaction_text=context_text,
-                                source="chat",
+            if tool_name in ("add_activity", "update_prospect"):
+                prospect_key = "prospect" if tool_name == "add_activity" else "name"
+                if prospect_key in tool_input:
+                    try:
+                        import memory_engine as me
+                        prospect_name = tool_input.get(prospect_key, "")
+                        prospect_obj = db.get_prospect_by_name(prospect_name)
+                        if prospect_obj:
+                            context_text = " ".join(
+                                m.get("content", "") for m in messages
+                                if isinstance(m.get("content"), str) and m.get("role") == "user"
                             )
-                except Exception:
-                    pass  # Non-blocking
+                            if context_text.strip():
+                                me.extract_facts_from_interaction(
+                                    prospect_name=prospect_obj["name"],
+                                    prospect_id=prospect_obj["id"],
+                                    interaction_text=context_text,
+                                    source="chat",
+                                )
+                    except Exception:
+                        logger.exception("Memory extraction failed for %s (non-blocking)", prospect_name)
 
             messages.append({
                 "role": "tool",
