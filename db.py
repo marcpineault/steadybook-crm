@@ -181,6 +181,40 @@ def init_db():
                 created_at TEXT DEFAULT (datetime('now')),
                 completed_at TEXT
             );
+
+            CREATE TABLE IF NOT EXISTS client_memory (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                prospect_id INTEGER REFERENCES prospects(id),
+                category    TEXT NOT NULL,
+                fact        TEXT NOT NULL,
+                source      TEXT,
+                needs_review INTEGER DEFAULT 0,
+                extracted_at TEXT DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS approval_queue (
+                id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                type                TEXT NOT NULL,
+                prospect_id         INTEGER REFERENCES prospects(id),
+                channel             TEXT NOT NULL,
+                content             TEXT NOT NULL,
+                context             TEXT,
+                status              TEXT DEFAULT 'pending',
+                created_at          TEXT DEFAULT (datetime('now')),
+                acted_on_at         TEXT,
+                telegram_message_id TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS audit_log (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp        TEXT DEFAULT (datetime('now')),
+                action_type      TEXT NOT NULL,
+                target           TEXT,
+                content          TEXT,
+                compliance_check TEXT,
+                approved_by      TEXT,
+                outcome          TEXT
+            );
         """)
     logger.info(f"Database initialized at {DB_PATH}")
 
