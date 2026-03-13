@@ -25,6 +25,13 @@ TELEGRAM_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 OPENAI_KEY = os.environ["OPENAI_API_KEY"]
 ADMIN_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
+if not ADMIN_CHAT_ID:
+    logger.warning("TELEGRAM_CHAT_ID not set — admin-only commands will be disabled for all users")
+if not os.environ.get("DASHBOARD_API_KEY"):
+    logger.warning("DASHBOARD_API_KEY not set — dashboard API has no key-based authentication")
+if not os.environ.get("INTAKE_WEBHOOK_SECRET"):
+    logger.warning("INTAKE_WEBHOOK_SECRET not set — intake webhook will reject all requests")
+
 # DATA_DIR kept for migration path reference
 DATA_DIR = os.environ.get("DATA_DIR", "")
 
@@ -1405,7 +1412,7 @@ async def cmd_quote(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logger.error(f"/quote error: {e}")
-        await update.message.reply_text(f"Something went wrong: {str(e)[:200]}")
+        await update.message.reply_text("Something went wrong. Please try again.")
 
 
 # ── /add command ──
@@ -1471,7 +1478,7 @@ async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         except Exception as e:
             logger.error(f"/add coworker error: {e}")
-            await update.message.reply_text(f"Something went wrong: {str(e)[:200]}")
+            await update.message.reply_text("Something went wrong. Please try again.")
         return
 
     # Admin flow — full access
@@ -1497,7 +1504,7 @@ async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logger.error(f"/add error: {e}")
-        await update.message.reply_text(f"Something went wrong: {str(e)[:200]}")
+        await update.message.reply_text("Something went wrong. Please try again.")
 
 
 # ── /status command — available to everyone ──
@@ -1620,7 +1627,7 @@ async def cmd_call(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logger.error(f"/call error: {e}")
-        await update.message.reply_text(f"Something went wrong: {str(e)[:200]}")
+        await update.message.reply_text("Something went wrong. Please try again.")
 
 
 # ── /todo, /tasks, /done — task management ──
@@ -1768,7 +1775,7 @@ async def cmd_todo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logger.error(f"/todo error: {e}")
-        await update.message.reply_text(f"Something went wrong: {str(e)[:200]}")
+        await update.message.reply_text("Something went wrong. Please try again.")
 
 
 async def cmd_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1846,7 +1853,7 @@ async def cmd_pipeline(update: Update, context: ContextTypes.DEFAULT_TYPE):
         result = get_pipeline_summary()
         await update.message.reply_text(result)
     except Exception as e:
-        await update.message.reply_text(f"Error: {str(e)[:200]}")
+        await update.message.reply_text("Something went wrong. Please try again.")
 
 
 async def cmd_overdue(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1856,7 +1863,7 @@ async def cmd_overdue(update: Update, context: ContextTypes.DEFAULT_TYPE):
         result = get_overdue()
         await update.message.reply_text(result)
     except Exception as e:
-        await update.message.reply_text(f"Error: {str(e)[:200]}")
+        await update.message.reply_text("Something went wrong. Please try again.")
 
 
 async def cmd_meetings(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1866,7 +1873,7 @@ async def cmd_meetings(update: Update, context: ContextTypes.DEFAULT_TYPE):
         result = get_meetings()
         await update.message.reply_text(result)
     except Exception as e:
-        await update.message.reply_text(f"Error: {str(e)[:200]}")
+        await update.message.reply_text("Something went wrong. Please try again.")
 
 
 async def cmd_calls(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1876,7 +1883,7 @@ async def cmd_calls(update: Update, context: ContextTypes.DEFAULT_TYPE):
         result = get_next_calls()
         await update.message.reply_text(result)
     except Exception as e:
-        await update.message.reply_text(f"Error: {str(e)[:200]}")
+        await update.message.reply_text("Something went wrong. Please try again.")
 
 
 async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1886,7 +1893,7 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         result = get_win_loss_stats()
         await update.message.reply_text(result)
     except Exception as e:
-        await update.message.reply_text(f"Error: {str(e)[:200]}")
+        await update.message.reply_text("Something went wrong. Please try again.")
 
 
 async def cmd_priority(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1939,7 +1946,7 @@ async def cmd_lead(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(result)
     except Exception as e:
         logger.error(f"/lead error: {e}")
-        await update.message.reply_text(f"Error processing lead: {str(e)[:200]}")
+        await update.message.reply_text("Error processing lead. Please try again.")
 
 
 # ── Free-form message handler ──
@@ -1991,7 +1998,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         except Exception as e:
             logger.error(f"Coworker chat error: {e}")
-            await update.message.reply_text(f"Something went wrong: {str(e)[:200]}")
+            await update.message.reply_text("Something went wrong. Please try again.")
         return
 
     # Admin flow
@@ -2012,7 +2019,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(result)
         except Exception as e:
             logger.error(f"Otter transcript error: {e}")
-            await update.message.reply_text(f"Error processing transcript: {str(e)[:200]}")
+            await update.message.reply_text("Error processing transcript. Please try again.")
         return
 
     try:
@@ -2028,7 +2035,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logger.error(f"Error: {e}")
-        await update.message.reply_text(f"Something went wrong: {str(e)[:200]}")
+        await update.message.reply_text("Something went wrong. Please try again.")
 
 
 async def export(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2047,7 +2054,7 @@ async def export(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text("Pipeline database not found.")
     except Exception as e:
-        await update.message.reply_text(f"Error sending file: {str(e)[:200]}")
+        await update.message.reply_text("Error sending file. Please try again.")
 
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2125,7 +2132,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.info(f"Insurance book imported: {count} contacts from {doc.file_name}")
 
         except Exception as e:
-            await update.message.reply_text(f"Error importing CSV: {str(e)[:200]}")
+            await update.message.reply_text("Error importing CSV. Please check the file format.")
         return
 
     if not fname.endswith(('.xlsx', '.xls')):
@@ -2139,8 +2146,12 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if "insurance" in fname or "book" in fname or "home" in fname or "client" in fname:
             # Import as insurance book
             import openpyxl as _openpyxl
-            await file.download_to_drive("/tmp/book_upload.xlsx")
-            src_wb = _openpyxl.load_workbook("/tmp/book_upload.xlsx")
+            import tempfile as _tmpfile
+            _tmp_book = _tmpfile.NamedTemporaryFile(suffix=".xlsx", delete=False)
+            _tmp_book_path = _tmp_book.name
+            _tmp_book.close()
+            await file.download_to_drive(_tmp_book_path)
+            src_wb = _openpyxl.load_workbook(_tmp_book_path)
             src_ws = src_wb.active
 
             # Clear existing insurance book
@@ -2168,6 +2179,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 count += 1
 
             src_wb.close()
+            os.unlink(_tmp_book_path)
 
             await update.message.reply_text(
                 f"Insurance book loaded! {count} contacts imported.\n"
@@ -2175,9 +2187,13 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         else:
             # Import Excel as pipeline migration
-            tmp_path = "/tmp/pipeline_upload.xlsx"
+            import tempfile as _tmpfile
+            _tmp_pipe = _tmpfile.NamedTemporaryFile(suffix=".xlsx", delete=False)
+            tmp_path = _tmp_pipe.name
+            _tmp_pipe.close()
             await file.download_to_drive(tmp_path)
             result = db.migrate_from_excel(tmp_path)
+            os.unlink(tmp_path)
 
             await update.message.reply_text(
                 f"Pipeline imported from your file.\n{result}\n"
@@ -2186,7 +2202,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         logger.info(f"File processed: {doc.file_name}")
     except Exception as e:
-        await update.message.reply_text(f"Error processing file: {str(e)[:200]}")
+        await update.message.reply_text("Error processing file. Please try again.")
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):

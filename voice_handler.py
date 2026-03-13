@@ -114,7 +114,7 @@ async def extract_and_update(transcript: str, bot=None, source: str = "voice_not
         prospects = parse_extraction_response(raw)
     except Exception as e:
         logger.error(f"AI extraction failed: {e}")
-        return f"AI extraction failed — transcript was saved. Error: {str(e)[:100]}\n\nTry again or add manually with /add."
+        return "AI extraction failed — transcript was saved.\n\nTry again or add manually with /add."
 
     source_label = "Otter transcript" if source == "otter_transcript" else "voice note"
     tag = "[Otter]" if source == "otter_transcript" else "[Voice]"
@@ -189,7 +189,9 @@ async def extract_and_update(transcript: str, bot=None, source: str = "voice_not
 async def handle_voice_message(update, context):
     """Telegram handler for voice messages. Admin gets full processing, coworkers can add leads."""
     admin_id = os.environ.get("TELEGRAM_CHAT_ID", "")
-    is_admin = not admin_id or str(update.effective_chat.id) == str(admin_id)
+    # Only grant admin if TELEGRAM_CHAT_ID is configured and matches the sender.
+    # When TELEGRAM_CHAT_ID is unset, no one gets admin privileges.
+    is_admin = bool(admin_id) and str(update.effective_chat.id) == str(admin_id)
     coworker_name = "" if is_admin else (update.effective_user.first_name or "Coworker")
 
     voice = update.message.voice or update.message.audio
@@ -237,7 +239,7 @@ async def handle_voice_message(update, context):
 
     except Exception as e:
         logger.error(f"Voice handler error: {e}")
-        await update.message.reply_text(f"Error processing voice note: {str(e)[:200]}")
+        await update.message.reply_text("Error processing voice note. Please try again.")
     finally:
         if tmp_path and os.path.exists(tmp_path):
             os.unlink(tmp_path)

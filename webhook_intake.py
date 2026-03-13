@@ -69,7 +69,7 @@ def intake_webhook():
 
     except Exception as e:
         logger.error(f"Intake webhook error: {e}")
-        return jsonify({"error": str(e)[:200]}), 500
+        return jsonify({"error": "Internal processing error"}), 500
 
 
 @intake_bp.route("/api/email-inbound", methods=["POST"])
@@ -81,7 +81,8 @@ def email_inbound():
     if not CLOUDMAILIN_SECRET:
         logger.warning("CLOUDMAILIN_SECRET not set — rejecting email-inbound request")
         return jsonify({"error": "Unauthorized"}), 401
-    token = request.headers.get("X-CloudMailin-Secret", "") or request.args.get("secret", "")
+    # Only accept secret from headers — never from query params (avoids secret leaking in URLs/logs)
+    token = request.headers.get("X-CloudMailin-Secret", "")
     if not hmac.compare_digest(token, CLOUDMAILIN_SECRET):
         return jsonify({"error": "Unauthorized"}), 401
 
@@ -108,7 +109,7 @@ def email_inbound():
     else:
         body = ""
 
-    logger.info(f"Email inbound from={sender} subject={subject} body_len={len(body)}")
+    logger.info(f"Email inbound received, body_len={len(body)}")
 
     if not body and not subject:
         return jsonify({"error": "Empty email"}), 400
@@ -124,7 +125,7 @@ def email_inbound():
         return jsonify({"ok": True, "message": result})
     except Exception as e:
         logger.error(f"Email inbound error: {e}")
-        return jsonify({"error": str(e)[:200]}), 500
+        return jsonify({"error": "Internal processing error"}), 500
 
 
 def _strip_html(html: str) -> str:
