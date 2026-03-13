@@ -28,6 +28,7 @@ Transform calm-money-bot from a reactive Telegram CRM assistant into an autonomo
 - **Social media publishing** — Marc uses Publer for scheduling; AI generates content, Marc drops it into Publer
 - **Outreach safety** — AI drafts and queues, Marc approves before anything goes to a client (trust ladder model)
 - **Microsoft Bookings** — existing booking system, already integrated via Power Automate webhooks
+- **Co-operators Salesforce is a walled garden** — phone system and insurance book are locked down; no API access to Salesforce. Local SQLite is the source of truth for the AI system. Marc manually feeds Co-operators data in when it makes sense (via export, voice note, or typing). The AI never touches Salesforce.
 
 ## Architecture
 
@@ -348,9 +349,11 @@ Note: Auto-send via SMS/email is a future capability. At launch, all channels ar
 
 **New module: `campaigns.py`**
 
+**Data source**: Campaigns work off the local `insurance_book` and `prospects` tables in SQLite. Marc periodically re-exports from Co-operators Salesforce when data gets stale, or feeds in individual clients via voice note/chat. The AI has no access to Salesforce.
+
 **Campaign creation flow**:
 1. Marc says: "I want to reach out to my life insurance clients who don't have disability"
-2. AI queries insurance_book + prospects, segments by criteria
+2. AI queries local insurance_book + prospects, segments by criteria
 3. AI presents: "Found 42 clients matching. I'd suggest 3 waves of outreach over 2 weeks. Here's the approach for wave 1..."
 4. For each client, AI generates a personalized message referencing their specific policy, tenure, and situation
 5. Messages queued in batches for Marc's approval
