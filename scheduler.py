@@ -705,6 +705,57 @@ async def nudge_stale_drafts():
         logger.exception("Nudge stale drafts failed")
 
 
+# ── Meeting Prep Docs ──
+
+async def send_meeting_prep_docs():
+    """Check for meetings in the next 1-2 hours and send prep docs."""
+    if not _bot or not CHAT_ID:
+        return
+
+    try:
+        import meeting_prep
+
+        now = datetime.now(ET)
+        today = now.strftime("%Y-%m-%d")
+        meetings = meeting_prep.get_meetings_needing_prep(today)
+
+        for m in meetings:
+            meeting_time = m.get("time", "")
+            prospect_name = m.get("prospect", "")
+
+            if not meeting_time or not prospect_name:
+                continue
+
+            # Parse meeting time and check if it's 1-2 hours from now
+            try:
+                hour, minute = int(meeting_time.split(":")[0]), int(meeting_time.split(":")[1])
+                meeting_dt = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                delta = (meeting_dt - now).total_seconds() / 3600
+
+                if 0.5 <= delta <= 2.0:
+                    # Check if we already sent prep for this meeting (avoid duplicates)
+                    meeting_id = m.get("id", "")
+                    if hasattr(send_meeting_prep_docs, "_sent_preps"):
+                        if meeting_id in send_meeting_prep_docs._sent_preps:
+                            continue
+                    else:
+                        send_meeting_prep_docs._sent_preps = set()
+
+                    doc = meeting_prep.generate_prep_doc(prospect_name, m.get("type", "Meeting"), meeting_time)
+                    if doc:
+                        if len(doc) > 4096:
+                            doc = doc[:4076] + "\n...(truncated)"
+                        await _bot.send_message(chat_id=CHAT_ID, text=doc)
+                        send_meeting_prep_docs._sent_preps.add(meeting_id)
+                        logger.info("Meeting prep sent for %s at %s", prospect_name, meeting_time)
+            except (ValueError, IndexError):
+                logger.warning("Could not parse meeting time '%s'", meeting_time)
+                continue
+
+    except Exception:
+        logger.exception("Meeting prep doc check failed")
+
+
 # ── Scheduler entry point ──
 
 def start_scheduler(telegram_app, event_loop=None):
@@ -811,5 +862,16 @@ def start_scheduler(telegram_app, event_loop=None):
         name="Nudge Stale Drafts",
     )
 
+    # Meeting prep docs — check every hour during business hours
+    scheduler.add_job(
+        send_meeting_prep_docs,
+        "cron",
+        day_of_week="mon-fri",
+        hour="7,8,9,10,11,12,13,14,15,16",
+        minute=0,
+        id="meeting_prep_docs",
+        name="Meeting Prep Docs",
+    )
+
     scheduler.start()
-    logger.info("Scheduler started — briefing 8AM, follow-ups 9:30AM, nag 9-5, midday 12:30PM, EOD 5:30PM, weekly Sun 7PM, task reminders every 60s ET.")
+    logger.info("Scheduler started — briefing 8AM, follow-ups 9:30AM, nag 9-5, midday 12:30PM, EOD 5:30PM, weekly Sun 7PM, task reminders every 60s, meeting prep hourly ET.")
