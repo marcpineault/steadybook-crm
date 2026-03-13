@@ -679,8 +679,11 @@ async def nudge_stale_drafts():
                    WHERE status = 'snoozed'
                    AND acted_on_at <= datetime('now', '-1 hour')""",
             ).fetchall()
-            for row in snoozed:
+        for row in snoozed:
+            try:
                 approval_queue.update_draft_status(row["id"], "pending")
+            except Exception:
+                logger.warning("Failed to re-surface snoozed draft #%s", row["id"])
 
         # Then check for stale pending drafts (computed AFTER re-surfacing)
         stale = fu.get_stale_drafts()

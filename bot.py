@@ -57,12 +57,12 @@ def _draft_keyboard(queue_id):
 
 async def send_draft_to_telegram(bot, draft_result):
     """Send a follow-up draft to Telegram with approval buttons."""
-    import follow_up as fu
-    text = fu.format_draft_for_telegram(draft_result)
-    queue_id = draft_result["queue_id"]
-    keyboard = _draft_keyboard(queue_id)
-
     try:
+        import follow_up as fu
+        text = fu.format_draft_for_telegram(draft_result)
+        queue_id = draft_result["queue_id"]
+        keyboard = _draft_keyboard(queue_id)
+
         msg = await bot.send_message(
             chat_id=ADMIN_CHAT_ID,
             text=text,
@@ -71,7 +71,7 @@ async def send_draft_to_telegram(bot, draft_result):
         import approval_queue
         approval_queue.set_telegram_message_id(queue_id, str(msg.message_id))
     except Exception:
-        logger.exception("Failed to send draft notification for queue #%s", queue_id)
+        logger.exception("Failed to send draft notification")
 
 
 def _is_admin(update) -> bool:
@@ -2459,9 +2459,12 @@ async def handle_draft_callback(update, context):
                 comp.update_audit_outcome(audit_id, outcome="approved", approved_by="marc")
         except Exception:
             logger.warning("Could not update audit log for draft #%s", queue_id)
+        content = draft.get("content", "")
+        if len(content) > 3800:
+            content = content[:3800] + "\n...(truncated)"
         await query.edit_message_text(
             f"APPROVED — {draft.get('type', 'draft')} for queue #{queue_id}\n\n"
-            f"{draft['content']}\n\n"
+            f"{content}\n\n"
             "Copy-paste the above into Outlook."
         )
 
