@@ -156,90 +156,10 @@ async def morning_briefing():
 
 
 async def _morning_briefing_inner():
-    import scoring
-
-    today = date.today()
-    lines = [f"MONEY MOVES — {today.strftime('%A, %B %d')}", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━", ""]
-
-    # Top 5 ranked call list
-    ranked = scoring.get_ranked_call_list(5)
-    if ranked:
-        lines.append("TOP CALLS TODAY:")
-        for i, p in enumerate(ranked, 1):
-            reasons_str = " | ".join(p.get("reasons", [])[:2])
-            lines.append(f"  {i}. {p['name']} (score: {p['score']})")
-            if reasons_str:
-                lines.append(f"     Why: {reasons_str}")
-            lines.append(f"     Do: {p.get('action', 'Follow up')}")
-        lines.append("")
-
-    # Cross-sell opportunities on recent wins (last 30 days)
-    prospects = db.read_pipeline()
-    active = [p for p in prospects if p.get("stage") not in ("Closed-Won", "Closed-Lost", "")]
-    won = [p for p in prospects if p.get("stage") == "Closed-Won"]
-
-    cross_sell_lines = []
-    for p in won:
-        fc = p.get("first_contact", "")
-        if fc and fc != "None":
-            try:
-                close_date = datetime.strptime(fc.split(" ")[0], "%Y-%m-%d").date()
-                if (today - close_date).days <= 30:
-                    suggestions = scoring.get_cross_sell_suggestions(p.get("product", ""))
-                    if suggestions:
-                        cross_sell_lines.append(f"  {p['name']} has {p.get('product', '?')} — suggest {', '.join(suggestions[:2])}")
-            except (ValueError, IndexError):
-                pass
-
-    if cross_sell_lines:
-        lines.append("CROSS-SELL OPPORTUNITIES:")
-        lines.extend(cross_sell_lines)
-        lines.append("")
-
-    # Referral nudges
-    referral_candidates = scoring.get_referral_candidates()
-    if referral_candidates:
-        lines.append("REFERRAL OPPORTUNITIES:")
-        for c in referral_candidates:
-            lines.append(f"  Ask {c['name']} for a referral ({c['days_since_close']}d since close)")
-        lines.append("")
-
-    # Meetings today
-    meetings = _read_meetings_today()
-    if meetings:
-        lines.append(f"MEETINGS TODAY ({len(meetings)}):")
-        for m in meetings:
-            lines.append(f"  {m.get('time', '?')} — {m.get('prospect', '?')} ({m.get('type', '?')})")
-        lines.append("")
-
-    # Pipeline snapshot
-    total_aum = sum(float(p.get("aum") or 0) for p in active)
-    total_rev = sum(float(p.get("revenue") or 0) for p in active)
-    hot_count = len([p for p in active if (p.get("priority") or "").lower() == "hot"])
-    lines.append("PIPELINE:")
-    lines.append(f"  Active: {len(active)} | AUM: ${total_aum:,.0f} | Premium: ${total_rev:,.0f} | Hot: {hot_count}")
-
-    # Tasks due today and overdue
-    try:
-        overdue_tasks = db.get_overdue_tasks()
-        due_today_tasks = db.get_due_tasks(today.strftime("%Y-%m-%d"))
-
-        if overdue_tasks or due_today_tasks:
-            lines.append("")
-            lines.append("TASKS:")
-            for t in overdue_tasks:
-                days_late = (today - datetime.strptime(t["due_date"], "%Y-%m-%d").date()).days
-                prospect_str = f" [{t['prospect']}]" if t.get("prospect") else ""
-                lines.append(f"  OVERDUE ({days_late}d): {t['title']}{prospect_str}")
-            for t in due_today_tasks:
-                prospect_str = f" [{t['prospect']}]" if t.get("prospect") else ""
-                lines.append(f"  Due today: {t['title']}{prospect_str}")
-    except Exception as e:
-        logger.warning(f"Could not load tasks for briefing: {e}")
-
-    msg = "\n".join(lines)
-    await _bot.send_message(chat_id=CHAT_ID, text=msg)
-    logger.info("Morning briefing (Money Moves) sent.")
+    import briefing as briefing_module
+    text = briefing_module.generate_briefing_text()
+    await _bot.send_message(chat_id=CHAT_ID, text=text)
+    logger.info("Morning briefing (strategic) sent.")
 
 
 # ── Auto-Nag System ──
