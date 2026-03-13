@@ -56,7 +56,6 @@ def process_booking(data: dict) -> str:
             "prospect": existing["name"], "source": "outlook_booking",
             "raw_text": json.dumps(data), "summary": booking_notes,
         })
-        return f"Updated {existing['name']} with new booking. Meeting added."
     else:
         db.add_prospect({
             "name": name, "email": email, "phone": phone,
@@ -82,7 +81,25 @@ def process_booking(data: dict) -> str:
             "outcome": booking_notes, "next_step": "Prepare for meeting",
         })
         _score_and_schedule(name)
+
+    # Extract client intelligence
+    try:
+        import memory_engine
+        prospect_obj = db.get_prospect_by_name(data.get("name", ""))
+        if prospect_obj and data.get("notes"):
+            memory_engine.extract_facts_from_interaction(
+                prospect_name=prospect_obj["name"],
+                prospect_id=prospect_obj["id"],
+                interaction_text=f"Booking: {data.get('service', '')}. Notes: {data.get('notes', '')}",
+                source="booking",
+            )
+    except Exception:
+        logger.exception("Memory extraction failed for booking (non-blocking)")
+
+    if not existing:
         return f"New prospect: {name} — {booking_notes}. Meeting added."
+    else:
+        return f"Updated {existing['name']} with new booking. Meeting added."
 
 
 def process_calendar_event(data: dict) -> str:
@@ -314,6 +331,20 @@ Return ONLY valid JSON."""
 
     if not existing:
         _score_and_schedule(name)
+
+    # Extract client intelligence
+    try:
+        import memory_engine
+        prospect_obj = db.get_prospect_by_name(name)
+        if prospect_obj:
+            memory_engine.extract_facts_from_interaction(
+                prospect_name=prospect_obj["name"],
+                prospect_id=prospect_obj["id"],
+                interaction_text=body,
+                source="email_lead",
+            )
+    except Exception:
+        logger.exception("Memory extraction failed for email lead (non-blocking)")
 
     return result
 
