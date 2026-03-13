@@ -961,13 +961,13 @@ def start_scheduler(telegram_app, event_loop=None):
         name="End of Day Wrap-Up",
     )
 
-    # Weekly performance report Sunday at 7 PM ET
+    # Weekly performance report Sunday at 6:30 PM ET (offset from content plan at 6PM)
     scheduler.add_job(
         weekly_report,
         "cron",
         day_of_week="sun",
         hour=18,
-        minute=0,
+        minute=30,
         id="weekly_report",
         name="Weekly Performance Report",
     )

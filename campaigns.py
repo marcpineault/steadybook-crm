@@ -113,9 +113,10 @@ def segment_audience(criteria):
     prospect_text = "\n".join(prospect_lines) if prospect_lines else "No prospects."
 
     try:
-        prompt = SEGMENT_PROMPT.replace("{criteria}", criteria)
-        prompt = prompt.replace("{insurance_book_summary}", book_text)
+        # Static/controlled replacements first, user-sourced last
+        prompt = SEGMENT_PROMPT.replace("{insurance_book_summary}", book_text)
         prompt = prompt.replace("{prospects_summary}", prospect_text)
+        prompt = prompt.replace("{criteria}", criteria)
 
         response = openai_client.chat.completions.create(
             model="gpt-4.1-mini",

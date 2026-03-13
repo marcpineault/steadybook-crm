@@ -745,7 +745,7 @@ def generate_weekly_plan():
 
     # Pipeline context
     try:
-        pipeline_prospects = db.read_prospects()
+        pipeline_prospects = db.read_pipeline()
         active = [p for p in pipeline_prospects if p.get("stage") not in ("Closed Won", "Closed Lost", "")]
         product_counts = {}
         for p in active:

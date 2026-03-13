@@ -2564,7 +2564,7 @@ async def handle_outcome_callback(update, context):
     await query.answer()
     data = query.data
 
-    if not _is_admin(query.from_user.id):
+    if not _is_admin(update):
         return
 
     import analytics
