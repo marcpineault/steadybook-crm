@@ -104,7 +104,9 @@ def get_trust_level():
 
 
 def set_trust_level(level, changed_by="marc"):
-    """Set the trust level (1-3)."""
+    """Set the trust level (1-3). Raises ValueError for out-of-range levels."""
+    if level not in (1, 2, 3):
+        raise ValueError(f"Trust level must be 1, 2, or 3 (got {level})")
     with db.get_db() as conn:
         conn.execute(
             "INSERT INTO trust_config (trust_level, changed_by) VALUES (?, ?)",
@@ -2778,6 +2780,9 @@ async def cmd_calendar(update, context):
 
     import market_intel
 
+    # Detect which alias was used (/calendar or /news)
+    cmd = update.message.text.split()[0] if update.message and update.message.text else "/calendar"
+
     args = context.args
     if not args or args[0].lower() in ("view", "upcoming"):
         events = market_intel.get_upcoming_events(days_ahead=30)
@@ -2795,7 +2800,7 @@ async def cmd_calendar(update, context):
 
     elif args[0].lower() == "add":
         if len(args) < 3:
-            await update.message.reply_text("Usage: /calendar add <YYYY-MM-DD> <title> [description]")
+            await update.message.reply_text(f"Usage: {cmd} add <YYYY-MM-DD> <title> [description]")
             return
         date_str = args[1]
         title = " ".join(args[2:5])
@@ -2808,7 +2813,7 @@ async def cmd_calendar(update, context):
         )
         await update.message.reply_text(f"Added market event: {title} on {date_str}")
     else:
-        await update.message.reply_text("Usage: /calendar or /calendar add <date> <title>")
+        await update.message.reply_text(f"Usage: {cmd} or {cmd} add <date> <title>")
 
 
 async def handle_content_callback(update, context):
