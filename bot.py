@@ -2847,6 +2847,124 @@ async def cmd_trust(update, context):
     await update.message.reply_text(f"Trust level set to {new_level}.\n{desc}")
 
 
+async def cmd_campaign(update, context):
+    """Manage campaigns: /campaign new, /campaign list, /campaign <id> run"""
+    if not await _require_admin(update):
+        return
+
+    import campaigns as camp
+
+    args = context.args
+    if not args:
+        await update.message.reply_text(
+            "Usage:\n"
+            "/campaign new <name> — Create a new campaign\n"
+            "/campaign list — List all campaigns\n"
+            "/campaign <id> segment <criteria> — Find matching clients\n"
+            "/campaign <id> run — Generate messages for segmented audience\n"
+            "/campaign <id> status — View campaign status"
+        )
+        return
+
+    action = args[0].lower()
+
+    if action == "new":
+        if len(args) < 2:
+            await update.message.reply_text("Usage: /campaign new <name>")
+            return
+        name = " ".join(args[1:])
+        campaign = camp.create_campaign(name=name, description=name)
+        await update.message.reply_text(
+            f"Campaign #{campaign['id']} created: {name}\n\n"
+            f"Next: /campaign {campaign['id']} segment <criteria>\n"
+            f"Example: /campaign {campaign['id']} segment life insurance clients without disability"
+        )
+
+    elif action == "list":
+        all_campaigns = camp.list_campaigns()
+        if not all_campaigns:
+            await update.message.reply_text("No campaigns yet. Create one with /campaign new <name>")
+            return
+        lines = ["YOUR CAMPAIGNS:\n"]
+        for c in all_campaigns[:10]:
+            lines.append(f"  #{c['id']} — {c['name']} ({c['status']})")
+        await update.message.reply_text("\n".join(lines))
+
+    elif args[0].isdigit():
+        campaign_id = int(args[0])
+        campaign = camp.get_campaign(campaign_id)
+        if not campaign:
+            await update.message.reply_text(f"Campaign #{campaign_id} not found.")
+            return
+
+        if len(args) < 2:
+            text = camp.format_campaign_summary(campaign)
+            await update.message.reply_text(text)
+            return
+
+        sub_action = args[1].lower()
+
+        if sub_action == "segment":
+            if len(args) < 3:
+                await update.message.reply_text(f"Usage: /campaign {campaign_id} segment <criteria>")
+                return
+            criteria = " ".join(args[2:])
+            await update.message.reply_text(f"Segmenting audience for: {criteria}...")
+            matches = camp.segment_audience(criteria)
+            if not matches:
+                await update.message.reply_text("No matching clients found.")
+                return
+
+            # Store segment in campaign description
+            with db.get_db() as conn:
+                conn.execute(
+                    "UPDATE campaigns SET description = ?, segment_query = ? WHERE id = ?",
+                    (f"{campaign['name']} — {criteria}", criteria, campaign_id),
+                )
+
+            await update.message.reply_text(
+                f"Found {len(matches)} matching clients:\n"
+                + "\n".join(f"  - {n}" for n in matches[:20])
+                + f"\n\nRun: /campaign {campaign_id} run to generate messages"
+            )
+
+        elif sub_action == "run":
+            segment = campaign.get("segment_query", "")
+            if not segment:
+                await update.message.reply_text(f"Segment first: /campaign {campaign_id} segment <criteria>")
+                return
+
+            await update.message.reply_text("Generating campaign messages...")
+            matches = camp.segment_audience(segment)
+            generated = 0
+            for name in matches[:20]:
+                msg = camp.generate_campaign_message(
+                    prospect_name=name,
+                    campaign_context=campaign["description"],
+                    channel=campaign["channel"],
+                )
+                if msg:
+                    with db.get_db() as conn:
+                        conn.execute(
+                            "INSERT INTO campaign_messages (campaign_id, prospect_name, content, queue_id, wave) VALUES (?, ?, ?, ?, 1)",
+                            (campaign_id, name, msg["content"], msg["queue_id"]),
+                        )
+                    generated += 1
+
+            camp.update_campaign_status(campaign_id, "active")
+            await update.message.reply_text(
+                f"Generated {generated} messages for campaign #{campaign_id}.\n"
+                f"Use /drafts to review and approve them."
+            )
+
+        elif sub_action == "status":
+            text = camp.format_campaign_summary(campaign)
+            await update.message.reply_text(text)
+
+    else:
+        await update.message.reply_text("Unknown campaign action. Use /campaign for help.")
+
+
 def build_application():
     """Build the Telegram Application with all handlers (shared by main and webhook)."""
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
@@ -2892,6 +3010,7 @@ def build_application():
     app.add_handler(CommandHandler("news", cmd_calendar))  # alias for /calendar
     app.add_handler(CallbackQueryHandler(handle_content_callback, pattern=r"^content_"))
     app.add_handler(CommandHandler("trust", cmd_trust))
+    app.add_handler(CommandHandler("campaign", cmd_campaign))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice_message))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
