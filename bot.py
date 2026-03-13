@@ -2965,6 +2965,57 @@ async def cmd_campaign(update, context):
         await update.message.reply_text("Unknown campaign action. Use /campaign for help.")
 
 
+async def cmd_nurture(update, context):
+    """Manage nurture sequences: /nurture, /nurture start <name>, /nurture stop <id>"""
+    if not await _require_admin(update):
+        return
+
+    import nurture
+
+    args = context.args
+    if not args:
+        active = nurture.get_active_sequences()
+        if not active:
+            await update.message.reply_text(
+                "No active nurture sequences.\n"
+                "Start one: /nurture start <prospect name>"
+            )
+            return
+        lines = [f"ACTIVE NURTURE SEQUENCES ({len(active)}):\n"]
+        for seq in active[:10]:
+            lines.append(nurture.format_sequence_for_telegram(seq))
+            lines.append("")
+        await update.message.reply_text("\n".join(lines))
+        return
+
+    action = args[0].lower()
+
+    if action == "start":
+        if len(args) < 2:
+            await update.message.reply_text("Usage: /nurture start <prospect name>")
+            return
+        name = " ".join(args[1:])
+        prospect = db.get_prospect_by_name(name)
+        pid = prospect["id"] if prospect else None
+        seq = nurture.create_sequence(prospect_name=name, prospect_id=pid)
+        await update.message.reply_text(
+            f"Nurture sequence started for {name}.\n"
+            f"Sequence #{seq['id']} — {seq['total_touches']} touches over ~3 weeks.\n"
+            f"First touch: {seq.get('next_touch_date', 'soon')}"
+        )
+
+    elif action == "stop":
+        if len(args) < 2 or not args[1].isdigit():
+            await update.message.reply_text("Usage: /nurture stop <sequence_id>")
+            return
+        seq_id = int(args[1])
+        nurture.complete_sequence(seq_id, reason="manual_stop")
+        await update.message.reply_text(f"Nurture sequence #{seq_id} stopped.")
+
+    else:
+        await update.message.reply_text("Usage: /nurture, /nurture start <name>, /nurture stop <id>")
+
+
 def build_application():
     """Build the Telegram Application with all handlers (shared by main and webhook)."""
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
@@ -3011,6 +3062,7 @@ def build_application():
     app.add_handler(CallbackQueryHandler(handle_content_callback, pattern=r"^content_"))
     app.add_handler(CommandHandler("trust", cmd_trust))
     app.add_handler(CommandHandler("campaign", cmd_campaign))
+    app.add_handler(CommandHandler("nurture", cmd_nurture))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice_message))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))

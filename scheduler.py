@@ -824,6 +824,51 @@ async def daily_market_check():
         logger.exception("Daily market check failed")
 
 
+# ── Nurture Sequence Check ──
+
+async def check_nurture_sequences():
+    """Check for due nurture touches and generate them."""
+    if not _bot or not CHAT_ID:
+        return
+
+    try:
+        import nurture
+
+        due = nurture.get_due_touches()
+        if not due:
+            return
+
+        generated = 0
+        for seq in due:
+            try:
+                touch = nurture.generate_touch(seq["id"])
+                if touch:
+                    # Send notification to Marc
+                    text = (
+                        f"NURTURE TOUCH — {touch['prospect_name']}\n"
+                        f"Touch {touch['touch_number']}/{touch['total_touches']}\n\n"
+                        f"{touch['content'][:500]}\n\n"
+                        f"Queue #{touch['queue_id']} — /drafts to review"
+                    )
+                    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+                    keyboard = InlineKeyboardMarkup([
+                        [
+                            InlineKeyboardButton("Approve", callback_data=f"draft_approve_{touch['queue_id']}"),
+                            InlineKeyboardButton("Skip", callback_data=f"draft_dismiss_{touch['queue_id']}"),
+                        ],
+                    ])
+                    await _bot.send_message(chat_id=CHAT_ID, text=text, reply_markup=keyboard)
+                    generated += 1
+            except Exception:
+                logger.exception("Nurture touch failed for sequence #%s", seq["id"])
+
+        if generated:
+            logger.info("Generated %d nurture touches", generated)
+
+    except Exception:
+        logger.exception("Nurture sequence check failed")
+
+
 # ── Scheduler entry point ──
 
 def start_scheduler(telegram_app, event_loop=None):
@@ -961,6 +1006,17 @@ def start_scheduler(telegram_app, event_loop=None):
         minute=30,
         id="daily_market_check",
         name="Daily Market Check",
+    )
+
+    # Daily nurture check — 9AM ET weekdays
+    scheduler.add_job(
+        check_nurture_sequences,
+        "cron",
+        day_of_week="mon-fri",
+        hour=9,
+        minute=0,
+        id="check_nurture_sequences",
+        name="Nurture Sequence Check",
     )
 
     scheduler.start()
