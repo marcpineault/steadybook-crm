@@ -107,6 +107,16 @@ def _create_task_from_chat(args: dict) -> str:
     return "Error: could not create task (missing title?)."
 
 
+def _get_client_memory(prospect_name):
+    """Look up client memory profile for a prospect."""
+    import memory_engine
+    prospect = db.get_prospect_by_name(prospect_name)
+    if not prospect:
+        return f"No prospect found matching '{prospect_name}'"
+    profile_text = memory_engine.get_profile_summary_text(prospect["id"])
+    return f"Client Intelligence for {prospect['name']}:\n{profile_text}"
+
+
 def add_prospect(data: dict) -> str:
     """Add a new prospect (via SQLite)."""
     return db.add_prospect(data)
@@ -1154,6 +1164,9 @@ TOOLS = [
         "due_date": {"type": "string", "description": "Due date in YYYY-MM-DD format. Null if no due date."},
         "remind_at": {"type": "string", "description": "Reminder datetime in YYYY-MM-DD HH:MM format (Eastern Time). Null if no reminder. For 'in X minutes', calculate the actual datetime."},
     }, ["title"]),
+    _tool("get_client_memory", "Get detailed client intelligence profile — life context, financial situation, communication preferences, key dates, relationship notes. Use this before drafting emails, preparing for meetings, or when you need deeper context about a prospect.", {
+        "prospect_name": {"type": "string", "description": "Name of the prospect to look up"},
+    }, ["prospect_name"]),
 ]
 
 # Task management tools (used by /todo command)
@@ -1195,6 +1208,7 @@ TOOL_FUNCTIONS = {
     "get_term_quote": lambda args: get_term_quote(args["age"], args["gender"], args.get("smoker", False), args["term"], args["amount"], args.get("health", "regular")),
     "get_disability_quote": lambda args: get_disability_quote(args.get("age", 0), args.get("gender", ""), args["occupation"], args["income"], args.get("benefit", 0), args.get("wait_days", "30"), args.get("benefit_period", "5"), args.get("coverage_type", "24hour")),
     "create_task": lambda args: _create_task_from_chat(args),
+    "get_client_memory": lambda args: _get_client_memory(args["prospect_name"]),
 }
 
 FORMATTING_RULE = "Reply in plain text only. No markdown, no bold, no italic, no bullet points, no numbered lists, no emojis. Write like texting. Keep it short."

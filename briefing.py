@@ -190,13 +190,21 @@ def _build_briefing_prompt(data):
     overdue_lines = [f"- {t.get('title')} — due {t.get('due_date')} (prospect: {t.get('prospect', 'N/A')})" for t in data["tasks_overdue"]]
     tasks_overdue_summary = "\n".join(overdue_lines) if overdue_lines else "None"
 
-    # Call list (get_ranked_call_list returns flat merged dicts: {**prospect, **score_data})
-    call_lines = []
+    # Enrich call list with memory context
+    # Note: get_ranked_call_list returns flat merged dicts {**prospect, **score_data}
+    enriched_calls = []
     for entry in data["call_list"][:5]:
-        call_lines.append(
-            f"- {entry.get('name', 'Unknown')} (score: {entry.get('score', 0)}) — {entry.get('action', 'Follow up')}"
-        )
-    call_list_summary = "\n".join(call_lines) if call_lines else "No calls recommended"
+        name = entry.get("name", "Unknown")
+        line = f"- {name} (score: {entry.get('score', 0)}) — {entry.get('action', 'Follow up')}"
+        if entry.get("id"):
+            try:
+                profile = memory_engine.get_profile_summary_text(entry["id"])
+                if profile and "No additional" not in profile:
+                    line += f"\n  Context: {profile[:200]}"
+            except Exception:
+                pass
+        enriched_calls.append(line)
+    call_list_summary = "\n".join(enriched_calls) if enriched_calls else "No calls recommended"
 
     # Recent activity
     act_lines = [
