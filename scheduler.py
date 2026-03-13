@@ -661,6 +661,47 @@ async def check_task_reminders():
         logger.error(f"Task reminder check failed: {e}")
 
 
+# ── Nudge Stale Drafts ──
+
+async def nudge_stale_drafts():
+    """Check for pending drafts that haven't been acted on and send reminders."""
+    if not _bot or not CHAT_ID:
+        return
+
+    try:
+        import follow_up as fu
+        import approval_queue
+
+        # First, re-surface snoozed drafts older than 1 hour
+        with db.get_db() as conn:
+            snoozed = conn.execute(
+                """SELECT id FROM approval_queue
+                   WHERE status = 'snoozed'
+                   AND acted_on_at <= datetime('now', '-1 hour')""",
+            ).fetchall()
+            for row in snoozed:
+                approval_queue.update_draft_status(row["id"], "pending")
+
+        # Then check for stale pending drafts (computed AFTER re-surfacing)
+        stale = fu.get_stale_drafts()
+        if not stale:
+            return
+
+        count = len(stale)
+        if count == 1:
+            draft = stale[0]
+            name = draft.get("prospect_name", "Unknown")
+            text = f"NUDGE: You have a pending {draft['type']} draft for {name} (#{draft['id']}).\n/drafts to review."
+        else:
+            text = f"NUDGE: You have {count} pending drafts awaiting review.\n/drafts to review them."
+
+        await _bot.send_message(chat_id=CHAT_ID, text=text)
+        logger.info("Sent nudge for %d stale drafts", count)
+
+    except Exception:
+        logger.exception("Nudge stale drafts failed")
+
+
 # ── Scheduler entry point ──
 
 def start_scheduler(telegram_app, event_loop=None):
@@ -754,6 +795,17 @@ def start_scheduler(telegram_app, event_loop=None):
         seconds=60,
         id="task_reminders",
         name="Task Reminder Check",
+    )
+
+    # Nudge for stale drafts every 2 hours during business hours
+    scheduler.add_job(
+        nudge_stale_drafts,
+        "cron",
+        day_of_week="mon-fri",
+        hour="10,12,14,16",
+        minute=30,
+        id="nudge_stale_drafts",
+        name="Nudge Stale Drafts",
     )
 
     scheduler.start()
