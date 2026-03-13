@@ -2779,6 +2779,14 @@ async def handle_content_callback(update, context):
 def build_application():
     """Build the Telegram Application with all handlers (shared by main and webhook)."""
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+
+    # Seed market calendar with default events
+    try:
+        import market_intel
+        market_intel.seed_default_calendar()
+    except Exception:
+        logger.warning("Market calendar seeding failed (non-blocking)")
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", start))
     app.add_handler(CommandHandler("export", export))
