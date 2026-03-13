@@ -275,6 +275,21 @@ def init_db():
             created_at TEXT DEFAULT (datetime('now')),
             FOREIGN KEY (prospect_id) REFERENCES prospects(id)
         );
+
+        CREATE TABLE IF NOT EXISTS outcomes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            action_id INTEGER,
+            action_type TEXT NOT NULL,
+            target TEXT,
+            sent_at TEXT,
+            response_received INTEGER DEFAULT 0,
+            response_at TEXT,
+            response_type TEXT,
+            converted INTEGER DEFAULT 0,
+            notes TEXT DEFAULT '',
+            created_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (action_id) REFERENCES audit_log(id)
+        );
         """)
 
     # Seed default trust level (idempotent — skips if any row exists)
