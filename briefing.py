@@ -57,6 +57,14 @@ def assemble_briefing_data():
     except Exception:
         pending_approvals = 0
 
+    # Market intelligence (calendar seeded at bot startup, not here)
+    try:
+        import market_intel
+        market_events_text = market_intel.format_for_briefing(days_ahead=7)
+    except Exception:
+        logger.exception("Market intel failed for briefing (non-blocking)")
+        market_events_text = ""
+
     return {
         "date": today,
         "prospects": active,
@@ -68,6 +76,7 @@ def assemble_briefing_data():
         "meetings_today": meetings_today,
         "call_list": call_list,
         "pending_approvals": pending_approvals,
+        "market_events": market_events_text,
         "pipeline_stats": {
             "active_count": len(active),
             "total_revenue": total_revenue,
@@ -122,6 +131,9 @@ RECENT ACTIVITY (last 7 days):
 
 PENDING APPROVALS: {pending_approvals} items in queue
 
+MARKET INTELLIGENCE:
+{market_events}
+
 INSTRUCTIONS:
 1. Start with a pipeline health score (0-100) and one-line trend assessment
 2. Revenue forecast for the month
@@ -129,6 +141,7 @@ INSTRUCTIONS:
 4. Risk alerts (deals going cold, overdue follow-ups)
 5. Today's call list with brief talking points for each
 6. Mention pending approvals if any
+7. MARKET CONTEXT — if any upcoming events, mention how they affect prospects
 
 Keep it under 2000 characters. Be specific — use names, numbers, and days."""
 
@@ -229,6 +242,7 @@ def _build_briefing_prompt(data):
         call_list_summary=_escape_braces(call_list_summary),
         activity_summary=_escape_braces(activity_summary),
         pending_approvals=data["pending_approvals"],
+        market_events=_escape_braces(data.get("market_events", "")),
     )
 
 
