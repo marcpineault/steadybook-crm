@@ -2,17 +2,17 @@ import os
 import sys
 import sqlite3
 
-os.environ["DATA_DIR"] = "/tmp/test_calm_bot_schema"
-os.makedirs(os.environ["DATA_DIR"], exist_ok=True)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+os.environ.setdefault("DATA_DIR", "/tmp/test_calm_bot")
+os.makedirs("/tmp/test_calm_bot", exist_ok=True)
+
 import db
 
 
 def setup_function():
-    db_path = os.path.join(os.environ["DATA_DIR"], "pipeline.db")
-    if os.path.exists(db_path):
-        os.remove(db_path)
+    if os.path.exists(db.DB_PATH):
+        os.remove(db.DB_PATH)
     db.init_db()
 
 
