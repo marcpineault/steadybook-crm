@@ -125,8 +125,8 @@ def generate_post(platform, post_type, topic, context=""):
         prompt = GENERATE_POST_PROMPT.replace("{platform}", platform)
         prompt = prompt.replace("{post_type_description}", type_desc)
         prompt = prompt.replace("{post_type}", post_type)
-        # User-sourced data last to prevent placeholder corruption
         prompt = prompt.replace("{brand_voice_examples}", examples_text)
+        # User-sourced data last to prevent placeholder corruption
         prompt = prompt.replace("{topic}", topic)
         prompt = prompt.replace("{context}", context)
 

@@ -2841,19 +2841,8 @@ async def handle_content_callback(update, context):
 
     if action == "approve":
         approval_queue.update_draft_status(queue_id, "approved")
-        # If this is a content_post (not a plan), save the content as a brand voice example
-        # This is the brand voice evolution mechanism — approved posts improve the voice library
-        if draft.get("type") == "content_post" and draft.get("content"):
-            try:
-                import content_engine
-                channel = draft.get("channel", "linkedin_post")
-                platform = channel.replace("_post", "")
-                context_text = draft.get("context", "")
-                post_type = context_text.split(":")[0].strip() if ":" in context_text else "general"
-                content_engine.add_brand_voice_example(platform, draft["content"], post_type)
-                logger.info("Brand voice updated from approved content post #%s", queue_id)
-            except Exception:
-                logger.warning("Brand voice update failed for #%s (non-blocking)", queue_id)
+        # Brand voice evolution for content_post is handled in handle_draft_callback
+        # (content_post drafts use _draft_keyboard, not content_ buttons)
 
         if draft.get("type") == "content_plan":
             await query.edit_message_text(
