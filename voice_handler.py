@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import tempfile
+from datetime import datetime
 
 from openai import OpenAI
 
@@ -181,6 +182,20 @@ async def extract_and_update(transcript: str, bot=None, source: str = "voice_not
             "outcome": p.get("notes", ""),
             "next_step": p.get("action_items", ""),
         })
+
+        # Extract client intelligence into Memory Engine
+        try:
+            import memory_engine
+            prospect_obj = db.get_prospect_by_name(name)
+            if prospect_obj:
+                memory_engine.extract_facts_from_interaction(
+                    prospect_name=name,
+                    prospect_id=prospect_obj["id"],
+                    interaction_text=transcript,
+                    source=f"{source}_{datetime.now().strftime('%Y-%m-%d')}",
+                )
+        except Exception:
+            logger.exception("Memory extraction failed for %s (non-blocking)", name)
 
     summary = f"{source_label.title()} processed:\n" + "\n".join(f"  {r}" for r in results)
     return summary
