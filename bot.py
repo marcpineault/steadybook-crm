@@ -12,7 +12,7 @@ import requests
 from openai import OpenAI
 import db
 from dotenv import load_dotenv
-from telegram import Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from voice_handler import handle_voice_message
 
@@ -39,6 +39,39 @@ client = OpenAI(api_key=OPENAI_KEY)
 
 # DEPRECATED — kept for scheduler import compat
 pipeline_lock = threading.RLock()
+
+
+def _draft_keyboard(queue_id):
+    """Build inline keyboard for draft approval."""
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("Approve", callback_data=f"draft_approve_{queue_id}"),
+            InlineKeyboardButton("Edit", callback_data=f"draft_edit_{queue_id}"),
+        ],
+        [
+            InlineKeyboardButton("Skip", callback_data=f"draft_dismiss_{queue_id}"),
+            InlineKeyboardButton("Snooze 1h", callback_data=f"draft_snooze_{queue_id}"),
+        ],
+    ])
+
+
+async def send_draft_to_telegram(bot, draft_result):
+    """Send a follow-up draft to Telegram with approval buttons."""
+    import follow_up as fu
+    text = fu.format_draft_for_telegram(draft_result)
+    queue_id = draft_result["queue_id"]
+    keyboard = _draft_keyboard(queue_id)
+
+    try:
+        msg = await bot.send_message(
+            chat_id=ADMIN_CHAT_ID,
+            text=text,
+            reply_markup=keyboard,
+        )
+        import approval_queue
+        approval_queue.set_telegram_message_id(queue_id, str(msg.message_id))
+    except Exception:
+        logger.exception("Failed to send draft notification for queue #%s", queue_id)
 
 
 def _is_admin(update) -> bool:
@@ -1391,7 +1424,10 @@ async def _llm_respond(update, messages, tools=None):
                         activity_type=tool_input.get("action", "activity"),
                     )
                     if fu_draft:
-                        logger.info("Follow-up draft generated for %s (queue #%s)", fu_prospect, fu_draft["queue_id"])
+                        try:
+                            await send_draft_to_telegram(update.get_bot(), fu_draft)
+                        except Exception:
+                            logger.exception("Could not send follow-up draft notification")
                 except Exception:
                     logger.exception("Follow-up draft generation failed (non-blocking)")
 
@@ -2385,6 +2421,108 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def handle_draft_callback(update, context):
+    """Handle inline keyboard callbacks for draft approval."""
+    query = update.callback_query
+    await query.answer()
+
+    if not _is_admin(update):
+        return
+
+    data = query.data
+    if not data.startswith("draft_"):
+        return
+
+    parts = data.split("_", 2)  # draft_action_queueid
+    if len(parts) < 3:
+        return
+
+    action = parts[1]
+    try:
+        queue_id = int(parts[2])
+    except ValueError:
+        return
+
+    import approval_queue
+    import compliance as comp
+
+    draft = approval_queue.get_draft_by_id(queue_id)
+    if not draft:
+        await query.edit_message_text("Draft not found or already processed.")
+        return
+
+    if action == "approve":
+        approval_queue.update_draft_status(queue_id, "approved")
+        try:
+            audit_id = _find_audit_entry(queue_id, draft)
+            if audit_id:
+                comp.update_audit_outcome(audit_id, outcome="approved", approved_by="marc")
+        except Exception:
+            logger.warning("Could not update audit log for draft #%s", queue_id)
+        await query.edit_message_text(
+            f"APPROVED — {draft.get('type', 'draft')} for queue #{queue_id}\n\n"
+            f"{draft['content']}\n\n"
+            "Copy-paste the above into Outlook."
+        )
+
+    elif action == "dismiss":
+        approval_queue.update_draft_status(queue_id, "dismissed")
+        await query.edit_message_text(f"Dismissed draft #{queue_id}.")
+
+    elif action == "snooze":
+        approval_queue.update_draft_status(queue_id, "snoozed")
+        await query.edit_message_text(f"Snoozed draft #{queue_id} — will remind in 1 hour.")
+
+    elif action == "edit":
+        await query.edit_message_text(
+            f"EDITING draft #{queue_id}\n\n"
+            f"Original:\n{draft['content']}\n\n"
+            "Reply to this message with your changes and I'll regenerate."
+        )
+        context.user_data["editing_draft_id"] = queue_id
+
+
+def _find_audit_entry(queue_id, draft):
+    """Find the audit log entry for this draft. Returns log_id or None."""
+    import compliance as comp
+    entries = comp.get_audit_log(action_type="follow_up_draft", target=None, limit=20)
+    for entry in entries:
+        if draft["content"] in (entry.get("content") or ""):
+            return entry["id"]
+    return None
+
+
+async def cmd_drafts(update, context):
+    """Show pending drafts in the approval queue."""
+    if not await _require_admin(update):
+        return
+
+    import approval_queue
+    pending = approval_queue.get_pending_drafts(limit=10)
+
+    if not pending:
+        await update.message.reply_text("No pending drafts.")
+        return
+
+    for draft in pending[:5]:
+        prospect_name = ""
+        if draft.get("prospect_id"):
+            with db.get_db() as conn:
+                row = conn.execute("SELECT name FROM prospects WHERE id = ?", (draft["prospect_id"],)).fetchone()
+                if row:
+                    prospect_name = row["name"]
+
+        text = (
+            f"DRAFT #{draft['id']} — {draft['type']}\n"
+            f"Prospect: {prospect_name or 'N/A'}\n"
+            f"Channel: {draft['channel']}\n"
+            f"Created: {draft['created_at']}\n\n"
+            f"{draft['content']}"
+        )
+        keyboard = _draft_keyboard(draft["id"])
+        await update.message.reply_text(text, reply_markup=keyboard)
+
+
 def build_application():
     """Build the Telegram Application with all handlers (shared by main and webhook)."""
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
@@ -2413,6 +2551,9 @@ def build_application():
     app.add_handler(CommandHandler("memory", cmd_memory))
     app.add_handler(CommandHandler("confirm", cmd_confirm))
     app.add_handler(CommandHandler("forget", cmd_forget))
+    app.add_handler(CommandHandler("drafts", cmd_drafts))
+    from telegram.ext import CallbackQueryHandler
+    app.add_handler(CallbackQueryHandler(handle_draft_callback, pattern=r"^draft_"))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice_message))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
