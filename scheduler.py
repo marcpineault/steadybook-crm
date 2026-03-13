@@ -158,6 +158,8 @@ async def morning_briefing():
 async def _morning_briefing_inner():
     import briefing as briefing_module
     text = briefing_module.generate_briefing_text()
+    if len(text) > 4096:
+        text = text[:4076] + "\n...(truncated)"
     await _bot.send_message(chat_id=CHAT_ID, text=text)
     logger.info("Morning briefing (strategic) sent.")
 

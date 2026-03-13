@@ -135,6 +135,7 @@ Keep it under 2000 characters. Be specific — use names, numbers, and days."""
 
 def generate_briefing_text():
     """Generate the full strategic morning briefing. Falls back to simple format on failure."""
+    data = None
     try:
         data = assemble_briefing_data()
         prompt = _build_briefing_prompt(data)
@@ -147,7 +148,12 @@ def generate_briefing_text():
         return response.choices[0].message.content.strip()
     except Exception:
         logger.exception("Strategic briefing generation failed, falling back to simple format")
-        return _fallback_briefing()
+        return _fallback_briefing(data)
+
+
+def _escape_braces(s):
+    """Escape curly braces in user-supplied strings to prevent str.format() KeyError."""
+    return s.replace("{", "{{").replace("}", "}}")
 
 
 def _build_briefing_prompt(data):
@@ -202,22 +208,23 @@ def _build_briefing_prompt(data):
     return BRIEFING_PROMPT.format(
         date=data["date"],
         active_count=stats["active_count"],
-        prospect_summary=prospect_summary,
+        prospect_summary=_escape_braces(prospect_summary),
         total_revenue=stats["total_revenue"],
         weighted_forecast=stats["weighted_forecast"],
-        meetings_summary=meetings_summary,
-        tasks_today_summary=tasks_today_summary,
-        tasks_overdue_summary=tasks_overdue_summary,
-        call_list_summary=call_list_summary,
-        activity_summary=activity_summary,
+        meetings_summary=_escape_braces(meetings_summary),
+        tasks_today_summary=_escape_braces(tasks_today_summary),
+        tasks_overdue_summary=_escape_braces(tasks_overdue_summary),
+        call_list_summary=_escape_braces(call_list_summary),
+        activity_summary=_escape_braces(activity_summary),
         pending_approvals=data["pending_approvals"],
     )
 
 
-def _fallback_briefing():
+def _fallback_briefing(data=None):
     """Simple fallback briefing when GPT is unavailable (matches current morning briefing style)."""
     try:
-        data = assemble_briefing_data()
+        if data is None:
+            data = assemble_briefing_data()
         stats = data["pipeline_stats"]
         lines = [
             f"MORNING BRIEFING — {data['date']}",
