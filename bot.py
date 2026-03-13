@@ -2031,7 +2031,10 @@ async def cmd_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         fact_id = int(context.args[0])
         memory_engine.confirm_fact(fact_id)
         await update.message.reply_text(f"Fact #{fact_id} confirmed.")
-    except (ValueError, Exception) as e:
+    except ValueError:
+        await update.message.reply_text("Invalid fact ID — must be a number.")
+    except Exception as e:
+        logger.exception(f"/confirm error: {e}")
         await update.message.reply_text(f"Error: {e}")
 
 
@@ -2047,7 +2050,10 @@ async def cmd_forget(update: Update, context: ContextTypes.DEFAULT_TYPE):
         fact_id = int(context.args[0])
         memory_engine.delete_fact(fact_id)
         await update.message.reply_text(f"Fact #{fact_id} forgotten.")
-    except (ValueError, Exception) as e:
+    except ValueError:
+        await update.message.reply_text("Invalid fact ID — must be a number.")
+    except Exception as e:
+        logger.exception(f"/forget error: {e}")
         await update.message.reply_text(f"Error: {e}")
 
 

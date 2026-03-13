@@ -200,7 +200,11 @@ def _build_briefing_prompt(data):
             try:
                 profile = memory_engine.get_profile_summary_text(entry["id"])
                 if profile and "No additional" not in profile:
-                    line += f"\n  Context: {profile[:200]}"
+                    snippet = profile[:200]
+                    cutoff = snippet.rfind(" ")
+                    if cutoff > 100:
+                        snippet = snippet[:cutoff]
+                    line += f"\n  Context: {snippet}"
             except Exception:
                 pass
         enriched_calls.append(line)

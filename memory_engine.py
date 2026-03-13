@@ -96,13 +96,17 @@ def get_facts_needing_review():
 def confirm_fact(fact_id):
     """Mark a fact as confirmed (clears needs_review flag)."""
     with db.get_db() as conn:
-        conn.execute("UPDATE client_memory SET needs_review = 0 WHERE id = ?", (fact_id,))
+        cursor = conn.execute("UPDATE client_memory SET needs_review = 0 WHERE id = ?", (fact_id,))
+        if cursor.rowcount == 0:
+            raise ValueError(f"Fact #{fact_id} not found.")
 
 
 def delete_fact(fact_id):
     """Delete a fact from client memory."""
     with db.get_db() as conn:
-        conn.execute("DELETE FROM client_memory WHERE id = ?", (fact_id,))
+        cursor = conn.execute("DELETE FROM client_memory WHERE id = ?", (fact_id,))
+        if cursor.rowcount == 0:
+            raise ValueError(f"Fact #{fact_id} not found.")
 
 
 def get_all_facts_for_prospect(prospect_id):
