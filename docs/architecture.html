@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Calm Money AI — System Architecture</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', -apple-system, sans-serif;
+    background: #0f172a;
+    color: #e2e8f0;
+    padding: 40px 20px;
+    min-height: 100vh;
+  }
+
+  .container { max-width: 1100px; margin: 0 auto; }
+
+  /* Header */
+  .header {
+    text-align: center;
+    margin-bottom: 48px;
+  }
+  .header h1 {
+    font-size: 2.4rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, #38bdf8, #818cf8, #c084fc);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 8px;
+    letter-spacing: -0.5px;
+  }
+  .header p {
+    font-size: 1.1rem;
+    color: #94a3b8;
+    font-weight: 300;
+  }
+  .stats-row {
+    display: flex;
+    justify-content: center;
+    gap: 32px;
+    margin-top: 20px;
+  }
+  .stat {
+    text-align: center;
+  }
+  .stat-num {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: #f8fafc;
+  }
+  .stat-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #64748b;
+  }
+
+  /* Main Flow */
+  .flow-wrapper {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  /* Feedback arrow */
+  .feedback-arrow {
+    position: absolute;
+    right: -50px;
+    top: 60px;
+    bottom: 60px;
+    width: 40px;
+  }
+  .feedback-arrow svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  /* Phase cards */
+  .phase {
+    border-radius: 16px;
+    padding: 24px 28px;
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.2s, box-shadow 0.2s;
+    cursor: default;
+  }
+  .phase:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+  }
+  .phase::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    opacity: 0.08;
+    background: white;
+    border-radius: 16px;
+  }
+
+  .phase-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 14px;
+  }
+  .phase-num {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.9rem;
+    flex-shrink: 0;
+  }
+  .phase-title {
+    font-size: 1.15rem;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+  }
+  .phase-subtitle {
+    font-size: 0.8rem;
+    opacity: 0.7;
+    font-weight: 400;
+  }
+  .phase-modules {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .module-tag {
+    padding: 4px 12px;
+    border-radius: 8px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    letter-spacing: 0.3px;
+  }
+
+  .phase-flow {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    flex-wrap: wrap;
+    font-size: 0.85rem;
+  }
+  .flow-step {
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .flow-arrow {
+    font-size: 1.1rem;
+    opacity: 0.5;
+    padding: 0 4px;
+  }
+
+  /* Phase colors */
+  .phase-1 { border: 1px solid rgba(45, 212, 191, 0.3); background: linear-gradient(135deg, rgba(20, 184, 166, 0.12), rgba(6, 182, 212, 0.06)); }
+  .phase-1 .phase-num { background: rgba(20, 184, 166, 0.2); color: #2dd4bf; }
+  .phase-1 .module-tag { background: rgba(20, 184, 166, 0.15); color: #5eead4; }
+  .phase-1 .flow-step { background: rgba(20, 184, 166, 0.1); color: #99f6e4; }
+  .phase-1 .phase-title { color: #5eead4; }
+
+  .phase-2 { border: 1px solid rgba(96, 165, 250, 0.3); background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(99, 102, 241, 0.06)); }
+  .phase-2 .phase-num { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
+  .phase-2 .module-tag { background: rgba(59, 130, 246, 0.15); color: #93c5fd; }
+  .phase-2 .flow-step { background: rgba(59, 130, 246, 0.1); color: #bfdbfe; }
+  .phase-2 .phase-title { color: #93c5fd; }
+
+  .phase-3 { border: 1px solid rgba(168, 85, 247, 0.3); background: linear-gradient(135deg, rgba(139, 92, 246, 0.12), rgba(168, 85, 247, 0.06)); }
+  .phase-3 .phase-num { background: rgba(139, 92, 246, 0.2); color: #a78bfa; }
+  .phase-3 .module-tag { background: rgba(139, 92, 246, 0.15); color: #c4b5fd; }
+  .phase-3 .flow-step { background: rgba(139, 92, 246, 0.1); color: #ddd6fe; }
+  .phase-3 .phase-title { color: #c4b5fd; }
+
+  .phase-4 { border: 1px solid rgba(251, 146, 60, 0.3); background: linear-gradient(135deg, rgba(249, 115, 22, 0.12), rgba(251, 146, 60, 0.06)); }
+  .phase-4 .phase-num { background: rgba(249, 115, 22, 0.2); color: #fb923c; }
+  .phase-4 .module-tag { background: rgba(249, 115, 22, 0.15); color: #fdba74; }
+  .phase-4 .flow-step { background: rgba(249, 115, 22, 0.1); color: #fed7aa; }
+  .phase-4 .phase-title { color: #fdba74; }
+
+  .phase-5 { border: 1px solid rgba(74, 222, 128, 0.3); background: linear-gradient(135deg, rgba(34, 197, 94, 0.12), rgba(74, 222, 128, 0.06)); }
+  .phase-5 .phase-num { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
+  .phase-5 .module-tag { background: rgba(34, 197, 94, 0.15); color: #86efac; }
+  .phase-5 .flow-step { background: rgba(34, 197, 94, 0.1); color: #bbf7d0; }
+  .phase-5 .phase-title { color: #86efac; }
+
+  /* Value prop */
+  .phase-value {
+    margin-top: 12px;
+    padding: 10px 16px;
+    border-radius: 10px;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    font-weight: 400;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .phase-value-icon {
+    font-size: 1.1rem;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .phase-value-text {
+    color: #cbd5e1;
+  }
+  .phase-value-text strong {
+    color: #f1f5f9;
+    font-weight: 600;
+  }
+  .phase-1 .phase-value { background: rgba(20, 184, 166, 0.06); border: 1px solid rgba(20, 184, 166, 0.15); }
+  .phase-2 .phase-value { background: rgba(59, 130, 246, 0.06); border: 1px solid rgba(59, 130, 246, 0.15); }
+  .phase-3 .phase-value { background: rgba(139, 92, 246, 0.06); border: 1px solid rgba(139, 92, 246, 0.15); }
+  .phase-4 .phase-value { background: rgba(249, 115, 22, 0.06); border: 1px solid rgba(249, 115, 22, 0.15); }
+  .phase-5 .phase-value { background: rgba(34, 197, 94, 0.06); border: 1px solid rgba(34, 197, 94, 0.15); }
+
+  /* Connector between phases */
+  .connector {
+    display: flex;
+    justify-content: center;
+    height: 8px;
+  }
+  .connector-line {
+    width: 2px;
+    height: 100%;
+    background: linear-gradient(to bottom, rgba(148,163,184,0.3), rgba(148,163,184,0.1));
+  }
+
+  /* Foundation */
+  .foundation {
+    margin-top: 32px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+  }
+  .foundation-block {
+    background: rgba(30, 41, 59, 0.8);
+    border: 1px solid rgba(71, 85, 105, 0.4);
+    border-radius: 14px;
+    padding: 20px;
+    text-align: center;
+    transition: border-color 0.2s;
+  }
+  .foundation-block:hover {
+    border-color: rgba(148, 163, 184, 0.4);
+  }
+  .foundation-icon {
+    font-size: 2rem;
+    margin-bottom: 8px;
+  }
+  .foundation-name {
+    font-weight: 600;
+    font-size: 0.95rem;
+    margin-bottom: 4px;
+  }
+  .foundation-detail {
+    font-size: 0.75rem;
+    color: #64748b;
+  }
+
+  /* Feedback loop label */
+  .feedback-section {
+    margin-top: 28px;
+    text-align: center;
+    padding: 16px;
+    border: 1px dashed rgba(74, 222, 128, 0.3);
+    border-radius: 12px;
+    background: rgba(34, 197, 94, 0.04);
+  }
+  .feedback-section .label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #86efac;
+    margin-bottom: 6px;
+  }
+  .feedback-section .desc {
+    font-size: 0.8rem;
+    color: #64748b;
+    line-height: 1.5;
+  }
+
+  /* Commands section */
+  .commands-section {
+    margin-top: 40px;
+  }
+  .commands-section h2 {
+    font-size: 1.3rem;
+    font-weight: 700;
+    margin-bottom: 20px;
+    color: #cbd5e1;
+  }
+  .cmd-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+  }
+  .cmd-group {
+    background: rgba(30, 41, 59, 0.6);
+    border: 1px solid rgba(51, 65, 85, 0.5);
+    border-radius: 12px;
+    padding: 16px;
+  }
+  .cmd-group-title {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #64748b;
+    margin-bottom: 10px;
+    font-weight: 600;
+  }
+  .cmd {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+    font-size: 0.8rem;
+  }
+  .cmd code {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    background: rgba(99, 102, 241, 0.15);
+    color: #a5b4fc;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 500;
+  }
+  .cmd span {
+    color: #94a3b8;
+  }
+
+  /* Schedule section */
+  .schedule-section {
+    margin-top: 32px;
+  }
+  .schedule-section h2 {
+    font-size: 1.3rem;
+    font-weight: 700;
+    margin-bottom: 20px;
+    color: #cbd5e1;
+  }
+  .timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .time-slot {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 10px 16px;
+    background: rgba(30, 41, 59, 0.5);
+    border-radius: 10px;
+    border-left: 3px solid;
+  }
+  .time-slot .time {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.8rem;
+    font-weight: 600;
+    min-width: 100px;
+    color: #cbd5e1;
+  }
+  .time-slot .job {
+    font-size: 0.85rem;
+    color: #94a3b8;
+  }
+
+  /* Data flow section */
+  .dataflow {
+    margin-top: 40px;
+    background: rgba(30, 41, 59, 0.5);
+    border: 1px solid rgba(51, 65, 85, 0.5);
+    border-radius: 16px;
+    padding: 28px;
+  }
+  .dataflow h2 {
+    font-size: 1.3rem;
+    font-weight: 700;
+    margin-bottom: 20px;
+    color: #cbd5e1;
+  }
+  .flow-diagram {
+    display: flex;
+    align-items: stretch;
+    gap: 12px;
+    overflow-x: auto;
+    padding-bottom: 8px;
+  }
+  .flow-col {
+    flex: 1;
+    min-width: 160px;
+    text-align: center;
+  }
+  .flow-col-header {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #64748b;
+    margin-bottom: 12px;
+    font-weight: 600;
+  }
+  .flow-col-items {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .flow-item {
+    background: rgba(99, 102, 241, 0.08);
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 0.78rem;
+    color: #c7d2fe;
+  }
+  .flow-col-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    color: #475569;
+    min-width: 24px;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <h1>CALM MONEY AI</h1>
+    <p>5-Phase AI Business Partner for Financial Advisory</p>
+    <div class="stats-row">
+      <div class="stat"><div class="stat-num">15</div><div class="stat-label">Modules</div></div>
+      <div class="stat"><div class="stat-num">25+</div><div class="stat-label">Commands</div></div>
+      <div class="stat"><div class="stat-num">177</div><div class="stat-label">Tests</div></div>
+      <div class="stat"><div class="stat-num">11K+</div><div class="stat-label">Lines</div></div>
+    </div>
+  </div>
+
+  <!-- Hero Value Props -->
+  <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 40px;">
+    <div style="background: linear-gradient(135deg, rgba(56, 189, 248, 0.08), rgba(99, 102, 241, 0.04)); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 14px; padding: 20px; text-align: center;">
+      <div style="font-size: 2rem; margin-bottom: 8px;">&#x23f1;&#xfe0f;</div>
+      <div style="font-size: 0.95rem; font-weight: 600; color: #f1f5f9; margin-bottom: 6px;">Save 10+ hrs/week</div>
+      <div style="font-size: 0.78rem; color: #94a3b8; line-height: 1.5;">Auto-drafted follow-ups, content plans, meeting prep, and nurture sequences &mdash; all running while you're with clients</div>
+    </div>
+    <div style="background: linear-gradient(135deg, rgba(168, 85, 247, 0.08), rgba(236, 72, 153, 0.04)); border: 1px solid rgba(168, 85, 247, 0.2); border-radius: 14px; padding: 20px; text-align: center;">
+      <div style="font-size: 2rem; margin-bottom: 8px;">&#x1f6e1;&#xfe0f;</div>
+      <div style="font-size: 0.95rem; font-weight: 600; color: #f1f5f9; margin-bottom: 6px;">Zero compliance risk</div>
+      <div style="font-size: 0.78rem; color: #94a3b8; line-height: 1.5;">Every client-facing message passes AI compliance checks and requires your approval &mdash; full audit trail for regulators</div>
+    </div>
+    <div style="background: linear-gradient(135deg, rgba(74, 222, 128, 0.08), rgba(34, 197, 94, 0.04)); border: 1px solid rgba(74, 222, 128, 0.2); border-radius: 14px; padding: 20px; text-align: center;">
+      <div style="font-size: 2rem; margin-bottom: 8px;">&#x1f4c8;</div>
+      <div style="font-size: 0.95rem; font-weight: 600; color: #f1f5f9; margin-bottom: 6px;">No lead left behind</div>
+      <div style="font-size: 0.78rem; color: #94a3b8; line-height: 1.5;">Auto-nag for stale leads, nurture sequences for warm prospects, ranked call lists so you always know who to call next</div>
+    </div>
+  </div>
+
+  <!-- 5 Phases -->
+  <div class="flow-wrapper">
+
+    <!-- Phase 1 -->
+    <div class="phase phase-1">
+      <div class="phase-header">
+        <div class="phase-num">1</div>
+        <div>
+          <div class="phase-title">THE MEMORY</div>
+          <div class="phase-subtitle">Relationship Intelligence</div>
+        </div>
+      </div>
+      <div class="phase-modules">
+        <span class="module-tag">memory_engine.py</span>
+        <span class="module-tag">voice_handler.py</span>
+      </div>
+      <div class="phase-flow">
+        <span class="flow-step">Voice Notes</span>
+        <span class="flow-arrow">&#8594;</span>
+        <span class="flow-step">Whisper Transcription</span>
+        <span class="flow-arrow">&#8594;</span>
+        <span class="flow-step">GPT Fact Extraction</span>
+        <span class="flow-arrow">&#8594;</span>
+        <span class="flow-step">Client Intelligence (6 categories)</span>
+      </div>
+      <div class="phase-value">
+        <span class="phase-value-icon">&#x1f4a1;</span>
+        <span class="phase-value-text"><strong>Never forget a detail again.</strong> Every voice note, call, and meeting is automatically turned into a rich client profile &mdash; kids' names, financial goals, communication preferences. Your clients feel known, not sold to.</span>
+      </div>
+    </div>
+
+    <div class="connector"><div class="connector-line"></div></div>
+
+    <!-- Phase 2 -->
+    <div class="phase phase-2">
+      <div class="phase-header">
+        <div class="phase-num">2</div>
+        <div>
+          <div class="phase-title">THE COMMUNICATOR</div>
+          <div class="phase-subtitle">Approval & Compliance Engine</div>
+        </div>
+      </div>
+      <div class="phase-modules">
+        <span class="module-tag">follow_up.py</span>
+        <span class="module-tag">compliance.py</span>
+        <span class="module-tag">approval_queue.py</span>
+        <span class="module-tag">briefing.py</span>
+      </div>
+      <div class="phase-flow">
+        <span class="flow-step">Auto Follow-ups</span>
+        <span class="flow-arrow">&#8594;</span>
+        <span class="flow-step">Compliance Check</span>
+        <span class="flow-arrow">&#8594;</span>
+        <span class="flow-step">Approval Queue</span>
+        <span class="flow-arrow">&#8594;</span>
+        <span class="flow-step">Marc Approves via Telegram</span>
+      </div>
+      <div class="phase-value">
+        <span class="phase-value-icon">&#x1f4a1;</span>
+        <span class="phase-value-text"><strong>Follow up within hours, not days.</strong> After every call or meeting, a personalized email draft lands in Telegram &mdash; compliance-checked, ready to approve with one tap. No more leads going cold because you got busy.</span>
+      </div>
+    </div>
+
+    <div class="connector"><div class="connector-line"></div></div>
+
+    <!-- Phase 3 -->
+    <div class="phase phase-3">
+      <div class="phase-header">
+        <div class="phase-num">3</div>
+        <div>
+          <div class="phase-title">THE MARKETER</div>
+          <div class="phase-subtitle">Content & Market Intelligence</div>
+        </div>
+      </div>
+      <div class="phase-modules">
+        <span class="module-tag">content_engine.py</span>
+        <span class="module-tag">market_intel.py</span>
+        <span class="module-tag">meeting_prep.py</span>
+      </div>
+      <div class="phase-flow">
+        <span class="flow-step">Brand Voice Examples</span>
+        <span class="flow-arrow">&#8594;</span>
+        <span class="flow-step">Content Generation</span>
+        <span class="flow-arrow">&#8594;</span>
+        <span class="flow-step">Market Intel</span>
+        <span class="flow-arrow">&#8594;</span>
+        <span class="flow-step">Meeting Prep Docs</span>
+      </div>
+      <div class="phase-value">
+        <span class="phase-value-icon">&#x1f4a1;</span>
+        <span class="phase-value-text"><strong>Stay visible without the grind.</strong> Weekly content plans across LinkedIn, Facebook, and Instagram &mdash; written in your voice, timed around BoC rate decisions and tax deadlines. Walk into every meeting fully prepped with a one-page brief.</span>
+      </div>
+    </div>
+
+    <div class="connector"><div class="connector-line"></div></div>
+
+    <!-- Phase 4 -->
+    <div class="phase phase-4">
+      <div class="phase-header">
+        <div class="phase-num">4</div>
+        <div>
+          <div class="phase-title">THE OUTREACH REP</div>
+          <div class="phase-subtitle">Campaigns & Nurture Sequences</div>
+        </div>
+      </div>
+      <div class="phase-modules">
+        <span class="module-tag">campaigns.py</span>
+        <span class="module-tag">nurture.py</span>
+        <span class="module-tag">intake.py</span>
+      </div>
+      <div class="phase-flow">
+        <span class="flow-step">Lead Intake</span>
+        <span class="flow-arrow">&#8594;</span>
+        <span class="flow-step">AI Audience Segmentation</span>
+        <span class="flow-arrow">&#8594;</span>
+        <span class="flow-step">Personalized Campaigns</span>
+        <span class="flow-arrow">&#8594;</span>
+        <span class="flow-step">4-Touch Nurture Sequences</span>
+      </div>
+      <div class="phase-value">
+        <span class="phase-value-icon">&#x1f4a1;</span>
+        <span class="phase-value-text"><strong>Work your entire book, not just the top 10.</strong> Say "target life insurance families" and get personalized messages for every match. Warm leads get 4-touch nurture sequences that run themselves &mdash; educational, insightful, then a soft ask.</span>
+      </div>
+    </div>
+
+    <div class="connector"><div class="connector-line"></div></div>
+
+    <!-- Phase 5 -->
+    <div class="phase phase-5">
+      <div class="phase-header">
+        <div class="phase-num">5</div>
+        <div>
+          <div class="phase-title">THE ANALYST</div>
+          <div class="phase-subtitle">Outcomes & Learning Loop</div>
+        </div>
+      </div>
+      <div class="phase-modules">
+        <span class="module-tag">analytics.py</span>
+        <span class="module-tag">scoring.py</span>
+        <span class="module-tag">dashboard.py</span>
+      </div>
+      <div class="phase-flow">
+        <span class="flow-step">Outcome Tracking</span>
+        <span class="flow-arrow">&#8594;</span>
+        <span class="flow-step">Response & Conversion Rates</span>
+        <span class="flow-arrow">&#8594;</span>
+        <span class="flow-step">AI Insights</span>
+        <span class="flow-arrow">&#8594;</span>
+        <span class="flow-step">Feed Back into Strategy</span>
+      </div>
+      <div class="phase-value">
+        <span class="phase-value-icon">&#x1f4a1;</span>
+        <span class="phase-value-text"><strong>Know what's actually working.</strong> Every email, campaign, and nurture touch is tracked &mdash; who responded, who converted. Weekly AI insights tell you "nurture gets 3x the response rate of cold campaigns" so you double down on what works.</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Feedback Loop -->
+  <div class="feedback-section">
+    <div class="label">&#x1f504; LEARNING FEEDBACK LOOP</div>
+    <div class="desc">
+      Phase 5 insights feed back into Phase 1's morning briefing &mdash; what's working (response rates, conversion patterns)
+      informs tomorrow's outreach strategy, content priorities, and call list ranking.
+    </div>
+  </div>
+
+  <!-- Foundation -->
+  <div class="foundation">
+    <div class="foundation-block">
+      <div class="foundation-icon">&#x1f4be;</div>
+      <div class="foundation-name">SQLite + WAL</div>
+      <div class="foundation-detail">15 tables &bull; Prospects, activities, tasks, memory, audit logs, outcomes</div>
+    </div>
+    <div class="foundation-block">
+      <div class="foundation-icon">&#x1f9e0;</div>
+      <div class="foundation-name">OpenAI GPT-4</div>
+      <div class="foundation-detail">Drafts &bull; Extraction &bull; Compliance &bull; Insights &bull; Whisper transcription</div>
+    </div>
+    <div class="foundation-block">
+      <div class="foundation-icon">&#x1f4ac;</div>
+      <div class="foundation-name">Telegram Bot</div>
+      <div class="foundation-detail">Commands &bull; Inline approvals &bull; Voice notes &bull; Notifications</div>
+    </div>
+  </div>
+
+  <!-- Data Flow -->
+  <div class="dataflow">
+    <h2>How a Lead Flows Through the System</h2>
+    <div class="flow-diagram">
+      <div class="flow-col">
+        <div class="flow-col-header">Input</div>
+        <div class="flow-col-items">
+          <div class="flow-item">Voice note</div>
+          <div class="flow-item">Outlook booking</div>
+          <div class="flow-item">/add command</div>
+          <div class="flow-item">Email webhook</div>
+        </div>
+      </div>
+      <div class="flow-col-arrow">&#8594;</div>
+      <div class="flow-col">
+        <div class="flow-col-header">Intelligence</div>
+        <div class="flow-col-items">
+          <div class="flow-item">Transcribe & extract</div>
+          <div class="flow-item">Score prospect</div>
+          <div class="flow-item">Build memory profile</div>
+        </div>
+      </div>
+      <div class="flow-col-arrow">&#8594;</div>
+      <div class="flow-col">
+        <div class="flow-col-header">AI Drafting</div>
+        <div class="flow-col-items">
+          <div class="flow-item">Follow-up email</div>
+          <div class="flow-item">Campaign message</div>
+          <div class="flow-item">Nurture touch</div>
+          <div class="flow-item">Social post</div>
+        </div>
+      </div>
+      <div class="flow-col-arrow">&#8594;</div>
+      <div class="flow-col">
+        <div class="flow-col-header">Compliance Gate</div>
+        <div class="flow-col-items">
+          <div class="flow-item">GPT compliance scan</div>
+          <div class="flow-item">Audit log entry</div>
+          <div class="flow-item">Flag if issues</div>
+        </div>
+      </div>
+      <div class="flow-col-arrow">&#8594;</div>
+      <div class="flow-col">
+        <div class="flow-col-header">Marc Decides</div>
+        <div class="flow-col-items">
+          <div class="flow-item">Approve &#x2705;</div>
+          <div class="flow-item">Edit &#x270f;&#xfe0f;</div>
+          <div class="flow-item">Dismiss &#x274c;</div>
+          <div class="flow-item">Snooze &#x23f0;</div>
+        </div>
+      </div>
+      <div class="flow-col-arrow">&#8594;</div>
+      <div class="flow-col">
+        <div class="flow-col-header">Track Results</div>
+        <div class="flow-col-items">
+          <div class="flow-item">Got response?</div>
+          <div class="flow-item">Converted?</div>
+          <div class="flow-item">Weekly insights</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Commands -->
+  <div class="commands-section">
+    <h2>Telegram Commands</h2>
+    <div class="cmd-grid">
+      <div class="cmd-group">
+        <div class="cmd-group-title">Lead Management</div>
+        <div class="cmd"><code>/quote</code> <span>Generate quote</span></div>
+        <div class="cmd"><code>/add</code> <span>New prospect</span></div>
+        <div class="cmd"><code>/lead</code> <span>Prospect profile</span></div>
+        <div class="cmd"><code>/pipeline</code> <span>All prospects</span></div>
+        <div class="cmd"><code>/status</code> <span>Pipeline stats</span></div>
+        <div class="cmd"><code>/priority</code> <span>Set priority</span></div>
+      </div>
+      <div class="cmd-group">
+        <div class="cmd-group-title">Tasks & Comms</div>
+        <div class="cmd"><code>/todo</code> <span>Create task (NL)</span></div>
+        <div class="cmd"><code>/tasks</code> <span>List tasks</span></div>
+        <div class="cmd"><code>/done</code> <span>Complete task</span></div>
+        <div class="cmd"><code>/call</code> <span>Log a call</span></div>
+        <div class="cmd"><code>/msg</code> <span>Send message</span></div>
+        <div class="cmd"><code>/drafts</code> <span>Pending approvals</span></div>
+      </div>
+      <div class="cmd-group">
+        <div class="cmd-group-title">Intelligence</div>
+        <div class="cmd"><code>/memory</code> <span>Client facts</span></div>
+        <div class="cmd"><code>/calls</code> <span>Ranked call list</span></div>
+        <div class="cmd"><code>/meetings</code> <span>Upcoming meetings</span></div>
+        <div class="cmd"><code>/stats</code> <span>Performance</span></div>
+        <div class="cmd"><code>/overdue</code> <span>Overdue items</span></div>
+      </div>
+      <div class="cmd-group">
+        <div class="cmd-group-title">AI Agents</div>
+        <div class="cmd"><code>/content</code> <span>Social posts</span></div>
+        <div class="cmd"><code>/campaign</code> <span>Batch outreach</span></div>
+        <div class="cmd"><code>/nurture</code> <span>Touch sequences</span></div>
+        <div class="cmd"><code>/calendar</code> <span>Market events</span></div>
+        <div class="cmd"><code>/outcomes</code> <span>Track results</span></div>
+        <div class="cmd"><code>/trust</code> <span>Set autonomy 1-3</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Schedule -->
+  <div class="schedule-section">
+    <h2>Automated Schedule</h2>
+    <div class="timeline">
+      <div class="time-slot" style="border-color: #60a5fa;">
+        <div class="time">8:00 AM ET</div>
+        <div class="job">Morning Briefing &mdash; pipeline health, ranked call list, market intel, learning insights</div>
+      </div>
+      <div class="time-slot" style="border-color: #a78bfa;">
+        <div class="time">9:00 AM ET</div>
+        <div class="job">Meeting prep docs + Task reminders for the day</div>
+      </div>
+      <div class="time-slot" style="border-color: #fb923c;">
+        <div class="time">9:15 AM ET</div>
+        <div class="job">Nurture sequence check &mdash; fire due touches</div>
+      </div>
+      <div class="time-slot" style="border-color: #f472b6;">
+        <div class="time">Every 2 hrs</div>
+        <div class="job">Auto-nag &mdash; stale leads, overdue follow-ups, hot leads stuck</div>
+      </div>
+      <div class="time-slot" style="border-color: #2dd4bf;">
+        <div class="time">5:00 PM ET</div>
+        <div class="job">End-of-day wrap-up &mdash; tasks completed, pending approvals, tomorrow prep</div>
+      </div>
+      <div class="time-slot" style="border-color: #c084fc;">
+        <div class="time">Sun 6:00 PM</div>
+        <div class="job">Weekly content plan generation (5 posts across platforms)</div>
+      </div>
+      <div class="time-slot" style="border-color: #4ade80;">
+        <div class="time">Sun 6:30 PM</div>
+        <div class="job">Weekly report &mdash; metrics, win/loss, AI insights, Monday priorities</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>
