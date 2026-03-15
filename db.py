@@ -288,6 +288,7 @@ def init_db():
             response_type TEXT,
             converted INTEGER DEFAULT 0,
             notes TEXT DEFAULT '',
+            resend_email_id TEXT,
             created_at TEXT DEFAULT (datetime('now')),
             FOREIGN KEY (action_id) REFERENCES audit_log(id)
         );
@@ -310,6 +311,10 @@ def _migrate_phase6():
         if "send_channel" not in cols:
             conn.execute("ALTER TABLE prospects ADD COLUMN send_channel TEXT DEFAULT 'outlook'")
             logger.info("Migration: added send_channel to prospects")
+        outcome_cols = [row[1] for row in conn.execute("PRAGMA table_info(outcomes)").fetchall()]
+        if "resend_email_id" not in outcome_cols:
+            conn.execute("ALTER TABLE outcomes ADD COLUMN resend_email_id TEXT")
+            logger.info("Migration: added resend_email_id to outcomes")
 
 
 # ── Prospects CRUD ──

@@ -36,13 +36,13 @@ Keep it concise — this goes into a Telegram message. Use plain language.
 Focus on actionable insights, not just restating numbers."""
 
 
-def record_outcome(action_type, target, sent_at, action_id=None, notes=""):
+def record_outcome(action_type, target, sent_at, action_id=None, notes="", resend_email_id=None):
     """Record an outcome for an AI-generated action. Returns dict."""
     with db.get_db() as conn:
         cursor = conn.execute(
-            """INSERT INTO outcomes (action_id, action_type, target, sent_at, notes)
-               VALUES (?, ?, ?, ?, ?)""",
-            (action_id, action_type, target, sent_at, notes),
+            """INSERT INTO outcomes (action_id, action_type, target, sent_at, notes, resend_email_id)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (action_id, action_type, target, sent_at, notes, resend_email_id),
         )
         row = conn.execute("SELECT * FROM outcomes WHERE id = ?", (cursor.lastrowid,)).fetchone()
         return dict(row)
