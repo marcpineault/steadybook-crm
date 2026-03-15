@@ -427,6 +427,20 @@ def _guess_product(service: str, notes: str) -> str:
 
 PRIORITY_RANK = {"Hot": 3, "Warm": 2, "Cool": 1, "Cold": 0}
 
+# Map calmmoney.ca service dropdown values to CRM product options
+_SERVICE_TO_PRODUCT = {
+    "retirement planning": "Wealth Management",
+    "investment management": "Wealth Management",
+    "wealth management": "Wealth Management",
+    "life insurance": "Life Insurance",
+    "estate planning": "Estate Planning",
+    "disability insurance": "Disability Insurance",
+    "critical illness": "Critical Illness",
+    "group benefits": "Group Benefits",
+    "tax planning": "Wealth Management",
+    "corporate financial planning": "Wealth Management",
+}
+
 
 def _dedup_or_create(email: str, name: str, data: dict) -> tuple:
     """Check for existing prospect by email. Returns (prospect_dict, is_new)."""
@@ -484,9 +498,11 @@ def process_website_contact(data: dict) -> str:
     if message:
         note += f" | {message[:200]}"
 
+    product = _SERVICE_TO_PRODUCT.get(service.lower(), service) if service else ""
+
     prospect, is_new = _dedup_or_create(email, name, {
         "phone": phone,
-        "product": service,
+        "product": product,
         "priority": "Hot",
         "note_addition": note,
     })

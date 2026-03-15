@@ -2144,7 +2144,11 @@ function openEdit(p) {{
     document.getElementById('fName').value = p.name;
     document.getElementById('fPhone').value = p.phone || '';
     document.getElementById('fEmail').value = p.email || '';
-    document.getElementById('fSource').value = p.source || '';
+    // Normalize source for case-insensitive dropdown match
+    const srcVal = p.source || '';
+    const srcSelect = document.getElementById('fSource');
+    const srcMatch = Array.from(srcSelect.options).find(o => o.value.toLowerCase() === srcVal.toLowerCase());
+    srcSelect.value = srcMatch ? srcMatch.value : srcVal;
     document.getElementById('fPriority').value = p.priority || '';
     document.getElementById('fStage').value = p.stage || '';
     document.getElementById('fProduct').value = p.product || '';
