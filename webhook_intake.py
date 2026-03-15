@@ -75,7 +75,7 @@ def intake_webhook():
         else:
             return jsonify({"error": f"Unknown intake type: {intake_type}"}), 400
 
-        logger.info(f"Intake webhook ({intake_type}): {result}")
+        logger.info(f"Intake webhook ({intake_type}): processed successfully")
         # Telegram alert for high-signal intake types only
         if intake_type not in ("website_tool", "email_event"):
             _notify_telegram(result)
@@ -134,7 +134,7 @@ def email_inbound():
             "subject": subject,
             "body": body,
         })
-        logger.info(f"Email inbound: {result}")
+        logger.info(f"Email inbound: processed successfully (body_len={len(body)})")
         _notify_telegram(result)
         return jsonify({"ok": True, "message": result})
     except Exception as e:

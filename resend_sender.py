@@ -41,8 +41,10 @@ def send_email(to: str, subject: str, body: str) -> str | None:
         )
         resp.raise_for_status()
         email_id = resp.json().get("id")
-        logger.info("Resend email sent to %s — id=%s", to, email_id)
+        from pii import safe_log_email
+        logger.info("Resend email sent to %s — id=%s", safe_log_email(to), email_id)
         return email_id
     except Exception:
-        logger.exception("Failed to send email via Resend to %s", to)
+        from pii import safe_log_email
+        logger.exception("Failed to send email via Resend to %s", safe_log_email(to))
         return None
