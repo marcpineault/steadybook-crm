@@ -54,15 +54,15 @@ def test_assemble_briefing_data_market_events_with_data():
 
 
 def test_briefing_prompt_contains_market_events_placeholder():
-    """BRIEFING_PROMPT should contain {market_events} placeholder."""
+    """BRIEFING_USER_TEMPLATE should contain {market_events} placeholder."""
     import briefing
-    assert "{market_events}" in briefing.BRIEFING_PROMPT
+    assert "{market_events}" in briefing.BRIEFING_USER_TEMPLATE
 
 
 def test_briefing_prompt_contains_market_context_instruction():
-    """BRIEFING_PROMPT should instruct about market context."""
+    """BRIEFING_SYSTEM_PROMPT should instruct about market context."""
     import briefing
-    assert "MARKET" in briefing.BRIEFING_PROMPT.upper()
+    assert "MARKET" in briefing.BRIEFING_SYSTEM_PROMPT.upper()
 
 
 @patch("briefing.openai_client")
@@ -82,8 +82,8 @@ def test_build_briefing_prompt_includes_market_events(mock_client):
     )
 
     data = briefing.assemble_briefing_data()
-    prompt = briefing._build_briefing_prompt(data)
-    assert "RRSP" in prompt
+    system_prompt, user_prompt, pii_ctx = briefing._build_briefing_prompt(data)
+    assert "RRSP" in user_prompt
 
 
 @patch("briefing.openai_client")
@@ -92,8 +92,8 @@ def test_build_briefing_prompt_handles_empty_market_events(mock_client):
     import briefing
     data = briefing.assemble_briefing_data()
     # Should not raise
-    prompt = briefing._build_briefing_prompt(data)
-    assert isinstance(prompt, str)
+    system_prompt, user_prompt, pii_ctx = briefing._build_briefing_prompt(data)
+    assert isinstance(user_prompt, str)
 
 
 def test_market_intel_failure_does_not_crash_briefing():

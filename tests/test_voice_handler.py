@@ -20,10 +20,11 @@ def setup_function():
 def test_extract_prospect_data_from_transcript():
     from voice_handler import build_extraction_prompt
     transcript = "Just had coffee with John Smith, he's interested in life insurance for his wife, currently has auto and home with us, wants a quote by Friday"
-    prompt = build_extraction_prompt(transcript)
-    assert "John Smith" in prompt or "transcript" in prompt.lower()
-    assert "prospect" in prompt.lower()
-    assert "action_items" in prompt.lower()
+    system_prompt, user_prompt = build_extraction_prompt(transcript)
+    # PII redaction: names should be stripped from user prompt
+    assert "transcript" in user_prompt.lower()
+    assert "prospect" in system_prompt.lower()
+    assert "action_items" in system_prompt.lower()
 
 
 def test_parse_extraction_response_valid():

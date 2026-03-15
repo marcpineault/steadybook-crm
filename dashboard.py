@@ -30,8 +30,9 @@ def _esc_json_attr(val):
 
 DASHBOARD_API_KEY = os.environ.get("DASHBOARD_API_KEY", "")
 if not DASHBOARD_API_KEY:
-    logging.getLogger(__name__).warning(
-        "DASHBOARD_API_KEY not set — dashboard API endpoints will require CSRF tokens only"
+    raise RuntimeError(
+        "DASHBOARD_API_KEY must be set. Generate one with: "
+        "python -c 'import secrets; print(secrets.token_urlsafe(32))'"
     )
 
 # CSRF tokens with expiry timestamps for proper lifecycle management.
@@ -90,6 +91,14 @@ def _require_auth(f):
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 1 * 1024 * 1024  # 1 MB max request size
+
+try:
+    from flask_limiter import Limiter
+    from flask_limiter.util import get_remote_address
+    limiter = Limiter(get_remote_address, app=app, default_limits=["60 per minute"])
+except ImportError:
+    logging.getLogger(__name__).warning("flask-limiter not installed — rate limiting disabled")
+    limiter = None
 
 
 @app.after_request

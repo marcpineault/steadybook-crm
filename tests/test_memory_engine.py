@@ -104,15 +104,16 @@ def test_get_profile_summary_text():
 def test_build_extraction_prompt():
     pid = _get_prospect_id()
     memory_engine.add_fact(pid, "life_context", "Has two kids", "voice_note")
-    prompt = memory_engine.build_extraction_prompt(
+    system_prompt, user_prompt = memory_engine.build_extraction_prompt(
         prospect_name="Sarah Chen", prospect_id=pid,
         interaction_text="Sarah mentioned her husband runs a landscaping business in Byron",
         source="voice_note_2026-03-13",
     )
-    assert "Sarah Chen" in prompt
-    assert "Has two kids" in prompt
-    assert "husband runs a landscaping business" in prompt
-    assert "life_context" in prompt
+    # PII redaction: name should be tokenized, not raw
+    assert "Sarah Chen" not in user_prompt
+    assert "[CLIENT_01]" in user_prompt
+    assert "husband runs a landscaping business" in user_prompt
+    assert "life_context" in system_prompt
 
 
 def test_parse_extraction_response_valid():
