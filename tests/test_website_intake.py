@@ -75,3 +75,90 @@ def test_update_prospect_send_channel():
     prospect = db.get_prospect_by_name("Eve Update")
     assert prospect is not None
     assert prospect["send_channel"] == "resend"
+
+
+from unittest.mock import patch, MagicMock
+import intake
+
+
+def test_process_website_contact_creates_hot_prospect():
+    db.add_prospect  # ensure db is imported
+    result = intake.process_website_contact({
+        "name": "Sarah Chen",
+        "email": "sarah@example.com",
+        "phone": "519-555-0100",
+        "service": "Life Insurance",
+        "message": "I'd like to learn about life insurance options.",
+    })
+    assert "Sarah Chen" in result
+    prospect = db.get_prospect_by_name("Sarah Chen")
+    assert prospect is not None
+    assert prospect["priority"] == "Hot"
+    assert prospect["send_channel"] == "resend"
+    assert prospect["source"] == "website"
+    assert prospect["product"] == "Life Insurance"
+
+
+def test_process_website_contact_dedup_updates_existing():
+    # Create a prospect via quiz first (placeholder name)
+    db.add_prospect({
+        "name": "sarah",
+        "email": "sarah@example.com",
+        "source": "website",
+        "priority": "Warm",
+        "send_channel": "resend",
+    })
+    result = intake.process_website_contact({
+        "name": "Sarah Chen",
+        "email": "sarah@example.com",
+        "phone": "519-555-0100",
+        "service": "Life Insurance",
+        "message": "Following up.",
+    })
+    prospect = db.get_prospect_by_email("sarah@example.com")
+    assert prospect["name"] == "Sarah Chen"  # Name upgraded
+    assert prospect["priority"] == "Hot"     # Priority bumped
+
+
+def test_process_website_quiz_creates_warm_prospect():
+    result = intake.process_website_quiz({
+        "email": "bob@example.com",
+        "score": 72,
+        "answers": [
+            {"questionId": 1, "optionLabel": "No plan", "points": 5},
+            {"questionId": 2, "optionLabel": "Some savings", "points": 15},
+        ],
+        "tier": "Needs Attention",
+    })
+    prospect = db.get_prospect_by_email("bob@example.com")
+    assert prospect is not None
+    assert prospect["priority"] == "Warm"
+    assert prospect["send_channel"] == "resend"
+    assert prospect["name"] == "bob"
+    assert "72" in prospect["notes"]
+
+
+def test_process_website_tool_creates_cool_prospect():
+    result = intake.process_website_tool({
+        "email": "jane@example.com",
+        "toolName": "Life Insurance Calculator",
+    })
+    prospect = db.get_prospect_by_email("jane@example.com")
+    assert prospect is not None
+    assert prospect["priority"] == "Cool"
+    assert prospect["send_channel"] == "resend"
+    assert prospect["name"] == "jane"
+    assert "Life Insurance Calculator" in prospect["notes"]
+
+
+def test_process_website_contact_no_email_still_works():
+    result = intake.process_website_contact({
+        "name": "Marc Test",
+        "email": "",
+        "phone": "519-555-0000",
+        "service": "Auto Insurance",
+        "message": "Quick question.",
+    })
+    prospect = db.get_prospect_by_name("Marc Test")
+    assert prospect is not None
+    assert prospect["send_channel"] == "resend"

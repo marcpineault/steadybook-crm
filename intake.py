@@ -419,3 +419,243 @@ def _guess_product(service: str, notes: str) -> str:
     if "wealth" in text or "invest" in text or "rrsp" in text or "tfsa" in text:
         return "Wealth Management"
     return ""
+
+
+# ---------------------------------------------------------------------------
+# Website lead intake
+# ---------------------------------------------------------------------------
+
+PRIORITY_RANK = {"Hot": 3, "Warm": 2, "Cool": 1, "Cold": 0}
+
+
+def _dedup_or_create(email: str, name: str, data: dict) -> tuple:
+    """Check for existing prospect by email. Returns (prospect_dict, is_new)."""
+    existing = db.get_prospect_by_email(email) if email else None
+
+    if existing:
+        updates = {}
+        # Upgrade placeholder name if real name provided
+        if name and (not existing.get("name") or existing["name"] == email.split("@")[0]):
+            updates["name"] = name
+        if data.get("phone") and not existing.get("phone"):
+            updates["phone"] = data["phone"]
+        if data.get("product") and not existing.get("product"):
+            updates["product"] = data["product"]
+        # Bump priority if higher
+        new_priority = data.get("priority", "")
+        if PRIORITY_RANK.get(new_priority, 0) > PRIORITY_RANK.get(existing.get("priority", ""), 0):
+            updates["priority"] = new_priority
+        # Append to notes
+        note_addition = data.get("note_addition", "")
+        if note_addition:
+            old_notes = existing.get("notes", "")
+            updates["notes"] = f"{old_notes} | {note_addition}" if old_notes else note_addition
+
+        if updates:
+            db.update_prospect(existing["name"], updates)
+        updated = db.get_prospect_by_email(email) or existing
+        return updated, False
+    else:
+        prospect_name = name or (email.split("@")[0] if email else "Unknown")
+        db.add_prospect({
+            "name": prospect_name,
+            "email": email,
+            "phone": data.get("phone", ""),
+            "source": "website",
+            "priority": data.get("priority", "Warm"),
+            "stage": "New Lead",
+            "product": data.get("product", ""),
+            "notes": data.get("note_addition", ""),
+            "send_channel": "resend",
+        })
+        new_prospect = db.get_prospect_by_email(email) or db.get_prospect_by_name(prospect_name)
+        return new_prospect, True
+
+
+def process_website_contact(data: dict) -> str:
+    """Process a contact form submission from calmmoney.ca."""
+    name = (data.get("name") or "").strip()
+    email = (data.get("email") or "").strip()
+    phone = (data.get("phone") or "").strip()
+    service = (data.get("service") or "").strip()
+    message = (data.get("message") or "").strip()
+
+    note = f"[Website Contact] Service: {service}"
+    if message:
+        note += f" | {message[:200]}"
+
+    prospect, is_new = _dedup_or_create(email, name, {
+        "phone": phone,
+        "product": service,
+        "priority": "Hot",
+        "note_addition": note,
+    })
+
+    prospect_name = prospect["name"] if prospect else name or email
+
+    db.add_interaction({
+        "prospect": prospect_name,
+        "source": "website_contact",
+        "raw_text": f"Service: {service}\nMessage: {message}",
+        "summary": note,
+    })
+
+    if is_new:
+        db.add_activity({
+            "prospect": prospect_name,
+            "action": "Website contact form submitted",
+            "outcome": note,
+            "next_step": "Follow up within 24 hours",
+        })
+        # Priority is explicitly set to Hot for contact form leads; schedule follow-up
+        # without re-scoring (which could downgrade the priority).
+        from datetime import timedelta
+        next_followup = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+        db.update_prospect(prospect_name, {"next_followup": next_followup})
+
+    action = "New website lead" if is_new else "Updated"
+    return f"{action}: {prospect_name} — {service} (Hot, website contact)"
+
+
+def process_website_quiz(data: dict) -> str:
+    """Process a retirement quiz submission from calmmoney.ca."""
+    email = (data.get("email") or "").strip()
+    score = data.get("score", 0)
+    tier = data.get("tier", "")
+    answers = data.get("answers", [])
+
+    note = f"[Website Quiz] Score: {score}/100, Tier: {tier}"
+    if answers:
+        weak = [a["optionLabel"] for a in answers if a.get("points", 0) <= 10]
+        if weak:
+            note += f" | Weak areas: {', '.join(weak[:3])}"
+
+    prospect, is_new = _dedup_or_create(email, "", {
+        "priority": "Warm",
+        "note_addition": note,
+    })
+
+    prospect_name = prospect["name"] if prospect else email.split("@")[0]
+    prospect_id = prospect["id"] if prospect else None
+
+    # Store score in client memory
+    if prospect_id:
+        try:
+            import memory_engine
+            memory_engine.extract_facts_from_interaction(
+                prospect_name=prospect_name,
+                prospect_id=prospect_id,
+                interaction_text=f"Retirement quiz: scored {score}/100 ({tier}). {note}",
+                source="website_quiz",
+            )
+        except Exception:
+            logger.exception("Memory extraction failed for quiz (non-blocking)")
+
+    # Start nurture sequence for new quiz leads
+    if is_new and prospect_id:
+        try:
+            import nurture
+            nurture.create_sequence(prospect_name=prospect_name, prospect_id=prospect_id)
+        except Exception:
+            logger.exception("Nurture sequence creation failed (non-blocking)")
+
+    action = "New quiz lead" if is_new else "Updated"
+    return f"{action}: {prospect_name} — Score {score}/100 (Warm, website quiz)"
+
+
+def process_website_tool(data: dict) -> str:
+    """Process a tool capture form from calmmoney.ca."""
+    email = (data.get("email") or "").strip()
+    tool_name = (data.get("toolName") or data.get("tool_name") or "").strip()
+
+    note = f"[Website Tool] Used: {tool_name}"
+
+    prospect, is_new = _dedup_or_create(email, "", {
+        "priority": "Cool",
+        "note_addition": note,
+    })
+
+    prospect_name = prospect["name"] if prospect else email.split("@")[0]
+
+    action = "New tool lead" if is_new else "Updated"
+    return f"{action}: {prospect_name} — {tool_name} (Cool, website tool)"
+
+
+def process_email_event(data: dict) -> str:
+    """Process a Resend engagement event (open/click/bounce/complaint)."""
+    event_type = (data.get("event_type") or "").strip()
+    email = (data.get("email") or "").strip()
+    resend_email_id = (data.get("resend_email_id") or "").strip()
+
+    if not event_type or not email:
+        return "Missing event_type or email in email_event payload."
+
+    import analytics
+
+    # Try to find matching outcome by resend_email_id first
+    outcome = None
+    if resend_email_id:
+        with db.get_db() as conn:
+            row = conn.execute(
+                "SELECT * FROM outcomes WHERE resend_email_id = ?",
+                (resend_email_id,),
+            ).fetchone()
+            if row:
+                outcome = dict(row)
+
+    # Fallback: match by prospect email + recent sent_at
+    if not outcome:
+        prospect = db.get_prospect_by_email(email)
+        if prospect:
+            with db.get_db() as conn:
+                row = conn.execute(
+                    """SELECT o.* FROM outcomes o
+                       WHERE o.target = ? AND o.sent_at >= date('now', '-2 days')
+                       ORDER BY o.created_at DESC LIMIT 1""",
+                    (prospect["name"],),
+                ).fetchone()
+                if row:
+                    outcome = dict(row)
+
+    if event_type == "email.opened" and outcome:
+        analytics.update_outcome(outcome["id"], response_received=True)
+        return f"Email opened by {email} — outcome #{outcome['id']} updated"
+
+    elif event_type == "email.clicked" and outcome:
+        analytics.update_outcome(outcome["id"], response_received=True, response_type="clicked")
+        return f"Email link clicked by {email} — outcome #{outcome['id']} updated"
+
+    elif event_type == "email.bounced":
+        prospect = db.get_prospect_by_email(email)
+        if prospect:
+            db.update_prospect(prospect["name"], {"notes": f"{prospect.get('notes', '')} | [BOUNCED] Email bounced"})
+            try:
+                with db.get_db() as conn:
+                    conn.execute(
+                        "UPDATE nurture_sequences SET status = 'paused' WHERE prospect_name = ? AND status = 'active'",
+                        (prospect["name"],),
+                    )
+            except Exception:
+                logger.exception("Failed to pause nurture for bounced email")
+        return f"Email bounced for {email}"
+
+    elif event_type == "email.complained":
+        prospect = db.get_prospect_by_email(email)
+        if prospect:
+            db.update_prospect(prospect["name"], {
+                "notes": f"{prospect.get('notes', '')} | [COMPLAINT] Spam complaint — all outreach paused",
+                "stage": "Do Not Contact",
+            })
+            try:
+                with db.get_db() as conn:
+                    conn.execute(
+                        "UPDATE nurture_sequences SET status = 'paused' WHERE prospect_name = ? AND status = 'active'",
+                        (prospect["name"],),
+                    )
+            except Exception:
+                logger.exception("Failed to pause nurture for complaint")
+        return f"Spam complaint from {email} — outreach paused"
+
+    if outcome:
+        return f"Event {event_type} for {email} — outcome #{outcome['id']} (no action taken)"
+    return f"Event {event_type} for {email} — no matching outcome found (ignored)"
