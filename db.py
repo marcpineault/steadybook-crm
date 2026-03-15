@@ -112,6 +112,7 @@ def init_db():
                 first_contact TEXT,
                 next_followup TEXT,
                 notes TEXT DEFAULT '',
+                send_channel TEXT DEFAULT 'outlook',
                 created_at TEXT DEFAULT (datetime('now')),
                 updated_at TEXT DEFAULT (datetime('now'))
             );
@@ -298,7 +299,17 @@ def init_db():
             "INSERT OR IGNORE INTO trust_config (id, trust_level, changed_by) VALUES (1, 1, 'system')"
         )
 
+    _migrate_phase6()
     logger.info(f"Database initialized at {DB_PATH}")
+
+
+def _migrate_phase6():
+    """Add Phase 6 columns if they don't exist (safe to run repeatedly)."""
+    with get_db() as conn:
+        cols = [row[1] for row in conn.execute("PRAGMA table_info(prospects)").fetchall()]
+        if "send_channel" not in cols:
+            conn.execute("ALTER TABLE prospects ADD COLUMN send_channel TEXT DEFAULT 'outlook'")
+            logger.info("Migration: added send_channel to prospects")
 
 
 # ── Prospects CRUD ──
@@ -325,8 +336,8 @@ def add_prospect(data: dict) -> str:
         conn.execute(
             """INSERT INTO prospects
                (name, phone, email, source, priority, stage, product,
-                aum, revenue, first_contact, next_followup, notes)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                aum, revenue, first_contact, next_followup, notes, send_channel)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 name,
                 data.get("phone", ""),
@@ -340,6 +351,7 @@ def add_prospect(data: dict) -> str:
                 first_contact,
                 data.get("next_followup", ""),
                 data.get("notes", ""),
+                data.get("send_channel", "outlook"),
             ),
         )
     return f"Added {name} to pipeline."
@@ -363,6 +375,7 @@ def update_prospect(name: str, updates: dict) -> str:
         allowed = {
             "name", "phone", "email", "source", "priority", "stage",
             "product", "aum", "revenue", "first_contact", "next_followup", "notes",
+            "send_channel",
         }
 
         safe_fields = {}
@@ -423,6 +436,18 @@ def get_prospect_by_name(name: str):
             ).fetchone()
             if row:
                 logger.info(f"Prospect fuzzy match: '{name}' → '{dict(row)['name']}'")
+    return _row_to_dict(row)
+
+
+def get_prospect_by_email(email: str):
+    """Lookup prospect by exact email match (case-insensitive). Returns dict or None."""
+    if not email:
+        return None
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM prospects WHERE LOWER(email) = ? LIMIT 1",
+            (email.lower().strip(),),
+        ).fetchone()
     return _row_to_dict(row)
 
 
