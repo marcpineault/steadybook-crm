@@ -2494,15 +2494,46 @@ async def handle_draft_callback(update, context):
             except Exception:
                 logger.warning("Brand voice update failed for #%s (non-blocking)", queue_id)
 
+        resend_id = None
+        send_via_resend = False
+        prospect_email = ""
+        if draft.get("type") != "content_post" and draft.get("prospect_id"):
+            with db.get_db() as _conn:
+                _prow = _conn.execute(
+                    "SELECT send_channel, email FROM prospects WHERE id = ?",
+                    (draft["prospect_id"],),
+                ).fetchone()
+                if _prow and _prow["send_channel"] == "resend" and _prow["email"]:
+                    send_via_resend = True
+                    prospect_email = _prow["email"]
+
         content = draft.get("content", "")
         if len(content) > 3800:
             content = content[:3800] + "\n...(truncated)"
-        copy_target = "Publer" if draft.get("type") == "content_post" else "Outlook"
-        await query.edit_message_text(
-            f"APPROVED — {draft.get('type', 'draft')} for queue #{queue_id}\n\n"
-            f"{content}\n\n"
-            f"Copy-paste the above into {copy_target}."
-        )
+
+        if send_via_resend:
+            import resend_sender
+            subject = "Following up — Marc Pineault"
+            resend_id = resend_sender.send_email(to=prospect_email, subject=subject, body=content)
+            if resend_id:
+                await query.edit_message_text(
+                    f"APPROVED & SENT via Resend — {draft.get('type', 'draft')} #{queue_id}\n\n"
+                    f"Sent to: {prospect_email}\n"
+                    f"Resend ID: {resend_id}"
+                )
+            else:
+                await query.edit_message_text(
+                    f"APPROVED but Resend send FAILED — {draft.get('type', 'draft')} #{queue_id}\n\n"
+                    f"{content}\n\n"
+                    f"Copy-paste the above and send manually to {prospect_email}."
+                )
+        else:
+            copy_target = "Publer" if draft.get("type") == "content_post" else "Outlook"
+            await query.edit_message_text(
+                f"APPROVED — {draft.get('type', 'draft')} for queue #{queue_id}\n\n"
+                f"{content}\n\n"
+                f"Copy-paste the above into {copy_target}."
+            )
 
         # Record outcome for tracking
         try:
@@ -2519,6 +2550,7 @@ async def handle_draft_callback(update, context):
                 target=_target,
                 sent_at=datetime.now().strftime("%Y-%m-%d"),
                 action_id=None,
+                resend_email_id=resend_id if send_via_resend else None,
             )
             track_keyboard = InlineKeyboardMarkup([
                 [
