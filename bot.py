@@ -2497,15 +2497,16 @@ async def handle_draft_callback(update, context):
         resend_id = None
         send_via_resend = False
         prospect_email = ""
+        _prospect_row = None
         if draft.get("type") != "content_post" and draft.get("prospect_id"):
             with db.get_db() as _conn:
-                _prow = _conn.execute(
-                    "SELECT send_channel, email FROM prospects WHERE id = ?",
+                _prospect_row = _conn.execute(
+                    "SELECT send_channel, email, product, name FROM prospects WHERE id = ?",
                     (draft["prospect_id"],),
                 ).fetchone()
-                if _prow and _prow["send_channel"] == "resend" and _prow["email"]:
+                if _prospect_row and _prospect_row["send_channel"] == "resend" and _prospect_row["email"]:
                     send_via_resend = True
-                    prospect_email = _prow["email"]
+                    prospect_email = _prospect_row["email"]
 
         content = draft.get("content", "")
         if len(content) > 3800:
@@ -2513,7 +2514,15 @@ async def handle_draft_callback(update, context):
 
         if send_via_resend:
             import resend_sender
-            subject = "Following up — Marc Pineault"
+            # Build subject from prospect context
+            _product = (_prospect_row["product"] if _prospect_row else "") or ""
+            _pname = (_prospect_row["name"] if _prospect_row else "") or ""
+            if _product:
+                subject = f"Re: {_product} — Marc Pineault"
+            elif _pname:
+                subject = f"Following up, {_pname} — Marc Pineault"
+            else:
+                subject = "Following up — Marc Pineault"
             resend_id = resend_sender.send_email(to=prospect_email, subject=subject, body=content)
             if resend_id:
                 await query.edit_message_text(

@@ -513,6 +513,21 @@ def process_website_contact(data: dict) -> str:
         next_followup = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
         db.update_prospect(prospect_name, {"next_followup": next_followup})
 
+    # Auto-generate follow-up draft for new Hot website leads
+    if is_new and prospect:
+        try:
+            import follow_up
+            activity_summary = f"Website contact form: {service}"
+            if message:
+                activity_summary += f" — {message[:150]}"
+            follow_up.generate_follow_up_draft(
+                prospect_name=prospect_name,
+                activity_summary=activity_summary,
+                activity_type="website_contact",
+            )
+        except Exception:
+            logger.exception("Follow-up draft generation failed for website contact (non-blocking)")
+
     action = "New website lead" if is_new else "Updated"
     return f"{action}: {prospect_name} — {service} (Hot, website contact)"
 
