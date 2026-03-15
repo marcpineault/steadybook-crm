@@ -13,7 +13,11 @@ import re
 
 from flask import Blueprint, jsonify, request
 
-from intake import process_booking, process_calendar_event, process_email_lead
+from intake import (
+    process_booking, process_calendar_event, process_email_lead,
+    process_website_contact, process_website_quiz, process_website_tool,
+    process_email_event,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -60,11 +64,21 @@ def intake_webhook():
             result = process_calendar_event(data)
         elif intake_type == "email_lead":
             result = process_email_lead(data)
+        elif intake_type == "website_contact":
+            result = process_website_contact(data)
+        elif intake_type == "website_quiz":
+            result = process_website_quiz(data)
+        elif intake_type == "website_tool":
+            result = process_website_tool(data)
+        elif intake_type == "email_event":
+            result = process_email_event(data)
         else:
             return jsonify({"error": f"Unknown intake type: {intake_type}"}), 400
 
         logger.info(f"Intake webhook ({intake_type}): {result}")
-        _notify_telegram(result)
+        # Telegram alert for high-signal intake types only
+        if intake_type not in ("website_tool", "email_event"):
+            _notify_telegram(result)
         return jsonify({"ok": True, "message": result})
 
     except Exception as e:

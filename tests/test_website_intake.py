@@ -162,3 +162,77 @@ def test_process_website_contact_no_email_still_works():
     prospect = db.get_prospect_by_name("Marc Test")
     assert prospect is not None
     assert prospect["send_channel"] == "resend"
+
+
+from flask import Flask
+from webhook_intake import intake_bp
+
+
+def _create_app():
+    app = Flask(__name__)
+    app.register_blueprint(intake_bp)
+    return app
+
+
+def test_webhook_website_contact_integration():
+    """Full webhook → intake flow for website_contact."""
+    app = _create_app()
+    with app.test_client() as c:
+        resp = c.post(
+            "/api/intake",
+            json={
+                "type": "website_contact",
+                "data": {
+                    "name": "Integration Test",
+                    "email": "integration@example.com",
+                    "phone": "519-555-9999",
+                    "service": "Home Insurance",
+                    "message": "Testing the integration.",
+                },
+            },
+            headers={"X-Webhook-Secret": os.environ.get("INTAKE_WEBHOOK_SECRET", "test-secret-123")},
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["ok"] is True
+        prospect = db.get_prospect_by_email("integration@example.com")
+        assert prospect is not None
+        assert prospect["send_channel"] == "resend"
+
+
+def test_webhook_website_quiz_integration():
+    """Full webhook → intake flow for website_quiz."""
+    app = _create_app()
+    with app.test_client() as c:
+        resp = c.post(
+            "/api/intake",
+            json={
+                "type": "website_quiz",
+                "data": {
+                    "email": "quiz@example.com",
+                    "score": 65,
+                    "answers": [{"questionId": 1, "optionLabel": "Somewhat", "points": 12}],
+                    "tier": "Fair",
+                },
+            },
+            headers={"X-Webhook-Secret": os.environ.get("INTAKE_WEBHOOK_SECRET", "test-secret-123")},
+        )
+        assert resp.status_code == 200
+
+
+def test_webhook_website_tool_integration():
+    """Full webhook → intake flow for website_tool."""
+    app = _create_app()
+    with app.test_client() as c:
+        resp = c.post(
+            "/api/intake",
+            json={
+                "type": "website_tool",
+                "data": {
+                    "email": "tool@example.com",
+                    "toolName": "Life Insurance Calculator",
+                },
+            },
+            headers={"X-Webhook-Secret": os.environ.get("INTAKE_WEBHOOK_SECRET", "test-secret-123")},
+        )
+        assert resp.status_code == 200
