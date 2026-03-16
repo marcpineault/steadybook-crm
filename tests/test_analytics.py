@@ -135,3 +135,48 @@ def test_get_learning_context():
 def test_get_learning_context_empty():
     context = analytics.get_learning_context(reference_date="2026-03-13")
     assert context == ""
+
+
+def test_get_learning_context_includes_approval_rate():
+    _seed_outcomes()
+    with db.get_db() as conn:
+        conn.execute(
+            "INSERT INTO approval_queue (type, channel, content, status) VALUES ('follow_up', 'email_draft', 'Draft A', 'approved')"
+        )
+        conn.execute(
+            "INSERT INTO approval_queue (type, channel, content, status) VALUES ('follow_up', 'email_draft', 'Draft B', 'dismissed')"
+        )
+    context = analytics.get_learning_context(reference_date="2026-03-13")
+    assert "approval" in context.lower()
+
+
+def test_record_outcome_with_response_type():
+    outcome = analytics.record_outcome(
+        action_type="follow_up",
+        target="Frank",
+        sent_at="2026-03-10",
+        response_type="dismissed",
+    )
+    assert outcome is not None
+    assert outcome["response_type"] == "dismissed"
+
+
+def test_generate_self_tuning_report_no_drafts():
+    report = analytics.generate_self_tuning_report()
+    assert "Self-Tuning Report" in report
+    assert "Draft Performance" in report
+
+
+def test_generate_self_tuning_report_with_data():
+    _seed_outcomes()
+    with db.get_db() as conn:
+        for i in range(12):
+            status = "approved" if i < 4 else "dismissed"
+            conn.execute(
+                f"INSERT INTO approval_queue (type, channel, content, status) VALUES ('follow_up', 'email_draft', 'Draft {i}', '{status}')"
+            )
+    report = analytics.generate_self_tuning_report()
+    assert "Self-Tuning Report" in report
+    assert "Recommendations" in report
+    # With 4 approved vs 8 dismissed, should flag low approval rate
+    assert "LOW APPROVAL RATE" in report or "MORE DISMISSALS" in report
