@@ -1148,7 +1148,7 @@ def dashboard():
             <td class="name-cell"><span style="color:#2c3e50;font-weight:600;text-decoration:none;border-bottom:2px solid #1abc9c">{_esc(p["name"])}</span></td>
             <td style="text-align:center">{hbadge}</td>
             <td><span class="badge" style="background:{pri_bg}">{_esc(p["priority"])}</span></td>
-            <td><span class="badge" style="background:{_stage_bg(p["stage"])};color:{_stage_fg(p["stage"])}">{_esc(p["stage"])}</span></td>
+            <td><span class="badge" style="background:{_stage_bg(p["stage"])};color:{_stage_fg(p["stage"])};cursor:pointer" onclick="changeStage(event, '{esc_detail_name}')" title="Click to change stage">{_esc(p["stage"])}</span></td>
             <td>{_esc(p["product"])}</td>
             <td class="money">{fmt_money_full(p["aum"])}</td>
             <td class="money">{fmt_money_full(p["revenue"])}</td>
@@ -1320,7 +1320,7 @@ def dashboard():
 
     # ── Kanban board data — group active prospects by stage ──
     PIPELINE_STAGES = ["New Lead", "Contacted", "Discovery Call", "Needs Analysis",
-                       "Plan Presentation", "Proposal Sent", "Negotiation"]
+                       "Plan Presentation", "Proposal Sent", "Negotiation", "Nurture"]
     kanban_cols = []
     for _kstage in PIPELINE_STAGES:
         _kprospects = [p for p in active if p.get("stage") == _kstage]
@@ -1330,6 +1330,7 @@ def dashboard():
     _kanban_cols_html = ""
     for _kstage, _kprospects in kanban_cols:
         _kcol_color = _stage_bg(_kstage)
+        _kstage_js = json.dumps(_kstage)[1:-1]
         _kcards_html = ""
         for _kp in _kprospects:
             _kname_esc = _esc(_kp["name"])
@@ -1340,19 +1341,25 @@ def dashboard():
             _kpri_esc = _esc(_kpri)
             _klast = last_activity_map.get(_kp["name"].strip().lower())
             _krel = _relative_time(_klast.strftime("%Y-%m-%d") if _klast else "", today)
-            _kcards_html += f"""<div class="kanban-card" onclick="openProspectDetail('{_kname_js}')">
+            aum_val = _kp.get("aum", "")
+            aum_html = f'<div style="font-size:11px;color:#27ae60;font-weight:600">{fmt_money_full(aum_val)}</div>' if aum_val and aum_val != "0" and aum_val != "$0" else ""
+            _kcards_html += f"""<div class="kanban-card" draggable="true" ondragstart="onDragStart(event, '{_kname_js}')" ondragend="onDragEnd(event)" onclick="openProspectDetail('{_kname_js}')">
                 <div class="kanban-card-name">{_kname_esc}</div>
                 <div class="kanban-card-product">{_kproduct_esc}</div>
+                {aum_html}
                 <div class="kanban-card-meta">
                     <span class="kanban-pri" style="background:{_kpri_color}">{_kpri_esc}</span>
                     <span>{_krel}</span>
                 </div>
             </div>"""
-        _kanban_cols_html += f"""<div class="kanban-col">
+        col_aum = sum(parse_money(p.get("aum", "0")) for p in _kprospects)
+        col_aum_html = f'<span style="font-size:10px;opacity:0.85;margin-left:6px">{fmt_money_full(col_aum)}</span>' if col_aum > 0 else ""
+        _empty_html = '<div style="padding:16px 12px;text-align:center;color:#bdc3c7;font-size:12px;font-style:italic">No prospects</div>' if not _kprospects else ""
+        _kanban_cols_html += f"""<div class="kanban-col" ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event, '{_kstage_js}')">
             <div class="kanban-col-header" style="background:{_kcol_color}">
-                {_esc(_kstage)} <span class="kanban-count">{len(_kprospects)}</span>
+                {_esc(_kstage)} <span class="kanban-count">{len(_kprospects)}</span>{col_aum_html}
             </div>
-            {_kcards_html}
+            {_empty_html}{_kcards_html}
         </div>"""
 
     html = f"""<!DOCTYPE html>
@@ -2527,6 +2534,81 @@ function togglePipelineView(view) {{
     const saved = localStorage.getItem('pipelineView');
     if (saved === 'kanban') togglePipelineView('kanban');
 }})();
+
+// ── Kanban drag-and-drop ──
+function onDragStart(e, prospectName) {{
+    e.dataTransfer.setData('text/plain', prospectName);
+    e.target.style.opacity = '0.5';
+}}
+function onDragEnd(e) {{
+    e.target.style.opacity = '1';
+}}
+function onDragOver(e) {{
+    e.preventDefault();
+    e.currentTarget.style.background = '#e8f8f5';
+}}
+function onDragLeave(e) {{
+    e.currentTarget.style.background = '#f8f9fa';
+}}
+async function onDrop(e, newStage) {{
+    e.preventDefault();
+    e.currentTarget.style.background = '#f8f9fa';
+    const prospectName = e.dataTransfer.getData('text/plain');
+    if (!prospectName) return;
+    try {{
+        const res = await fetch('/api/prospect/update', {{
+            method: 'PUT',
+            headers: {{'Content-Type': 'application/json', 'X-CSRF-Token': _csrfToken}},
+            body: JSON.stringify({{ name: prospectName, updates: {{ stage: newStage }} }})
+        }});
+        const result = await res.json();
+        if (result.ok) {{
+            showToast(prospectName + ' moved to ' + newStage, 'success');
+            _saveTabAndReload();
+        }} else {{
+            showToast('Error: ' + (result.error || 'Unknown'), 'error');
+        }}
+    }} catch(err) {{ showToast('Error: ' + err.message, 'error'); }}
+}}
+
+// ── Inline stage change dropdown ──
+function changeStage(e, prospectName) {{
+    e.stopPropagation();
+    const existing = document.getElementById('stageDropdown');
+    if (existing) existing.remove();
+
+    const stages = ['New Lead', 'Contacted', 'Discovery Call', 'Needs Analysis', 'Plan Presentation', 'Proposal Sent', 'Negotiation', 'Closed-Won', 'Closed-Lost', 'Nurture'];
+    const dd = document.createElement('div');
+    dd.id = 'stageDropdown';
+    dd.style.cssText = 'position:fixed;z-index:10000;background:#fff;border:1px solid #ddd;border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,0.15);padding:4px 0;min-width:180px;max-height:300px;overflow-y:auto';
+    dd.style.left = e.clientX + 'px';
+    dd.style.top = e.clientY + 'px';
+
+    stages.forEach(s => {{
+        const opt = document.createElement('div');
+        opt.textContent = s;
+        opt.style.cssText = 'padding:8px 16px;cursor:pointer;font-size:13px;transition:background 0.15s';
+        opt.onmouseover = () => opt.style.background = '#f0f0f0';
+        opt.onmouseout = () => opt.style.background = '';
+        opt.onclick = async () => {{
+            dd.remove();
+            try {{
+                const res = await fetch('/api/prospect/update', {{
+                    method: 'PUT',
+                    headers: {{'Content-Type': 'application/json', 'X-CSRF-Token': _csrfToken}},
+                    body: JSON.stringify({{ name: prospectName, updates: {{ stage: s }} }})
+                }});
+                const result = await res.json();
+                if (result.ok) {{ showToast(prospectName + ' \u2192 ' + s, 'success'); _saveTabAndReload(); }}
+                else {{ showToast('Error: ' + (result.error || ''), 'error'); }}
+            }} catch(err) {{ showToast('Error: ' + err.message, 'error'); }}
+        }};
+        dd.appendChild(opt);
+    }});
+
+    document.body.appendChild(dd);
+    setTimeout(() => document.addEventListener('click', function handler() {{ dd.remove(); document.removeEventListener('click', handler); }}), 10);
+}}
 
 // Tab switching
 function showTab(name) {{
