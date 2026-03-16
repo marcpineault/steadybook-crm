@@ -141,6 +141,14 @@ async def extract_and_update(transcript: str, bot=None, source: str = "voice_not
         if not name:
             continue
 
+        # Skip garbage names from Otter transcription (Speaker 1, Unknown, etc.)
+        skip_names = {"speaker 1", "speaker 2", "speaker 3", "speaker 4",
+                      "unknown", "unknown speaker", "marc", "marc pereira",
+                      "marc pineault"}
+        if name.lower() in skip_names:
+            logger.info(f"Skipping non-prospect name from transcript: {name}")
+            continue
+
         existing = db.get_prospect_by_name(name)
         if existing:
             old_notes = existing.get("notes", "")

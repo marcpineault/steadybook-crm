@@ -2011,6 +2011,32 @@ async def cmd_priority(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ── /lead command ──
 
+async def cmd_merge(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /merge command — merge two prospects into one."""
+    if not await _require_admin(update):
+        return
+    args = context.args
+    if not args or len(args) < 2:
+        await update.message.reply_text(
+            "Usage: /merge <keep> into <merge>\n"
+            "Example: /merge John Smith into John S\n\n"
+            "Keeps the first name, merges all data from the second, then deletes the second."
+        )
+        return
+    # Parse "keep into merge" or just "keep merge"
+    text = " ".join(args)
+    if " into " in text.lower():
+        parts = text.lower().split(" into ", 1)
+        keep_name = parts[0].strip()
+        merge_name = parts[1].strip()
+    else:
+        # First arg = keep, rest = merge
+        keep_name = args[0]
+        merge_name = " ".join(args[1:])
+    result = db.merge_prospects(keep_name, merge_name)
+    await update.message.reply_text(result)
+
+
 async def cmd_lead(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /lead command — paste in a lead email or referral info."""
     if not await _require_admin(update):
@@ -3046,6 +3072,7 @@ def build_application():
     app.add_handler(CommandHandler("priority", cmd_priority))
     app.add_handler(CommandHandler("p", cmd_priority))  # shortcut
     app.add_handler(CommandHandler("lead", cmd_lead))
+    app.add_handler(CommandHandler("merge", cmd_merge))
     app.add_handler(CommandHandler("memory", cmd_memory))
     app.add_handler(CommandHandler("confirm", cmd_confirm))
     app.add_handler(CommandHandler("forget", cmd_forget))

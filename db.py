@@ -443,6 +443,76 @@ def delete_prospect(name: str) -> str:
     return f"Deleted {matched_name} from pipeline."
 
 
+def merge_prospects(keep_name: str, merge_name: str) -> str:
+    """Merge one prospect into another. Keeps keep_name, deletes merge_name.
+
+    Transfers all activities, interactions, memory, approvals, and nurture
+    sequences from merge_name to keep_name. Merges notes.
+    """
+    with get_db() as conn:
+        keep = conn.execute(
+            "SELECT * FROM prospects WHERE LOWER(name) LIKE ? LIMIT 1",
+            (f"%{keep_name.lower()}%",),
+        ).fetchone()
+        merge = conn.execute(
+            "SELECT * FROM prospects WHERE LOWER(name) LIKE ? LIMIT 1",
+            (f"%{merge_name.lower()}%",),
+        ).fetchone()
+
+        if not keep:
+            return f"Could not find prospect '{keep_name}'."
+        if not merge:
+            return f"Could not find prospect '{merge_name}'."
+        if keep["id"] == merge["id"]:
+            return "Cannot merge a prospect with itself."
+
+        keep_id = keep["id"]
+        merge_id = merge["id"]
+        keep_real = keep["name"]
+        merge_real = merge["name"]
+
+        # Transfer activities and interactions (name-based)
+        conn.execute(
+            "UPDATE activities SET prospect = ? WHERE LOWER(prospect) = ?",
+            (keep_real, merge_real.lower()),
+        )
+        conn.execute(
+            "UPDATE interactions SET prospect = ? WHERE LOWER(prospect) = ?",
+            (keep_real, merge_real.lower()),
+        )
+
+        # Transfer FK-based records
+        conn.execute(
+            "UPDATE client_memory SET prospect_id = ? WHERE prospect_id = ?",
+            (keep_id, merge_id),
+        )
+        conn.execute(
+            "UPDATE approval_queue SET prospect_id = ? WHERE prospect_id = ?",
+            (keep_id, merge_id),
+        )
+        conn.execute(
+            "UPDATE nurture_sequences SET prospect_id = ?, prospect_name = ? WHERE prospect_id = ?",
+            (keep_id, keep_real, merge_id),
+        )
+
+        # Merge notes
+        keep_notes = keep["notes"] or ""
+        merge_notes = merge["notes"] or ""
+        if merge_notes:
+            combined = f"{keep_notes} | Merged from {merge_real}: {merge_notes}".strip(" |")
+            conn.execute("UPDATE prospects SET notes = ? WHERE id = ?", (combined, keep_id))
+
+        # Fill empty fields on keep from merge
+        for field in ("phone", "email", "product", "aum", "revenue"):
+            if not keep[field] and merge[field]:
+                conn.execute(f"UPDATE prospects SET {field} = ? WHERE id = ?", (merge[field], keep_id))
+
+        # Delete the merged prospect
+        conn.execute("DELETE FROM prospects WHERE id = ?", (merge_id,))
+
+    return f"Merged {merge_real} into {keep_real}."
+
+
 def get_prospect_by_name(name: str):
     """Lookup by exact match first, then fuzzy partial match. Returns single dict or None."""
     with get_db() as conn:

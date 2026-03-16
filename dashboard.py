@@ -186,6 +186,18 @@ def api_delete_prospect(name):
     return jsonify({"ok": True, "message": result})
 
 
+@app.route("/api/prospect/merge", methods=["POST"])
+@_require_auth
+def api_merge_prospects():
+    data = request.json
+    if not data or not data.get("keep") or not data.get("merge"):
+        return jsonify({"error": "Need 'keep' and 'merge' fields"}), 400
+    result = db.merge_prospects(data["keep"], data["merge"])
+    if "not found" in result.lower() or "Cannot" in result:
+        return jsonify({"error": result}), 400
+    return jsonify({"ok": True, "message": result})
+
+
 @app.route("/api/prospect/update", methods=["PUT"])
 @_require_auth
 def api_update_prospect_by_name():
