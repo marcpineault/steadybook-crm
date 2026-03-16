@@ -531,22 +531,40 @@ def merge_prospects(keep_name: str, merge_name: str) -> str:
     return f"Merged {merge_real} into {keep_real}."
 
 
+def get_all_prospect_names() -> list[str]:
+    """Return a list of all prospect names (for duplicate checking)."""
+    with get_db() as conn:
+        rows = conn.execute("SELECT name FROM prospects ORDER BY name").fetchall()
+    return [row["name"] for row in rows]
+
+
 def get_prospect_by_name(name: str):
     """Lookup by exact match first, then fuzzy partial match. Returns single dict or None."""
     with get_db() as conn:
-        # Try exact match first
+        # Try exact match first (case-insensitive)
         row = conn.execute(
             "SELECT * FROM prospects WHERE LOWER(name) = ? LIMIT 1",
             (name.lower(),),
         ).fetchone()
         if row is None:
-            # Fall back to partial match
-            row = conn.execute(
-                "SELECT * FROM prospects WHERE LOWER(name) LIKE ? LIMIT 1",
+            # Fall back to partial match — fetch ALL candidates and pick best
+            candidates = conn.execute(
+                "SELECT * FROM prospects WHERE LOWER(name) LIKE ?",
                 (f"%{name.lower()}%",),
-            ).fetchone()
-            if row:
+            ).fetchall()
+            if len(candidates) == 1:
+                row = candidates[0]
                 logger.info(f"Prospect fuzzy match: '{name}' → '{dict(row)['name']}'")
+            elif len(candidates) > 1:
+                # Multiple matches — pick the shortest name (closest to exact match)
+                # e.g. searching "John Smith" should prefer "John Smith" over "John Smithson"
+                sorted_candidates = sorted(candidates, key=lambda r: len(dict(r)["name"]))
+                row = sorted_candidates[0]
+                other_names = [dict(r)["name"] for r in sorted_candidates[1:]]
+                logger.warning(
+                    f"Prospect fuzzy match: '{name}' → '{dict(row)['name']}' "
+                    f"(ambiguous — also matched: {other_names})"
+                )
     return _row_to_dict(row)
 
 
