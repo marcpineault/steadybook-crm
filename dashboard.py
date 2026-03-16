@@ -549,16 +549,77 @@ def _calc_deal_velocity(prospects, activities):
     return total_days // count if count > 0 else 0
 
 
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    """Simple password login page."""
+    if request.method == "POST":
+        password = request.form.get("password", "")
+        if DASHBOARD_API_KEY and hmac.compare_digest(password, DASHBOARD_API_KEY):
+            from flask import make_response
+            resp = make_response('<script>window.location="/"</script>')
+            resp.set_cookie("dash_auth", _generate_csrf_token(), max_age=86400 * 30, httponly=True, samesite="Lax")
+            # Store the token so we can validate it
+            return resp
+        return _login_page(error="Wrong password. Try again.")
+    return _login_page()
+
+
+def _login_page(error=""):
+    error_html = f'<p style="color:#e74c3c;margin-bottom:1rem;font-size:0.9rem">{_html.escape(error)}</p>' if error else ""
+    return Response(f"""<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Calm Money — Login</title>
+<style>
+  * {{ margin:0; padding:0; box-sizing:border-box; }}
+  body {{ font-family:-apple-system,system-ui,sans-serif; background:#0f1117; color:#e8e6f0;
+         display:flex; align-items:center; justify-content:center; min-height:100vh; }}
+  .card {{ background:#1a1a26; border:1px solid #2a2a3a; border-radius:16px; padding:2.5rem;
+           width:100%; max-width:380px; text-align:center; }}
+  h1 {{ font-size:1.5rem; margin-bottom:0.3rem; }}
+  .sub {{ color:#8888a0; font-size:0.85rem; margin-bottom:1.5rem; }}
+  input {{ width:100%; padding:0.75rem 1rem; border:1px solid #2a2a3a; border-radius:8px;
+           background:#12121a; color:#e8e6f0; font-size:1rem; margin-bottom:1rem; outline:none; }}
+  input:focus {{ border-color:#00e5a0; }}
+  button {{ width:100%; padding:0.75rem; border:none; border-radius:8px; background:#00e5a0;
+            color:#0a0a0f; font-size:1rem; font-weight:600; cursor:pointer; }}
+  button:hover {{ background:#00cc8e; }}
+</style></head><body>
+<div class="card">
+  <h1>Calm Money</h1>
+  <p class="sub">Pipeline Dashboard</p>
+  {error_html}
+  <form method="POST" action="/login">
+    <input type="password" name="password" placeholder="Password" autofocus>
+    <button type="submit">Sign In</button>
+  </form>
+</div></body></html>""", mimetype="text/html")
+
+
+@app.route("/logout")
+def logout():
+    from flask import make_response
+    resp = make_response('<script>window.location="/login"</script>')
+    resp.delete_cookie("dash_auth")
+    return resp
+
+
 @app.route("/")
 def dashboard():
-    # Check API key from header (programmatic) or query param (browser bookmark)
-    api_key = request.headers.get("X-API-Key", "") or request.args.get("key", "")
-    if DASHBOARD_API_KEY and not (api_key and hmac.compare_digest(api_key, DASHBOARD_API_KEY)):
-        return Response(
-            "<html><body><h2>Unauthorized</h2><p>Append ?key=YOUR_KEY to the URL.</p></body></html>",
-            status=401,
-            mimetype="text/html",
-        )
+    # Check auth: cookie (browser login), API key header (programmatic), or query param (legacy)
+    authed = False
+    # Cookie auth (from /login form)
+    dash_cookie = request.cookies.get("dash_auth", "")
+    if dash_cookie and _validate_csrf_token(dash_cookie):
+        authed = True
+    # API key header or query param (backward compatible)
+    if not authed:
+        api_key = request.headers.get("X-API-Key", "") or request.args.get("key", "")
+        if DASHBOARD_API_KEY and api_key and hmac.compare_digest(api_key, DASHBOARD_API_KEY):
+            authed = True
+    # No DASHBOARD_API_KEY set = open access (dev mode)
+    if not authed and DASHBOARD_API_KEY:
+        from flask import redirect
+        return redirect("/login")
     csrf_token = _generate_csrf_token()
     prospects, activities, meetings, book_entries = read_data()
     try:

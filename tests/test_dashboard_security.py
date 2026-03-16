@@ -13,10 +13,40 @@ def client():
         yield c
 
 
-def test_dashboard_requires_auth(client):
-    """GET / without credentials returns 401."""
+def test_dashboard_redirects_to_login(client):
+    """GET / without credentials redirects to /login."""
     resp = client.get("/")
-    assert resp.status_code == 401
+    assert resp.status_code == 302
+    assert "/login" in resp.headers.get("Location", "")
+
+
+def test_login_page_renders(client):
+    """GET /login shows login form."""
+    resp = client.get("/login")
+    assert resp.status_code == 200
+    assert b"Password" in resp.data or b"password" in resp.data
+
+
+def test_login_with_correct_password(client):
+    """POST /login with correct password sets auth cookie."""
+    resp = client.post("/login", data={"password": "test-secret-key"})
+    assert resp.status_code == 200
+    # Verify cookie is set by checking we can now access the dashboard
+    dash_resp = client.get("/")
+    assert dash_resp.status_code == 200
+
+
+def test_login_with_wrong_password(client):
+    """POST /login with wrong password shows error."""
+    resp = client.post("/login", data={"password": "wrong"})
+    assert b"Wrong password" in resp.data
+
+
+def test_dashboard_accessible_after_login(client):
+    """After logging in, GET / returns 200."""
+    client.post("/login", data={"password": "test-secret-key"})
+    resp = client.get("/")
+    assert resp.status_code == 200
 
 
 def test_dashboard_accessible_with_api_key(client):
@@ -42,6 +72,5 @@ def test_chart_labels_use_json_dumps(client):
     })
     resp = client.get("/", headers={"X-API-Key": "test-secret-key"})
     html = resp.data.decode()
-    # Script injection should be escaped by json.dumps
     assert "</script><script>alert(1)</script>" not in html
     db.delete_prospect("Test XSS")
