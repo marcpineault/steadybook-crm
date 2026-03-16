@@ -29,3 +29,19 @@ def test_dashboard_accessible_with_query_key(client):
     """GET / with valid query param key returns 200."""
     resp = client.get("/?key=test-secret-key")
     assert resp.status_code == 200
+
+
+def test_chart_labels_use_json_dumps(client):
+    """Chart labels must use json.dumps format, not Python str(list)."""
+    import db
+    db.add_prospect({
+        "name": "Test XSS",
+        "source": "test</script><script>alert(1)</script>",
+        "stage": "New Lead",
+        "priority": "Hot",
+    })
+    resp = client.get("/", headers={"X-API-Key": "test-secret-key"})
+    html = resp.data.decode()
+    # Script injection should be escaped by json.dumps
+    assert "</script><script>alert(1)</script>" not in html
+    db.delete_prospect("Test XSS")

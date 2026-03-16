@@ -28,6 +28,17 @@ def _esc_json_attr(val):
     return _html.escape(val, quote=True)
 
 
+def _json_script(value):
+    """Serialize value to JSON safe for embedding inside a <script> block.
+
+    json.dumps() does not escape '<', '>' or '/' by default, which allows
+    a string like '</script>' to break out of the enclosing script tag.
+    Replacing '</' with '<\\/' is the standard mitigation: '\\/' is a valid
+    JSON escape sequence that browsers parse identically to '/'.
+    """
+    return json.dumps(value).replace("</", "<\\/")
+
+
 DASHBOARD_API_KEY = os.environ.get("DASHBOARD_API_KEY", "")
 if not DASHBOARD_API_KEY:
     raise RuntimeError(
@@ -377,7 +388,7 @@ def _build_rec_html(rec):
     icons = {"critical": "&#9888;", "warning": "&#9888;", "action": "&#10148;", "suggestion": "&#128161;"}
     color = colors.get(level, "#7f8c8d")
     icon = icons.get(level, "")
-    esc_name = _html.escape(prospect_name).replace("'", "\\'") if prospect_name else ""
+    esc_name = json.dumps(prospect_name)[1:-1] if prospect_name else ""
     click = f' onclick="openProspectDetail(\'{esc_name}\')" style="cursor:pointer"' if prospect_name else ""
     return f'<div style="padding:10px 12px;margin-bottom:8px;border-left:3px solid {color};background:#fafafa;border-radius:0 6px 6px 0;font-size:13px"{click}>{icon} {_html.escape(text)}</div>'
 
@@ -1015,7 +1026,7 @@ def dashboard():
         hbadge = _health_badge(hscore)
 
         p_json_escaped = _esc_json_attr(json.dumps(p))
-        esc_detail_name = _esc(p["name"]).replace("'", "\\'")
+        esc_detail_name = json.dumps(p["name"])[1:-1]
         prospect_rows += f"""<tr class="editable-row" data-prospect="{p_json_escaped}" onclick="openEdit(JSON.parse(this.dataset.prospect))" style="cursor:pointer">
             <td class="name-cell"><a href="javascript:void(0)" onclick="event.stopPropagation();openProspectDetail('{esc_detail_name}')" style="color:#2c3e50;font-weight:600;text-decoration:none;border-bottom:2px solid #1abc9c">{_esc(p["name"])}</a></td>
             <td style="text-align:center">{hbadge}</td>
@@ -1059,7 +1070,7 @@ def dashboard():
             days_late = (today - datetime.strptime(fu, "%Y-%m-%d").date()).days
         except (ValueError, IndexError):
             days_late = "?"
-        esc_name = _esc(p["name"]).replace("'", "\\'")
+        esc_name = json.dumps(p["name"])[1:-1]
         overdue_rows += f"""<tr>
             <td class="name-cell">{_esc(p["name"])}</td>
             <td>{_esc(fu)}</td>
@@ -1101,7 +1112,7 @@ def dashboard():
                 due_display = '<span style="color:#F39C12;font-weight:600">Today</span>'
             else:
                 due_display = _esc(due)
-        task_prospect_esc = _esc(t.get("prospect", "")).replace("'", "\\'")
+        task_prospect_esc = json.dumps(t.get("prospect", ""))[1:-1]
         prospect_display = f'<a style="color:#3498DB" href="javascript:void(0)" onclick="event.stopPropagation();openProspectDetail(\'{task_prospect_esc}\')">{_esc(t["prospect"])}</a>' if t.get("prospect") else ""
         remind_icon = ' <span title="Reminder set" style="color:#F39C12">&#9200;</span>' if t.get("remind_at") else ""
         due_cell = f"<td>{due_display}</td>" if show_due else ""
@@ -2127,8 +2138,8 @@ const chartColors = ['#1abc9c','#3498db','#8e44ad','#e67e22','#f39c12','#2980b9'
 new Chart(document.getElementById('stageChart'), {{
     type: 'doughnut',
     data: {{
-        labels: {stage_labels},
-        datasets: [{{ data: {stage_values}, backgroundColor: {stage_chart_colors} }}]
+        labels: {_json_script(stage_labels)},
+        datasets: [{{ data: {_json_script(stage_values)}, backgroundColor: {_json_script(stage_chart_colors)} }}]
     }},
     options: {{ responsive: true, plugins: {{ legend: {{ position: 'bottom', labels: {{ boxWidth: 12, padding: 8, font: {{ size: 11 }} }} }} }} }}
 }});
@@ -2136,8 +2147,8 @@ new Chart(document.getElementById('stageChart'), {{
 new Chart(document.getElementById('sourceChart'), {{
     type: 'doughnut',
     data: {{
-        labels: {source_labels},
-        datasets: [{{ data: {source_values}, backgroundColor: chartColors }}]
+        labels: {_json_script(source_labels)},
+        datasets: [{{ data: {_json_script(source_values)}, backgroundColor: chartColors }}]
     }},
     options: {{ responsive: true, plugins: {{ legend: {{ position: 'bottom', labels: {{ boxWidth: 12, padding: 8, font: {{ size: 11 }} }} }} }} }}
 }});
@@ -2145,8 +2156,8 @@ new Chart(document.getElementById('sourceChart'), {{
 new Chart(document.getElementById('productChart'), {{
     type: 'doughnut',
     data: {{
-        labels: {product_labels},
-        datasets: [{{ data: {product_values}, backgroundColor: chartColors }}]
+        labels: {_json_script(product_labels)},
+        datasets: [{{ data: {_json_script(product_values)}, backgroundColor: chartColors }}]
     }},
     options: {{ responsive: true, plugins: {{ legend: {{ position: 'bottom', labels: {{ boxWidth: 12, padding: 8, font: {{ size: 11 }} }} }} }} }}
 }});
@@ -2513,8 +2524,8 @@ function initFunnelCharts() {{
     window._funnelInit = true;
     const ctx = document.getElementById('velocityChart');
     if (!ctx) return;
-    const velocityLabels = {list(avg_stage_days.keys())};
-    const velocityData = {[round(v, 1) for v in avg_stage_days.values()]};
+    const velocityLabels = {_json_script(list(avg_stage_days.keys()))};
+    const velocityData = {_json_script([round(v, 1) for v in avg_stage_days.values()])};
     new Chart(ctx, {{
         type: 'bar',
         data: {{
