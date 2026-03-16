@@ -62,7 +62,7 @@ def intake_webhook():
         try:
             result = _process_otter_transcript(transcript)
             logger.info("Intake webhook (otter_transcript): processed successfully")
-            _notify_telegram(f"Otter transcript processed:\n{result[:500]}")
+            _notify_telegram("Otter transcript processed — pipeline updated.")
             return jsonify({"ok": True, "message": result})
         except Exception as e:
             logger.error(f"Otter transcript processing error: {e}")
