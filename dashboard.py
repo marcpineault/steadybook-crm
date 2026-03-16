@@ -1730,11 +1730,11 @@ tr:hover {{ background: #f8f9fa; }}
     </div>
 
     <div class="tab-nav">
-        <button class="tab-btn active" onclick="showTab('pipeline')">Pipeline</button>
-        <button class="tab-btn" onclick="showTab('forecast')">Revenue Forecast</button>
-        <button class="tab-btn" onclick="showTab('funnel')">Conversion Funnel</button>
-        <button class="tab-btn" onclick="showTab('scoreboard')">Activity Score</button>
-        <button class="tab-btn" onclick="showTab('tasks')">Tasks</button>
+        <button class="tab-btn active" data-tab="pipeline" onclick="showTab('pipeline')">Pipeline</button>
+        <button class="tab-btn" data-tab="forecast" onclick="showTab('forecast')">Revenue Forecast</button>
+        <button class="tab-btn" data-tab="funnel" onclick="showTab('funnel')">Conversion Funnel</button>
+        <button class="tab-btn" data-tab="scoreboard" onclick="showTab('scoreboard')">Activity Score</button>
+        <button class="tab-btn" data-tab="tasks" onclick="showTab('tasks')">Tasks</button>
     </div>
 
     <!-- ═══ TAB 1: PIPELINE (existing) ═══ -->
@@ -2109,7 +2109,7 @@ tr:hover {{ background: #f8f9fa; }}
         <label>Task</label><input id="tTitle" type="text" placeholder="What needs to be done?" style="width:100%">
     </div>
     <div class="form-row">
-        <div><label>Prospect (optional)</label><input id="tProspect" type="text" placeholder="Prospect name"></div>
+        <div><label>Prospect (optional)</label><input id="tProspect" type="text" placeholder="Prospect name" list="prospectList"><datalist id="prospectList">{''.join(f'<option value="{_esc(n)}">' for n in sorted(set(p["name"] for p in prospects)))}</datalist></div>
         <div><label>Due Date</label><input id="tDue" type="date"></div>
     </div>
     <div class="form-row">
@@ -2204,10 +2204,35 @@ function showTab(name) {{
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.getElementById('tab-' + name).classList.add('active');
     event.target.classList.add('active');
+    localStorage.setItem('activeTab', name);
     // Initialize charts when their tab is shown
     if (name === 'forecast' && !window._forecastInit) initForecastCharts();
     if (name === 'funnel' && !window._funnelInit) initFunnelCharts();
 }}
+
+function _saveTabAndReload() {{
+    localStorage.setItem('activeTab', document.querySelector('.tab-btn.active')?.dataset?.tab || 'pipeline');
+    location.reload();
+}}
+
+// Restore active tab on page load
+(function() {{
+    const saved = localStorage.getItem('activeTab');
+    if (saved && saved !== 'pipeline') {{
+        const btn = document.querySelector('.tab-btn[data-tab="' + saved + '"]');
+        if (btn) {{
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            const content = document.getElementById('tab-' + saved);
+            if (content) {{
+                content.classList.add('active');
+                btn.classList.add('active');
+                if (saved === 'forecast') initForecastCharts();
+                if (saved === 'funnel') initFunnelCharts();
+            }}
+        }}
+    }}
+}})();
 
 const chartColors = ['#1abc9c','#3498db','#8e44ad','#e67e22','#f39c12','#2980b9','#e74c3c','#27ae60','#95a5a6','#2c3e50'];
 
@@ -2315,7 +2340,7 @@ async function saveProspect() {{
             res = await fetch('/api/prospect/' + encodeURIComponent(origName), {{ method: 'PUT', headers: hdrs, body: JSON.stringify(data) }});
         }}
         const result = await res.json();
-        if (result.ok) {{ closeModal(); location.reload(); }}
+        if (result.ok) {{ closeModal(); _saveTabAndReload(); }}
         else alert(result.error || 'Error saving');
     }} catch(e) {{ alert('Error: ' + e.message); }}
 }}
@@ -2326,7 +2351,7 @@ async function deleteProspect() {{
     try {{
         const res = await fetch('/api/prospect/' + encodeURIComponent(name), {{ method: 'DELETE', headers: {{'X-CSRF-Token': _csrfToken}} }});
         const result = await res.json();
-        if (result.ok) {{ closeModal(); location.reload(); }}
+        if (result.ok) {{ closeModal(); _saveTabAndReload(); }}
         else alert(result.error || 'Error deleting');
     }} catch(e) {{ alert('Error: ' + e.message); }}
 }}
@@ -2391,7 +2416,7 @@ async function saveTask() {{
             res = await fetch('/api/task', {{ method: 'POST', headers: {{'Content-Type': 'application/json', 'X-CSRF-Token': _csrfToken}}, body: JSON.stringify(data) }});
         }}
         const result = await res.json();
-        if (result.ok) {{ closeTaskModal(); location.reload(); }}
+        if (result.ok) {{ closeTaskModal(); _saveTabAndReload(); }}
         else alert(result.error || 'Error saving task');
     }} catch(e) {{ alert('Error: ' + e.message); }}
 }}
@@ -2400,7 +2425,7 @@ async function completeTask(id, checkbox) {{
     try {{
         const res = await fetch('/api/task/' + id + '/complete', {{ method: 'PUT', headers: {{'X-CSRF-Token': _csrfToken}} }});
         const result = await res.json();
-        if (result.ok) {{ location.reload(); }}
+        if (result.ok) {{ _saveTabAndReload(); }}
         else {{ checkbox.checked = false; alert(result.error || 'Error'); }}
     }} catch(e) {{ checkbox.checked = false; alert('Error: ' + e.message); }}
 }}
@@ -2410,7 +2435,7 @@ async function deleteTask(id) {{
     try {{
         const res = await fetch('/api/task/' + id, {{ method: 'DELETE', headers: {{'X-CSRF-Token': _csrfToken}} }});
         const result = await res.json();
-        if (result.ok) {{ closeTaskModal(); location.reload(); }}
+        if (result.ok) {{ closeTaskModal(); _saveTabAndReload(); }}
         else alert(result.error || 'Error');
     }} catch(e) {{ alert('Error: ' + e.message); }}
 }}
@@ -2446,6 +2471,8 @@ async function openProspectDetail(name) {{
         html += '<div><strong>Priority:</strong> ' + _e(p.priority || '—') + '</div>';
         html += '<div><strong>Product:</strong> ' + _e(p.product || '—') + '</div>';
         html += '<div><strong>Follow-up:</strong> ' + _e(p.next_followup || '—') + '</div>';
+        html += '<div><strong>AUM:</strong> ' + _e(p.aum || '—') + '</div>';
+        html += '<div><strong>Revenue:</strong> ' + _e(p.revenue || '—') + '</div>';
         if (p.notes) html += '<div style="grid-column:1/-1"><strong>Notes:</strong> ' + _e(p.notes) + '</div>';
         html += '</div>';
 
@@ -2539,7 +2566,7 @@ async function doMerge() {{
         const result = await res.json();
         if (result.ok) {{
             alert(result.message);
-            location.reload();
+            _saveTabAndReload();
         }} else {{
             alert('Error: ' + (result.error || 'Unknown error'));
         }}
@@ -2604,7 +2631,7 @@ async function quickReschedule(prospectName, days) {{
             body: JSON.stringify({{ name: prospectName, updates: {{ next_followup: dateStr }} }})
         }});
         const result = await res.json();
-        if (result.ok) location.reload();
+        if (result.ok) _saveTabAndReload();
         else alert(result.error || 'Error rescheduling');
     }} catch(e) {{ alert('Error: ' + e.message); }}
 }}
