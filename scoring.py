@@ -131,6 +131,39 @@ def _get_stage_action(prospect, today, avg_stage_days=None):
     return _STANDARD_ACTIONS.get(stage, "Review this prospect and decide on next steps")
 
 
+# ── Adaptive win rates ──
+
+def get_actual_win_rates():
+    """Get win rates by product from win_loss_log. Returns dict of product -> win_rate."""
+    try:
+        with db.get_db() as conn:
+            rows = conn.execute("""
+                SELECT product, outcome, COUNT(*) as cnt
+                FROM win_loss_log
+                WHERE product IS NOT NULL AND product != ''
+                GROUP BY product, outcome
+            """).fetchall()
+
+        product_stats = {}
+        for r in rows:
+            product = r["product"]
+            if product not in product_stats:
+                product_stats[product] = {"won": 0, "lost": 0}
+            if r["outcome"] and "won" in r["outcome"].lower():
+                product_stats[product]["won"] = r["cnt"]
+            else:
+                product_stats[product]["lost"] = r["cnt"]
+
+        rates = {}
+        for product, stats in product_stats.items():
+            total = stats["won"] + stats["lost"]
+            if total >= 5:  # Need at least 5 data points
+                rates[product] = stats["won"] / total
+        return rates
+    except Exception:
+        return {}
+
+
 # ── Main scoring function ──
 
 def score_prospect(prospect, avg_stage_days=None):
@@ -202,6 +235,21 @@ def score_prospect(prospect, avg_stage_days=None):
 
     # ── Total ──
     raw_score = deal_size_score + urgency_score + stage_score + priority_score
+
+    # ── Win-rate boost (±10% based on product performance) ──
+    try:
+        win_rates = get_actual_win_rates()
+        if win_rates and product:
+            product_lower = product.lower()
+            for known_product, win_rate in win_rates.items():
+                if known_product.lower() in product_lower or product_lower in known_product.lower():
+                    raw_score = raw_score * (1 + (win_rate - 0.5) * 0.2)
+                    if win_rate > 0.5:
+                        reasons.append(f"Product win-rate boost ({win_rate:.0%} win rate for {known_product})")
+                    break
+    except Exception:
+        pass
+
     total_score = int(min(raw_score, 100))
 
     # Get action recommendation
