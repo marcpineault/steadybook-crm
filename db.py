@@ -531,6 +531,13 @@ def merge_prospects(keep_name: str, merge_name: str) -> str:
     return f"Merged {merge_real} into {keep_real}."
 
 
+def get_all_prospect_names() -> list[str]:
+    """Return a list of all prospect names (for duplicate checking)."""
+    with get_db() as conn:
+        rows = conn.execute("SELECT name FROM prospects ORDER BY name").fetchall()
+    return [row["name"] for row in rows]
+
+
 def get_prospect_by_name(name: str):
     """Lookup by exact match first, then fuzzy partial match. Returns single dict or None."""
     with get_db() as conn:
