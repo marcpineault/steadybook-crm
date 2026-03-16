@@ -43,9 +43,6 @@ def _draft_keyboard(queue_id):
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton("Approve", callback_data=f"draft_approve_{queue_id}"),
-            InlineKeyboardButton("Edit", callback_data=f"draft_edit_{queue_id}"),
-        ],
-        [
             InlineKeyboardButton("Skip", callback_data=f"draft_dismiss_{queue_id}"),
             InlineKeyboardButton("Snooze 1h", callback_data=f"draft_snooze_{queue_id}"),
         ],
@@ -2536,15 +2533,6 @@ async def handle_draft_callback(update, context):
     elif action == "snooze":
         approval_queue.update_draft_status(queue_id, "snoozed")
         await query.edit_message_text(f"Snoozed draft #{queue_id} — will remind in 1 hour.")
-
-    elif action == "edit":
-        await query.edit_message_text(
-            f"EDITING draft #{queue_id}\n\n"
-            f"Original:\n{draft['content']}\n\n"
-            "Reply to this message with your changes and I'll regenerate."
-        )
-        context.user_data["editing_draft_id"] = queue_id
-
 
 def _find_audit_entry(queue_id, draft):
     """Find the audit log entry for this draft. Returns log_id or None."""
