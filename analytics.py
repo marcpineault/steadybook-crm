@@ -198,12 +198,17 @@ def get_learning_context(reference_date=None):
 
     Returns a short text summary of recent performance data that other modules
     can include in their GPT prompts. Returns empty string if no data.
+
+    Includes: response rate by action_type, approval rate from approval_queue,
+    win/loss product rates, and day-of-week timing patterns.
     """
     stats = get_weekly_stats(reference_date=reference_date)
     if stats["total_actions"] == 0:
         return ""
 
     lines = ["RECENT PERFORMANCE (last 7 days):"]
+
+    # Response rate by action_type
     for action_type, data in stats["by_type"].items():
         rate = round(data["responses"] / data["total"] * 100, 1) if data["total"] > 0 else 0
         lines.append(f"  {action_type}: {rate}% response rate ({data['responses']}/{data['total']})")
@@ -216,5 +221,106 @@ def get_learning_context(reference_date=None):
         lines.append("Overall: Moderate response rates — consider adjusting tone or timing.")
     else:
         lines.append("Overall: Low response rates — try different approaches.")
+
+    # Approval rate from approval_queue
+    try:
+        with db.get_db() as conn:
+            total_drafts = conn.execute("SELECT COUNT(*) FROM approval_queue").fetchone()[0]
+            approved = conn.execute("SELECT COUNT(*) FROM approval_queue WHERE status = 'approved'").fetchone()[0]
+            dismissed = conn.execute("SELECT COUNT(*) FROM approval_queue WHERE status = 'dismissed'").fetchone()[0]
+        if total_drafts > 0:
+            approval_rate = round(approved / total_drafts * 100, 1)
+            lines.append(f"Draft approval rate: {approval_rate}% ({approved}/{total_drafts} approved, {dismissed} dismissed)")
+    except Exception:
+        pass
+
+    # Win/loss product rates
+    try:
+        with db.get_db() as conn:
+            rows = conn.execute(
+                "SELECT product, outcome, COUNT(*) as cnt FROM win_loss_log "
+                "WHERE product IS NOT NULL AND product != '' GROUP BY product, outcome"
+            ).fetchall()
+        product_stats = {}
+        for r in rows:
+            p = r["product"]
+            if p not in product_stats:
+                product_stats[p] = {"won": 0, "lost": 0}
+            if r["outcome"] and "won" in r["outcome"].lower():
+                product_stats[p]["won"] = r["cnt"]
+            else:
+                product_stats[p]["lost"] = r["cnt"]
+        win_lines = []
+        for product, ps in product_stats.items():
+            total = ps["won"] + ps["lost"]
+            if total >= 3:
+                win_rate = round(ps["won"] / total * 100, 0)
+                win_lines.append(f"  {product}: {win_rate:.0f}% win rate ({ps['won']}/{total})")
+        if win_lines:
+            lines.append("Product win rates:")
+            lines.extend(win_lines)
+    except Exception:
+        pass
+
+    # Time patterns — best day of week for responses
+    try:
+        with db.get_db() as conn:
+            rows = conn.execute(
+                "SELECT sent_at FROM outcomes WHERE response_received = 1 AND sent_at IS NOT NULL"
+            ).fetchall()
+        day_counts = {}
+        day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        for r in rows:
+            try:
+                d = datetime.strptime(r["sent_at"][:10], "%Y-%m-%d")
+                day = day_names[d.weekday()]
+                day_counts[day] = day_counts.get(day, 0) + 1
+            except (ValueError, TypeError):
+                pass
+        if day_counts:
+            best_day = max(day_counts, key=day_counts.get)
+            lines.append(f"Best response day: {best_day} ({day_counts[best_day]} responses)")
+    except Exception:
+        pass
+
+    return "\n".join(lines)
+
+
+def generate_self_tuning_report():
+    """Generate a detailed self-tuning report for the autonomous nightly run.
+
+    Returns a markdown string with analysis and recommendations.
+    """
+    stats = get_weekly_stats()
+    learning = get_learning_context()
+
+    # Get approval queue stats
+    with db.get_db() as conn:
+        total_drafts = conn.execute("SELECT COUNT(*) FROM approval_queue").fetchone()[0]
+        approved = conn.execute("SELECT COUNT(*) FROM approval_queue WHERE status = 'approved'").fetchone()[0]
+        dismissed = conn.execute("SELECT COUNT(*) FROM approval_queue WHERE status = 'dismissed'").fetchone()[0]
+        snoozed = conn.execute("SELECT COUNT(*) FROM approval_queue WHERE status = 'snoozed'").fetchone()[0]
+
+    lines = [
+        "# Self-Tuning Report",
+        f"\nGenerated: {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+        f"\n## Draft Performance",
+        f"- Total drafts: {total_drafts}",
+        f"- Approved: {approved} ({approved/total_drafts*100:.0f}%)" if total_drafts else "- No drafts yet",
+        f"- Dismissed: {dismissed}",
+        f"- Snoozed: {snoozed}",
+        f"\n## Learning Context",
+        learning,
+        f"\n## Recommendations",
+    ]
+
+    if total_drafts > 10:
+        approval_rate = approved / total_drafts * 100
+        if approval_rate < 50:
+            lines.append("- LOW APPROVAL RATE: Drafts may not match Marc's expectations. Consider adjusting tone or length.")
+        if dismissed > approved:
+            lines.append("- MORE DISMISSALS THAN APPROVALS: Draft quality needs improvement.")
+    else:
+        lines.append("- Insufficient data for recommendations (need 10+ drafts)")
 
     return "\n".join(lines)
