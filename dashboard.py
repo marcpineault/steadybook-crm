@@ -2137,7 +2137,17 @@ tr:hover {{ background: #f8f9fa; }}
         </div>
     </div>
     <div id="detailContent" style="font-size:14px"><div class="empty-state"><p>Loading...</p></div></div>
-    <div style="margin-top:16px;text-align:right">
+    <div id="mergeSection" style="margin-top:16px;padding:12px;background:#FDF2E9;border-radius:8px;display:none">
+        <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:#E67E22">Merge another prospect into this one</div>
+        <div style="display:flex;gap:8px">
+            <select id="mergeTarget" style="flex:1;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px">
+                <option value="">Select prospect to merge...</option>
+            </select>
+            <button onclick="doMerge()" style="background:#E67E22;color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;white-space:nowrap">Merge</button>
+        </div>
+    </div>
+    <div style="margin-top:16px;display:flex;justify-content:space-between">
+        <button onclick="toggleMerge()" style="background:#E67E22;color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:13px">Merge Duplicate</button>
         <button onclick="closeDetail()" style="background:#95A5A6;color:#fff;border:none;padding:8px 20px;border-radius:6px;cursor:pointer">Close</button>
     </div>
 </div>
@@ -2472,8 +2482,44 @@ async function openProspectDetail(name) {{
     }} catch(e) {{ document.getElementById('detailContent').innerHTML = '<p>Error loading: ' + _e(e.message) + '</p>'; }}
 }}
 
-function closeDetail() {{ document.getElementById('detailModal').classList.remove('active'); }}
+function closeDetail() {{ document.getElementById('detailModal').classList.remove('active'); document.getElementById('mergeSection').style.display='none'; }}
 document.getElementById('detailModal').addEventListener('click', function(e) {{ if (e.target === this) closeDetail(); }});
+
+const _allProspectNames = {json.dumps([p["name"] for p in prospects])};
+
+function toggleMerge() {{
+    const sec = document.getElementById('mergeSection');
+    if (sec.style.display === 'none') {{
+        sec.style.display = 'block';
+        const sel = document.getElementById('mergeTarget');
+        sel.innerHTML = '<option value="">Select prospect to merge...</option>';
+        _allProspectNames.filter(n => n !== _detailProspect).forEach(n => {{
+            sel.innerHTML += '<option value="' + _e(n) + '">' + _e(n) + '</option>';
+        }});
+    }} else {{
+        sec.style.display = 'none';
+    }}
+}}
+
+async function doMerge() {{
+    const mergeFrom = document.getElementById('mergeTarget').value;
+    if (!mergeFrom) {{ alert('Select a prospect to merge'); return; }}
+    if (!confirm('Merge "' + mergeFrom + '" into "' + _detailProspect + '"? This will move all data and delete "' + mergeFrom + '".')) return;
+    try {{
+        const res = await fetch('/api/prospect/merge', {{
+            method: 'POST',
+            headers: {{'Content-Type': 'application/json', 'X-CSRF-Token': _csrfToken}},
+            body: JSON.stringify({{ keep: _detailProspect, merge: mergeFrom }})
+        }});
+        const result = await res.json();
+        if (result.ok) {{
+            alert(result.message);
+            location.reload();
+        }} else {{
+            alert('Error: ' + (result.error || 'Unknown error'));
+        }}
+    }} catch(e) {{ alert('Error: ' + e.message); }}
+}}
 
 // Quick log activity
 function quickLogActivity(action) {{
