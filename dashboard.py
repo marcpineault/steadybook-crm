@@ -96,10 +96,13 @@ def _require_auth(f):
         csrf_token = request.headers.get("X-CSRF-Token", "")
         if csrf_token and _validate_csrf_token(csrf_token):
             return f(*args, **kwargs)
-        # Check login cookie (set by /login form)
+        # Check login cookie (set by /login form — hash of API key)
         dash_cookie = request.cookies.get("dash_auth", "")
-        if dash_cookie and _validate_csrf_token(dash_cookie):
-            return f(*args, **kwargs)
+        if dash_cookie and DASHBOARD_API_KEY:
+            import hashlib
+            expected = hashlib.sha256(DASHBOARD_API_KEY.encode()).hexdigest()
+            if hmac.compare_digest(dash_cookie, expected):
+                return f(*args, **kwargs)
         return jsonify({"error": "Unauthorized"}), 401
     return decorated
 
@@ -560,9 +563,11 @@ def login():
         password = request.form.get("password", "")
         if DASHBOARD_API_KEY and hmac.compare_digest(password, DASHBOARD_API_KEY):
             from flask import make_response
+            import hashlib
+            # Cookie value is a hash of the API key — validates without expiring server-side
+            cookie_val = hashlib.sha256(DASHBOARD_API_KEY.encode()).hexdigest()
             resp = make_response('<script>window.location="/"</script>')
-            resp.set_cookie("dash_auth", _generate_csrf_token(), max_age=86400 * 30, httponly=True, samesite="Lax")
-            # Store the token so we can validate it
+            resp.set_cookie("dash_auth", cookie_val, max_age=86400 * 30, httponly=True, samesite="Lax")
             return resp
         return _login_page(error="Wrong password. Try again.")
     return _login_page()
@@ -611,10 +616,13 @@ def logout():
 def dashboard():
     # Check auth: cookie (browser login), API key header (programmatic), or query param (legacy)
     authed = False
-    # Cookie auth (from /login form)
+    # Cookie auth (from /login form — hash of API key)
     dash_cookie = request.cookies.get("dash_auth", "")
-    if dash_cookie and _validate_csrf_token(dash_cookie):
-        authed = True
+    if dash_cookie and DASHBOARD_API_KEY:
+        import hashlib
+        expected = hashlib.sha256(DASHBOARD_API_KEY.encode()).hexdigest()
+        if hmac.compare_digest(dash_cookie, expected):
+            authed = True
     # API key header or query param (backward compatible)
     if not authed:
         api_key = request.headers.get("X-API-Key", "") or request.args.get("key", "")
