@@ -1318,6 +1318,43 @@ def dashboard():
   {_draft_items_html if _draft_items_html else '<div style="color:#7f8c8d;font-size:14px;text-align:center;padding:12px">No pending drafts.</div>'}
 </div>""" if pending_approvals > 0 else ""
 
+    # ── Kanban board data — group active prospects by stage ──
+    PIPELINE_STAGES = ["New Lead", "Contacted", "Discovery Call", "Needs Analysis",
+                       "Plan Presentation", "Proposal Sent", "Negotiation"]
+    kanban_cols = []
+    for _kstage in PIPELINE_STAGES:
+        _kprospects = [p for p in active if p.get("stage") == _kstage]
+        kanban_cols.append((_kstage, _kprospects))
+
+    # Build kanban HTML
+    _kanban_cols_html = ""
+    for _kstage, _kprospects in kanban_cols:
+        _kcol_color = _stage_bg(_kstage)
+        _kcards_html = ""
+        for _kp in _kprospects:
+            _kname_esc = _esc(_kp["name"])
+            _kname_js = json.dumps(_kp["name"])[1:-1]
+            _kproduct_esc = _esc(_kp.get("product") or "")
+            _kpri = _kp.get("priority") or ""
+            _kpri_color = PRIORITY_COLORS.get(_kpri, "#BDC3C7")
+            _kpri_esc = _esc(_kpri)
+            _klast = last_activity_map.get(_kp["name"].strip().lower())
+            _krel = _relative_time(_klast.strftime("%Y-%m-%d") if _klast else "", today)
+            _kcards_html += f"""<div class="kanban-card" onclick="openProspectDetail('{_kname_js}')">
+                <div class="kanban-card-name">{_kname_esc}</div>
+                <div class="kanban-card-product">{_kproduct_esc}</div>
+                <div class="kanban-card-meta">
+                    <span class="kanban-pri" style="background:{_kpri_color}">{_kpri_esc}</span>
+                    <span>{_krel}</span>
+                </div>
+            </div>"""
+        _kanban_cols_html += f"""<div class="kanban-col">
+            <div class="kanban-col-header" style="background:{_kcol_color}">
+                {_esc(_kstage)} <span class="kanban-count">{len(_kprospects)}</span>
+            </div>
+            {_kcards_html}
+        </div>"""
+
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1799,6 +1836,95 @@ tr:hover {{ background: #f8f9fa; }}
 }}
 
 @keyframes slideUp {{ from {{ transform: translateY(20px); opacity: 0; }} to {{ transform: translateY(0); opacity: 1; }} }}
+
+/* ── Kanban board ── */
+.kanban-board {{
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    padding-bottom: 12px;
+    min-height: 400px;
+}}
+.kanban-col {{
+    min-width: 200px;
+    max-width: 240px;
+    flex: 1;
+    background: #f8f9fa;
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+}}
+.kanban-col-header {{
+    padding: 10px 12px;
+    border-radius: 10px 10px 0 0;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}}
+.kanban-count {{
+    background: rgba(255,255,255,0.25);
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+}}
+.kanban-card {{
+    background: #fff;
+    border: 1px solid #e8e8e8;
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin: 6px 8px;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+}}
+.kanban-card:hover {{
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}}
+.kanban-card-name {{
+    font-weight: 600;
+    font-size: 13px;
+    margin-bottom: 4px;
+}}
+.kanban-card-product {{
+    font-size: 11px;
+    color: #7f8c8d;
+    margin-bottom: 6px;
+}}
+.kanban-card-meta {{
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: #95a5a6;
+}}
+.kanban-pri {{
+    padding: 1px 6px;
+    border-radius: 4px;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 600;
+}}
+
+/* ── View toggle buttons ── */
+.view-toggle-btn {{
+    padding: 4px 12px;
+    border: 1px solid #ddd;
+    background: #fff;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    color: #7f8c8d;
+}}
+.view-toggle-btn.active {{
+    background: #1abc9c;
+    color: #fff;
+    border-color: #1abc9c;
+}}
 </style>
 </head>
 <body>
@@ -1902,8 +2028,24 @@ tr:hover {{ background: #f8f9fa; }}
     {'<div class="section"><h2>Overdue Follow-Ups <span class="count">(' + str(len(overdue)) + ')</span></h2><table><tr><th>Prospect</th><th>Was Due</th><th>Status</th><th>Phone</th><th>Reschedule</th></tr>' + overdue_rows + '</table></div>' if overdue else ''}
 
     <div class="section">
-        <h2 style="display:flex;justify-content:space-between;align-items:center">Active Pipeline <span class="count">({len(active)} deals)</span> <button class="btn btn-primary" onclick="openAdd()">+ Add Prospect</button></h2>
-        {'<div style="margin-bottom:12px"><input type="text" id="prospectSearch" placeholder="Search prospects..." oninput="filterProspects(this.value)" style="width:100%;max-width:300px;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px"></div><table id="prospectTable"><tr><th>Prospect</th><th>Health</th><th>Priority</th><th>Stage</th><th>Product</th><th>AUM</th><th>Premium</th><th>Follow-Up</th><th>Last Touch</th><th>Notes</th><th>Actions</th></tr>' + prospect_rows + '</table>' if active else '<div class="empty-state"><p>No active deals yet. Text your Telegram bot to add prospects.</p></div>'}
+        <h2 style="display:flex;justify-content:space-between;align-items:center">
+            <span>Active Pipeline <span class="count">({len(active)} deals)</span></span>
+            <div style="display:flex;gap:8px;align-items:center">
+                <div style="display:flex;gap:4px">
+                    <button class="view-toggle-btn active" onclick="togglePipelineView('table')">Table</button>
+                    <button class="view-toggle-btn" onclick="togglePipelineView('kanban')">Board</button>
+                </div>
+                <button class="btn btn-primary" onclick="openAdd()">+ Add Prospect</button>
+            </div>
+        </h2>
+        <div id="tableView">
+            {'<div style="margin-bottom:12px"><input type="text" id="prospectSearch" placeholder="Search prospects..." oninput="filterProspects(this.value)" style="width:100%;max-width:300px;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px"></div><table id="prospectTable"><tr><th>Prospect</th><th>Health</th><th>Priority</th><th>Stage</th><th>Product</th><th>AUM</th><th>Premium</th><th>Follow-Up</th><th>Last Touch</th><th>Notes</th><th>Actions</th></tr>' + prospect_rows + '</table>' if active else '<div class="empty-state"><p>No active deals yet. Text your Telegram bot to add prospects.</p></div>'}
+        </div>
+        <div id="kanbanView" style="display:none">
+            <div class="kanban-board">
+                {_kanban_cols_html}
+            </div>
+        </div>
     </div>
 
     <div class="two-col">
@@ -2309,6 +2451,31 @@ tr:hover {{ background: #f8f9fa; }}
 <script>
 // HTML entity escaping for safe innerHTML rendering
 function _e(s) {{ if (s == null) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }}
+
+// Pipeline view toggle (Table vs Kanban)
+function togglePipelineView(view) {{
+    const table = document.getElementById('tableView');
+    const kanban = document.getElementById('kanbanView');
+    const btns = document.querySelectorAll('.view-toggle-btn');
+    btns.forEach(b => b.classList.remove('active'));
+    if (view === 'kanban') {{
+        table.style.display = 'none';
+        kanban.style.display = 'block';
+        btns[1].classList.add('active');
+        localStorage.setItem('pipelineView', 'kanban');
+    }} else {{
+        table.style.display = 'block';
+        kanban.style.display = 'none';
+        btns[0].classList.add('active');
+        localStorage.setItem('pipelineView', 'table');
+    }}
+}}
+// Restore pipeline view on load
+(function() {{
+    const saved = localStorage.getItem('pipelineView');
+    if (saved === 'kanban') togglePipelineView('kanban');
+}})();
+
 // Tab switching
 function showTab(name) {{
     document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
