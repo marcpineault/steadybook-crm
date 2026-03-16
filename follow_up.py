@@ -64,6 +64,17 @@ def generate_follow_up_draft(prospect_name, activity_summary, activity_type="cal
     try:
         from pii import RedactionContext, sanitize_for_prompt
 
+        # Inject learning context
+        try:
+            import analytics
+            learning = analytics.get_learning_context()
+            if learning:
+                system_prompt = FOLLOW_UP_SYSTEM_PROMPT + f"\n\nLEARNING FROM PAST PERFORMANCE:\n{learning}"
+            else:
+                system_prompt = FOLLOW_UP_SYSTEM_PROMPT
+        except Exception:
+            system_prompt = FOLLOW_UP_SYSTEM_PROMPT
+
         with RedactionContext(prospect_names=[prospect_name]) as pii_ctx:
             user_content = pii_ctx.redact(sanitize_for_prompt(
                 f"PROSPECT: {prospect_name}\n"
@@ -78,7 +89,7 @@ def generate_follow_up_draft(prospect_name, activity_summary, activity_type="cal
             response = openai_client.chat.completions.create(
                 model="gpt-4.1",
                 messages=[
-                    {"role": "system", "content": FOLLOW_UP_SYSTEM_PROMPT},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_content},
                 ],
                 max_completion_tokens=1024,
