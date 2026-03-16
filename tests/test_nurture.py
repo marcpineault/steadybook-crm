@@ -97,3 +97,51 @@ def test_complete_sequence():
 def test_get_sequence_not_found():
     result = nurture.get_sequence(9999)
     assert result is None
+
+
+@patch("nurture.openai_client")
+@patch("nurture.compliance")
+def test_generate_touch_injects_learning_context(mock_compliance, mock_client):
+    """Verify learning context is injected into the nurture system prompt when available."""
+    pid = _seed_prospect()
+    seq = nurture.create_sequence(prospect_name="Sarah Chen", prospect_id=pid)
+
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = "Hi Sarah, here's something useful."
+    mock_client.chat.completions.create.return_value = mock_response
+    mock_compliance.check_compliance.return_value = {"passed": True, "issues": []}
+
+    import analytics
+    with patch.object(analytics, "get_learning_context", return_value="nurture: 80% response rate") as mock_learning:
+        touch = nurture.generate_touch(seq["id"])
+        mock_learning.assert_called_once()
+
+    call_args = mock_client.chat.completions.create.call_args
+    messages = call_args[1]["messages"] if call_args[1] else call_args[0][0]
+    system_msg = next(m["content"] for m in messages if m["role"] == "system")
+    assert "LEARNING FROM PAST PERFORMANCE" in system_msg
+
+
+@patch("nurture.openai_client")
+@patch("nurture.compliance")
+def test_generate_touch_no_learning_context_fallback(mock_compliance, mock_client):
+    """Verify fallback to base prompt when no learning context available."""
+    pid = _seed_prospect()
+    seq = nurture.create_sequence(prospect_name="Sarah Chen", prospect_id=pid)
+
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = "Hi Sarah."
+    mock_client.chat.completions.create.return_value = mock_response
+    mock_compliance.check_compliance.return_value = {"passed": True, "issues": []}
+
+    import analytics
+    with patch.object(analytics, "get_learning_context", return_value=""):
+        touch = nurture.generate_touch(seq["id"])
+    assert touch is not None
+
+    call_args = mock_client.chat.completions.create.call_args
+    messages = call_args[1]["messages"] if call_args[1] else call_args[0][0]
+    system_msg = next(m["content"] for m in messages if m["role"] == "system")
+    assert "LEARNING FROM PAST PERFORMANCE" not in system_msg

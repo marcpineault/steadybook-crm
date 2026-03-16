@@ -134,3 +134,65 @@ def test_get_stale_drafts():
 def test_get_stale_drafts_none():
     stale = follow_up.get_stale_drafts(max_age_hours=4)
     assert len(stale) == 0
+
+
+@patch("follow_up.openai_client")
+@patch("follow_up.compliance")
+def test_generate_follow_up_injects_learning_context(mock_compliance, mock_client):
+    """Verify learning context is injected into the system prompt when available."""
+    _seed_prospect()
+
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = "Hi Sarah, great chatting today."
+    mock_client.chat.completions.create.return_value = mock_response
+    mock_compliance.check_compliance.return_value = {"passed": True, "issues": []}
+
+    # Seed some outcomes so learning context is non-empty
+    with db.get_db() as conn:
+        conn.execute(
+            "INSERT INTO outcomes (action_type, target, sent_at, response_received) "
+            "VALUES ('email_draft', 'Alice', date('now'), 1)"
+        )
+
+    import analytics
+    with patch.object(analytics, "get_learning_context", return_value="email_draft: 100% response rate") as mock_learning:
+        follow_up.generate_follow_up_draft(
+            prospect_name="Sarah Chen",
+            activity_summary="Quick call",
+            activity_type="call",
+        )
+        mock_learning.assert_called_once()
+
+    # Verify the system prompt passed to GPT includes learning context
+    call_args = mock_client.chat.completions.create.call_args
+    messages = call_args[1]["messages"] if call_args[1] else call_args[0][0]
+    system_msg = next(m["content"] for m in messages if m["role"] == "system")
+    assert "LEARNING FROM PAST PERFORMANCE" in system_msg
+
+
+@patch("follow_up.openai_client")
+@patch("follow_up.compliance")
+def test_generate_follow_up_no_learning_context_fallback(mock_compliance, mock_client):
+    """Verify fallback to base prompt when no learning context available."""
+    _seed_prospect()
+
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = "Hi Sarah."
+    mock_client.chat.completions.create.return_value = mock_response
+    mock_compliance.check_compliance.return_value = {"passed": True, "issues": []}
+
+    import analytics
+    with patch.object(analytics, "get_learning_context", return_value=""):
+        draft = follow_up.generate_follow_up_draft(
+            prospect_name="Sarah Chen",
+            activity_summary="Quick call",
+            activity_type="call",
+        )
+    assert draft is not None
+
+    call_args = mock_client.chat.completions.create.call_args
+    messages = call_args[1]["messages"] if call_args[1] else call_args[0][0]
+    system_msg = next(m["content"] for m in messages if m["role"] == "system")
+    assert "LEARNING FROM PAST PERFORMANCE" not in system_msg
