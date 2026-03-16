@@ -54,6 +54,20 @@ def intake_webhook():
     intake_type = payload.get("type", "")
     data = payload.get("data", {})
 
+    # Otter transcripts come with "transcript" field, not "data"
+    if intake_type == "otter_transcript":
+        transcript = payload.get("transcript", "") or payload.get("data", {}).get("transcript", "")
+        if not transcript:
+            return jsonify({"error": "Missing 'transcript' field"}), 400
+        try:
+            result = _process_otter_transcript(transcript)
+            logger.info("Intake webhook (otter_transcript): processed successfully")
+            _notify_telegram(f"Otter transcript processed:\n{result[:500]}")
+            return jsonify({"ok": True, "message": result})
+        except Exception as e:
+            logger.error(f"Otter transcript processing error: {e}")
+            return jsonify({"error": "Internal processing error"}), 500
+
     if not data:
         return jsonify({"error": "Missing 'data' field"}), 400
 
@@ -140,6 +154,40 @@ def email_inbound():
     except Exception as e:
         logger.error(f"Email inbound error: {e}")
         return jsonify({"error": "Internal processing error"}), 500
+
+
+def _process_otter_transcript(transcript: str) -> str:
+    """Process an Otter.ai transcript received via Zapier webhook."""
+    import asyncio
+    import sys
+    import db
+
+    # Store the raw transcript as an interaction
+    db.add_interaction({
+        "prospect": "",
+        "source": "otter_transcript",
+        "raw_text": transcript[:5000],
+    })
+
+    # Use the voice handler to extract and update pipeline
+    try:
+        from voice_handler import extract_and_update
+
+        # Run the async function
+        main_mod = sys.modules.get("__main__")
+        bot_event_loop = getattr(main_mod, "bot_event_loop", None)
+        if bot_event_loop:
+            future = asyncio.run_coroutine_threadsafe(
+                extract_and_update(transcript, source="otter_transcript"),
+                bot_event_loop,
+            )
+            result = future.result(timeout=60)
+        else:
+            result = asyncio.run(extract_and_update(transcript, source="otter_transcript"))
+        return result
+    except Exception as e:
+        logger.error(f"Otter transcript extract_and_update failed: {e}")
+        return f"Transcript stored but extraction failed: {e}"
 
 
 def _strip_html(html: str) -> str:
