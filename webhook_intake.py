@@ -142,6 +142,23 @@ def email_inbound():
     if not body and not subject:
         return jsonify({"error": "Empty email"}), 400
 
+    # Detect Otter.ai transcripts by sender or content markers
+    is_otter = (
+        "otter.ai" in sender.lower()
+        or "otter" in sender.lower()
+        or _is_otter_content(subject, body)
+    )
+
+    if is_otter:
+        try:
+            result = _process_otter_transcript(body)
+            logger.info("Email inbound: Otter transcript processed")
+            _notify_telegram("Otter transcript processed — pipeline updated.")
+            return jsonify({"ok": True, "message": result})
+        except Exception as e:
+            logger.error(f"Otter transcript (email) error: {e}")
+            return jsonify({"error": "Internal processing error"}), 500
+
     try:
         result = process_email_lead({
             "from": sender,
@@ -154,6 +171,13 @@ def email_inbound():
     except Exception as e:
         logger.error(f"Email inbound error: {e}")
         return jsonify({"error": "Internal processing error"}), 500
+
+
+def _is_otter_content(subject: str, body: str) -> bool:
+    """Detect Otter.ai transcript by content markers."""
+    text = (subject + " " + body).lower()
+    markers = ["abstract summary:", "action items:", "outline:", "title:"]
+    return sum(1 for m in markers if m in text) >= 2
 
 
 def _process_otter_transcript(transcript: str) -> str:
