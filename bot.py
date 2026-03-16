@@ -37,9 +37,6 @@ DATA_DIR = os.environ.get("DATA_DIR", "")
 
 client = OpenAI(api_key=OPENAI_KEY)
 
-# DEPRECATED — kept for scheduler import compat
-pipeline_lock = threading.RLock()
-
 
 def _draft_keyboard(queue_id):
     """Build inline keyboard for draft approval."""
@@ -1408,8 +1405,7 @@ async def _llm_respond(update, messages, tools=None):
 
             func = TOOL_FUNCTIONS.get(tool_name)
             if func:
-                with pipeline_lock:
-                    result = func(tool_input)
+                result = func(tool_input)
             else:
                 result = f"Unknown tool: {tool_name}"
 
@@ -1858,8 +1854,7 @@ async def cmd_todo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": "Error: could not create task (missing title?)."})
 
                 elif tool_name == "lookup_prospect":
-                    with pipeline_lock:
-                        p = TOOL_FUNCTIONS["lookup_prospect"](tool_input)
+                    p = TOOL_FUNCTIONS["lookup_prospect"](tool_input)
                     messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": str(p)})
                 else:
                     messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": f"Unknown tool: {tool_name}"})
