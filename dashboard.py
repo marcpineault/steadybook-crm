@@ -85,7 +85,7 @@ def _validate_csrf_token(token: str) -> bool:
 
 
 def _require_auth(f):
-    """Decorator: accepts either X-API-Key header or X-CSRF-Token header."""
+    """Decorator: accepts API key, CSRF token, or login cookie."""
     @wraps(f)
     def decorated(*args, **kwargs):
         # Check API key first (for external/programmatic access)
@@ -95,6 +95,10 @@ def _require_auth(f):
         # Check CSRF token (for dashboard UI) — validates existence and expiry
         csrf_token = request.headers.get("X-CSRF-Token", "")
         if csrf_token and _validate_csrf_token(csrf_token):
+            return f(*args, **kwargs)
+        # Check login cookie (set by /login form)
+        dash_cookie = request.cookies.get("dash_auth", "")
+        if dash_cookie and _validate_csrf_token(dash_cookie):
             return f(*args, **kwargs)
         return jsonify({"error": "Unauthorized"}), 401
     return decorated
