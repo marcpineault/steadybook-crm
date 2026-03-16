@@ -1372,7 +1372,7 @@ async def _llm_respond(update, messages, tools=None):
     """Send messages to LLM, process tool calls, return reply."""
     response = client.chat.completions.create(
         model="gpt-5",
-        max_completion_tokens=1024,
+        max_completion_tokens=4096,
         tools=tools or TOOLS,
         tool_choice="auto",
         messages=messages,
@@ -1493,7 +1493,7 @@ async def _llm_respond(update, messages, tools=None):
 
         response = client.chat.completions.create(
             model="gpt-5",
-            max_completion_tokens=1024,
+            max_completion_tokens=4096,
             tools=tools or TOOLS,
             messages=messages,
         )
