@@ -179,13 +179,6 @@ def api_delete_prospect(name):
     return jsonify({"ok": True, "message": result})
 
 
-@app.route("/api/prospects")
-@_require_auth
-def api_list_prospects():
-    prospects, _, _, _ = read_data()
-    return jsonify(prospects)
-
-
 @app.route("/api/prospect/update", methods=["PUT"])
 @_require_auth
 def api_update_prospect_by_name():
@@ -213,25 +206,6 @@ def api_add_task():
     if result:
         return jsonify({"ok": True, "task": result})
     return jsonify({"error": "Could not create task"}), 400
-
-
-@app.route("/api/tasks/debug")
-@_require_auth
-def api_debug_tasks():
-    """Debug endpoint to see all tasks in DB."""
-    pending = db.get_tasks(status="pending", limit=50)
-    completed = db.get_tasks(status="completed", limit=10)
-    return jsonify({"pending": pending, "completed": completed, "pending_count": len(pending), "completed_count": len(completed)})
-
-
-@app.route("/api/tasks")
-@_require_auth
-def api_list_tasks():
-    status = request.args.get("status", "pending")
-    assigned_to = request.args.get("assigned_to")
-    prospect = request.args.get("prospect")
-    tasks = db.get_tasks(assigned_to=assigned_to, status=status, prospect=prospect)
-    return jsonify(tasks)
 
 
 @app.route("/api/task/<int:task_id>", methods=["PUT"])
