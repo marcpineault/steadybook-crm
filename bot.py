@@ -1462,6 +1462,29 @@ async def _llm_respond(update, messages, tools=None):
                 except Exception:
                     logger.exception("Follow-up draft generation failed (non-blocking)")
 
+            # After successful add_prospect in _llm_respond tool dispatch
+            if tool_name == "add_prospect" and "added" in result.lower():
+                stage = tool_input.get("stage", "")
+                if stage in ("New Lead", "Contacted", "Nurture"):
+                    prospect_name = tool_input.get("name", "")
+                    if prospect_name and _bot and CHAT_ID:
+                        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+                        keyboard = InlineKeyboardMarkup([[
+                            InlineKeyboardButton(
+                                "Start Nurture Sequence",
+                                callback_data=f"nurture_offer_start_{prospect_name[:50]}"
+                            ),
+                            InlineKeyboardButton("Skip", callback_data="nurture_offer_skip"),
+                        ]])
+                        try:
+                            await _bot.send_message(
+                                chat_id=CHAT_ID,
+                                text=f"New prospect {prospect_name} added as {stage}. Start a nurture sequence?",
+                                reply_markup=keyboard,
+                            )
+                        except Exception:
+                            logger.warning("Could not send nurture offer for %s", prospect_name)
+
             messages.append({
                 "role": "tool",
                 "tool_call_id": tool_call.id,
@@ -2943,6 +2966,26 @@ async def cmd_outcomes(update, context):
     await update.message.reply_text(text)
 
 
+async def handle_nurture_offer(update, context):
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+    if data == "nurture_offer_skip":
+        await query.edit_message_text(query.message.text + "\n\nSkipped nurture sequence.")
+        return
+    if data.startswith("nurture_offer_start_"):
+        name = data[len("nurture_offer_start_"):]
+        import nurture
+        seq = nurture.create_sequence(name)
+        if seq:
+            await query.edit_message_text(
+                f"Nurture sequence started for {name} — "
+                f"{seq['total_touches']} touches over ~25 days. I'll queue drafts for your approval."
+            )
+        else:
+            await query.edit_message_text(f"Could not start nurture for {name}.")
+
+
 def build_application():
     """Build the Telegram Application with all handlers (shared by main and webhook)."""
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
@@ -2978,6 +3021,7 @@ def build_application():
     from telegram.ext import CallbackQueryHandler
     app.add_handler(CallbackQueryHandler(handle_outcome_callback, pattern=r"^outcome_"))
     app.add_handler(CallbackQueryHandler(handle_draft_callback, pattern=r"^draft_"))
+    app.add_handler(CallbackQueryHandler(handle_nurture_offer, pattern=r"^nurture_offer_"))
     app.add_handler(CommandHandler("voice", cmd_voice))
     app.add_handler(CommandHandler("calendar", cmd_calendar))
     app.add_handler(CommandHandler("news", cmd_calendar))  # alias for /calendar
