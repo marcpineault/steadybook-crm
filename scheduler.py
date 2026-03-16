@@ -747,7 +747,7 @@ async def send_meeting_prep_docs():
 # ── Nurture Sequence Check ──
 
 async def check_nurture_sequences():
-    """Check for due nurture touches and generate them."""
+    """Check for due nurture touches, generate them, and send a single batched notification."""
     if not _bot or not CHAT_ID:
         return
 
@@ -758,32 +758,38 @@ async def check_nurture_sequences():
         if not due:
             return
 
-        generated = 0
+        touches = []
         for seq in due:
             try:
                 touch = nurture.generate_touch(seq["id"])
                 if touch:
-                    # Send notification to Marc
-                    text = (
-                        f"NURTURE TOUCH — {touch['prospect_name']}\n"
-                        f"Touch {touch['touch_number']}/{touch['total_touches']}\n\n"
-                        f"{touch['content'][:500]}\n\n"
-                        f"Queue #{touch['queue_id']} — /drafts to review"
-                    )
-                    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-                    keyboard = InlineKeyboardMarkup([
-                        [
-                            InlineKeyboardButton("Approve", callback_data=f"draft_approve_{touch['queue_id']}"),
-                            InlineKeyboardButton("Skip", callback_data=f"draft_dismiss_{touch['queue_id']}"),
-                        ],
-                    ])
-                    await _bot.send_message(chat_id=CHAT_ID, text=text, reply_markup=keyboard)
-                    generated += 1
+                    touches.append(touch)
             except Exception:
                 logger.exception("Nurture touch failed for sequence #%s", seq["id"])
 
-        if generated:
-            logger.info("Generated %d nurture touches", generated)
+        if not touches:
+            return
+
+        if len(touches) == 1:
+            t = touches[0]
+            text = (
+                f"NURTURE TOUCH — {t['prospect_name']}\n"
+                f"Touch {t['touch_number']}/{t['total_touches']}\n\n"
+                f"{t['content'][:500]}\n\n"
+                f"Queue #{t['queue_id']} — /drafts to review"
+            )
+        else:
+            lines = [f"NURTURE TOUCHES — {len(touches)} due today\n"]
+            for t in touches:
+                lines.append(
+                    f"  {t['prospect_name']} (touch {t['touch_number']}/{t['total_touches']}) "
+                    f"— Queue #{t['queue_id']}"
+                )
+            lines.append(f"\nUse /drafts to review all {len(touches)} drafts.")
+            text = "\n".join(lines)
+
+        await _bot.send_message(chat_id=CHAT_ID, text=text)
+        logger.info("Generated %d nurture touches (batched)", len(touches))
 
     except Exception:
         logger.exception("Nurture sequence check failed")
