@@ -431,7 +431,14 @@ def delete_prospect(name: str) -> str:
             return f"Could not find prospect matching '{name}'."
 
         matched_name = row["name"]
-        conn.execute("DELETE FROM prospects WHERE id = ?", (row["id"],))
+        pid = row["id"]
+        # Delete related records first to avoid foreign key constraint failures
+        conn.execute("DELETE FROM client_memory WHERE prospect_id = ?", (pid,))
+        conn.execute("DELETE FROM approval_queue WHERE prospect_id = ?", (pid,))
+        conn.execute("DELETE FROM nurture_sequences WHERE prospect_id = ?", (pid,))
+        conn.execute("DELETE FROM activities WHERE LOWER(prospect) = ?", (matched_name.lower(),))
+        conn.execute("DELETE FROM interactions WHERE LOWER(prospect) = ?", (matched_name.lower(),))
+        conn.execute("DELETE FROM prospects WHERE id = ?", (pid,))
 
     return f"Deleted {matched_name} from pipeline."
 
