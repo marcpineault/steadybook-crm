@@ -2552,10 +2552,42 @@ async def handle_draft_callback(update, context):
     elif action == "dismiss":
         approval_queue.update_draft_status(queue_id, "dismissed")
         await query.edit_message_text(f"Dismissed draft #{queue_id}.")
+        try:
+            import analytics
+            prospect_name = ""
+            if draft.get("prospect_id"):
+                with db.get_db() as _conn:
+                    _row = _conn.execute("SELECT name FROM prospects WHERE id = ?", (draft["prospect_id"],)).fetchone()
+                    if _row:
+                        prospect_name = _row["name"]
+            analytics.record_outcome(
+                action_type=draft.get("type", "unknown"),
+                target=prospect_name,
+                sent_at=datetime.now().strftime("%Y-%m-%d"),
+                response_type="dismissed",
+            )
+        except Exception:
+            logger.warning("Could not record dismiss outcome for draft #%s", queue_id)
 
     elif action == "snooze":
         approval_queue.update_draft_status(queue_id, "snoozed")
         await query.edit_message_text(f"Snoozed draft #{queue_id} — will remind in 1 hour.")
+        try:
+            import analytics
+            prospect_name = ""
+            if draft.get("prospect_id"):
+                with db.get_db() as _conn:
+                    _row = _conn.execute("SELECT name FROM prospects WHERE id = ?", (draft["prospect_id"],)).fetchone()
+                    if _row:
+                        prospect_name = _row["name"]
+            analytics.record_outcome(
+                action_type=draft.get("type", "unknown"),
+                target=prospect_name,
+                sent_at=datetime.now().strftime("%Y-%m-%d"),
+                response_type="snoozed",
+            )
+        except Exception:
+            logger.warning("Could not record snooze outcome for draft #%s", queue_id)
 
 def _find_audit_entry(queue_id, draft):
     """Find the audit log entry for this draft. Returns log_id or None."""
