@@ -1343,7 +1343,7 @@ def dashboard():
             _krel = _relative_time(_klast.strftime("%Y-%m-%d") if _klast else "", today)
             aum_val = _kp.get("aum", "")
             aum_html = f'<div style="font-size:11px;color:#27ae60;font-weight:600">{fmt_money_full(aum_val)}</div>' if aum_val and aum_val != "0" and aum_val != "$0" else ""
-            _kcards_html += f"""<div class="kanban-card" draggable="true" ondragstart="onDragStart(event, '{_kname_js}')" ondragend="onDragEnd(event)" onclick="openProspectDetail('{_kname_js}')">
+            _kcards_html += f"""<div class="kanban-card" draggable="true" ondragstart="onDragStart(event, '{_kname_js}')" ondragend="onDragEnd(event)" onclick="openProspectDetail('{_kname_js}')" style="border-left:3px solid {_kpri_color}">
                 <div class="kanban-card-name">{_kname_esc}</div>
                 <div class="kanban-card-product">{_kproduct_esc}</div>
                 {aum_html}
@@ -2101,6 +2101,10 @@ tr:hover {{ background: #f8f9fa; }}
             {'<div style="margin-bottom:12px"><input type="text" id="prospectSearch" placeholder="Search prospects..." oninput="filterProspects(this.value)" style="width:100%;max-width:300px;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px"></div><table id="prospectTable"><tr><th>Prospect</th><th>Health</th><th>Priority</th><th>Stage</th><th>Product</th><th>AUM</th><th>Premium</th><th>Follow-Up</th><th>Last Touch</th><th>Notes</th><th>Actions</th></tr>' + prospect_rows + '</table>' if active else '<div class="empty-state"><p>No active deals yet. Text your Telegram bot to add prospects.</p></div>'}
         </div>
         <div id="kanbanView" style="display:none">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                <div style="font-size:13px;color:#7f8c8d">{len(active)} active deals · Drag cards to change stage</div>
+                <button class="btn btn-primary" onclick="openAdd()">+ Add Prospect</button>
+            </div>
             <div class="kanban-board">
                 {_kanban_cols_html}
             </div>
@@ -2610,6 +2614,49 @@ function changeStage(e, prospectName) {{
     setTimeout(() => document.addEventListener('click', function handler() {{ dd.remove(); document.removeEventListener('click', handler); }}), 10);
 }}
 
+// ── Inline priority change dropdown ──
+function changePriority(e, prospectName) {{
+    e.stopPropagation();
+    const existing = document.getElementById('priorityDropdown');
+    if (existing) existing.remove();
+
+    const priorities = [
+        {{ label: 'Hot', color: '#E74C3C' }},
+        {{ label: 'Warm', color: '#F39C12' }},
+        {{ label: 'Cold', color: '#3498DB' }},
+    ];
+    const dd = document.createElement('div');
+    dd.id = 'priorityDropdown';
+    dd.style.cssText = 'position:fixed;z-index:10000;background:#fff;border:1px solid #ddd;border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,0.15);padding:4px 0;min-width:140px';
+    dd.style.left = e.clientX + 'px';
+    dd.style.top = e.clientY + 'px';
+
+    priorities.forEach(pr => {{
+        const opt = document.createElement('div');
+        opt.style.cssText = 'padding:8px 16px;cursor:pointer;font-size:13px;transition:background 0.15s;display:flex;align-items:center;gap:8px';
+        opt.innerHTML = '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + pr.color + '"></span>' + pr.label;
+        opt.onmouseover = () => opt.style.background = '#f0f0f0';
+        opt.onmouseout = () => opt.style.background = '';
+        opt.onclick = async () => {{
+            dd.remove();
+            try {{
+                const res = await fetch('/api/prospect/update', {{
+                    method: 'PUT',
+                    headers: {{'Content-Type': 'application/json', 'X-CSRF-Token': _csrfToken}},
+                    body: JSON.stringify({{ name: prospectName, updates: {{ priority: pr.label }} }})
+                }});
+                const result = await res.json();
+                if (result.ok) {{ showToast(prospectName + ' priority \u2192 ' + pr.label, 'success'); openProspectDetail(prospectName); }}
+                else {{ showToast('Error: ' + (result.error || ''), 'error'); }}
+            }} catch(err) {{ showToast('Error: ' + err.message, 'error'); }}
+        }};
+        dd.appendChild(opt);
+    }});
+
+    document.body.appendChild(dd);
+    setTimeout(() => document.addEventListener('click', function handler() {{ dd.remove(); document.removeEventListener('click', handler); }}), 10);
+}}
+
 // Tab switching
 function showTab(name) {{
     document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
@@ -2893,9 +2940,14 @@ async function openProspectDetail(name) {{
         html += '<div><strong>Phone:</strong> ' + _e(p.phone || '—') + '</div>';
         html += '<div><strong>Email:</strong> ' + _e(p.email || '—') + '</div>';
         html += '<div><strong>Stage:</strong> ' + _e(p.stage || '—') + '</div>';
-        html += '<div><strong>Priority:</strong> ' + _e(p.priority || '—') + '</div>';
+        html += '<div><strong>Priority:</strong> <span style="cursor:pointer;text-decoration:underline dotted" onclick="changePriority(event, \'' + _e(p.name).replace(/'/g, "\\'") + '\')" title="Click to change">' + _e(p.priority || '—') + '</span></div>';
         html += '<div><strong>Product:</strong> ' + _e(p.product || '—') + '</div>';
-        html += '<div><strong>Follow-up:</strong> ' + _e(p.next_followup || '—') + '</div>';
+        html += '<div><strong>Follow-up:</strong> ' + _e(p.next_followup || '—');
+        html += ' <span style="font-size:11px;margin-left:8px">';
+        html += '<a href="#" onclick="event.preventDefault();quickRescheduleFromDetail(\'' + _e(p.name).replace(/'/g, "\\'") + '\', 0)" style="color:#27ae60;text-decoration:none" title="Set to today">today</a>';
+        html += ' · <a href="#" onclick="event.preventDefault();quickRescheduleFromDetail(\'' + _e(p.name).replace(/'/g, "\\'") + '\', 1)" style="color:#3498db;text-decoration:none" title="Tomorrow">+1d</a>';
+        html += ' · <a href="#" onclick="event.preventDefault();quickRescheduleFromDetail(\'' + _e(p.name).replace(/'/g, "\\'") + '\', 7)" style="color:#9b59b6;text-decoration:none" title="Next week">+1w</a>';
+        html += '</span></div>';
         html += '<div><strong>AUM:</strong> ' + _e(p.aum || '—') + '</div>';
         html += '<div><strong>Revenue:</strong> ' + _e(p.revenue || '—') + '</div>';
         if (p.notes) html += '<div style="grid-column:1/-1"><strong>Notes:</strong> ' + _e(p.notes) + '</div>';
@@ -2933,13 +2985,18 @@ async function openProspectDetail(name) {{
 
         // Interactions
         if (data.interactions && data.interactions.length > 0) {{
-            html += '<h3 style="margin:16px 0 8px;font-size:15px">Interactions (' + data.interactions.length + ')</h3>';
+            html += '<h3 style="margin:16px 0 8px;font-size:15px">Timeline (' + data.interactions.length + ')</h3>';
+            html += '<div style="border-left:2px solid #1abc9c;margin-left:8px;padding-left:16px">';
             data.interactions.forEach(i => {{
-                html += '<div style="padding:8px;margin-bottom:8px;background:#f8f9fa;border-radius:6px;font-size:13px">';
-                html += '<div style="color:#7f8c8d;font-size:11px">' + _e(i.date || '') + ' via ' + _e(i.source || '?') + '</div>';
-                html += '<div>' + _e((i.summary || i.raw_text || '').substring(0, 200)) + '</div>';
+                const sourceIcon = i.source === 'voice_note' ? '🎙' : i.source === 'otter_transcript' ? '📝' : i.source === 'email_lead' ? '📧' : i.source === 'outlook_booking' ? '📅' : '💬';
+                html += '<div style="position:relative;padding:8px 0;margin-bottom:4px">';
+                html += '<div style="position:absolute;left:-23px;top:12px;width:10px;height:10px;background:#1abc9c;border-radius:50%;border:2px solid #fff"></div>';
+                html += '<div style="font-size:11px;color:#7f8c8d">' + sourceIcon + ' ' + _e(i.source || '?') + ' · ' + _e((i.date || '').split(' ')[0]) + '</div>';
+                html += '<div style="font-size:13px;margin-top:2px">' + _e((i.summary || i.raw_text || '').substring(0, 300)) + '</div>';
+                if (i.action_items) html += '<div style="font-size:12px;color:#E67E22;margin-top:4px">Action: ' + _e(i.action_items) + '</div>';
                 html += '</div>';
             }});
+            html += '</div>';
         }}
 
         if (!data.tasks?.length && !data.activities?.length && !data.interactions?.length) {{
@@ -3106,6 +3163,43 @@ async function quickReschedule(prospectName, days) {{
         else alert(result.error || 'Error rescheduling');
     }} catch(e) {{ alert('Error: ' + e.message); }}
 }}
+
+// Quick reschedule from detail panel (refreshes detail instead of reloading page)
+async function quickRescheduleFromDetail(name, days) {{
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    const dateStr = d.toISOString().split('T')[0];
+    try {{
+        const res = await fetch('/api/prospect/update', {{
+            method: 'PUT',
+            headers: {{'Content-Type': 'application/json', 'X-CSRF-Token': _csrfToken}},
+            body: JSON.stringify({{ name: name, updates: {{ next_followup: dateStr }} }})
+        }});
+        const result = await res.json();
+        if (result.ok) {{ showToast('Follow-up set to ' + dateStr, 'success'); openProspectDetail(name); }}
+        else {{ showToast('Error: ' + (result.error || ''), 'error'); }}
+    }} catch(err) {{ showToast('Error: ' + err.message, 'error'); }}
+}}
+
+// ── Keyboard shortcuts ──
+document.addEventListener('keydown', function(e) {{
+    // Don't trigger if user is typing in an input/textarea
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+
+    if (e.key === 'n') {{ e.preventDefault(); openAdd(); }}
+    else if (e.key === 'k') {{ e.preventDefault(); togglePipelineView('kanban'); }}
+    else if (e.key === 't') {{ e.preventDefault(); togglePipelineView('table'); }}
+    else if (e.key === 'Escape') {{
+        document.querySelectorAll('.modal-overlay.active').forEach(m => m.classList.remove('active'));
+        const dd = document.getElementById('stageDropdown'); if (dd) dd.remove();
+        const pd = document.getElementById('priorityDropdown'); if (pd) pd.remove();
+    }}
+    else if (e.key === '/') {{
+        e.preventDefault();
+        const search = document.getElementById('prospectSearch');
+        if (search) {{ showTab('pipeline'); togglePipelineView('table'); search.focus(); }}
+    }}
+}});
 
 // Forecast charts (lazy init)
 function initForecastCharts() {{
