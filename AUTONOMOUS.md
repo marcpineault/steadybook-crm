@@ -1,33 +1,59 @@
 # Autonomous Work — Standing Instructions
 
-## Every Run
+Marc has a Claude Max subscription. Use the budget generously — the goal is to make Marc money and save him time. This computer runs 24/7 as Marc's digital employee.
+
+## Every Run (Midnight Daily)
+
+### System Health
 - Pull latest, run full test suite (`python3 -m pytest tests/ --tb=short`), fix any failures
-- Check for Python dependency security vulnerabilities (`pip audit` if available, otherwise check requirements.txt against known CVEs)
-- Review recently changed files (last 5 commits) for code quality improvements — simplify logic, improve naming, extract functions if a file is growing too large
-- Keep bot.py under 3000 lines — if it's over, extract the largest logical block into its own module
-- If any test files are missing for modules that have none, write basic test coverage
-- In `/Users/map98/Desktop/Pineault-wealth/` (the calmmoney.ca website):
-  - Check all pages have proper meta titles and descriptions
-  - Verify structured data (JSON-LD LocalBusiness schema) is present and correct
-  - Check for broken internal links
-  - Verify sitemap.xml exists and is current
-  - Check image alt tags are present and descriptive
-  - Fix any issues found, commit and push to Pineault-wealth repo
+- Check for Python dependency security vulnerabilities
+- Review recently changed files for code quality improvements
+- Keep bot.py under 3000 lines — extract if growing
+- Write missing test coverage for any untested modules
+
+### Website SEO (calmmoney.ca at /Users/map98/Desktop/Pineault-wealth/)
+- Check all pages have proper meta titles, descriptions, and OG tags
+- Verify JSON-LD LocalBusiness structured data is correct and complete
+- Check for broken internal links
+- Verify sitemap.xml is current
+- Check image alt tags are present and descriptive
+- Fix any issues found, commit and push
+
+### Bot Intelligence
+- Run `analytics.generate_self_tuning_report()` — review output
+- If approval rate < 60%, analyze dismissed drafts and adjust follow-up prompts
+- If any GPT prompt is producing low-quality output (based on outcome data), improve it
+- Check if market_calendar events need updating
 
 ## Weekly (Sunday only)
-- SEO research for calmmoney.ca:
-  - Research 5-10 long-tail keywords for "financial advisor London Ontario" and related terms
-  - Analyze top 3 competitor financial advisor websites in London ON for content gaps
-  - Save findings to `content/seo/YYYY-MM-DD-research.md`
-  - Update `content/seo/keywords.md` with new keyword opportunities
-- Generate 1 blog post draft targeting the highest-opportunity keyword — save to `content/seo/drafts/`
-  - 800-1500 words, plain language, Marc's warm voice
-  - Include proper meta title, meta description
+
+### SEO Deep Dive
+- Research 5-10 long-tail keywords related to:
+  - "financial advisor London Ontario"
+  - "retirement planning Ontario"
+  - "insurance advisor London ON"
+  - "RRSP TFSA advisor"
+  - "disability insurance business owner Ontario"
+  - "estate planning London Ontario"
+- Analyze top 5 competitor financial advisor websites in London ON for content gaps
+- Save research to `content/seo/YYYY-MM-DD-research.md`
+- Update `content/seo/keywords.md` with findings
+
+### Content Generation
+- Generate 1 blog post draft (800-1500 words) targeting highest-opportunity keyword
+  - Write in Marc's voice — warm, plain language, locally rooted
+  - Include meta title, meta description
   - Internal links to calmmoney.ca service pages
-  - CTA pointing to quiz (calmmoney.ca/quiz) or booking widget
-- Audit GPT prompts across all modules (briefing.py, follow_up.py, nurture.py, compliance.py) for cost/quality optimization
-- Review scheduler timing — check if notification volume is appropriate, flag any potential improvements
-- Check if market_calendar events need updating for the current year
-- Run `analytics.generate_self_tuning_report()` and review the output — make prompt adjustments if data supports it
+  - CTA to quiz or booking widget
+  - Save to `content/seo/drafts/`
+- Generate 3 short-form video script ideas based on trending financial topics
+  - Save to `content/scripts/YYYY-MM-DD-scripts.md`
+  - Use the content playbook at `content/PLAYBOOK.md` for format and voice
+
+### System Optimization
+- Audit all GPT prompts for cost/quality — are we using gpt-4.1 where gpt-4.1-mini would suffice?
+- Review scheduler timing — is notification volume appropriate?
+- Analyze the self-tuning report and make concrete improvements
+- Review and optimize database queries that run frequently
 
 ## As Needed
