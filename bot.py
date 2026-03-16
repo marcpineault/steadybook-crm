@@ -1971,58 +1971,6 @@ async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(result)
 
 
-# ── /pipeline, /overdue, /meetings, /calls — direct tool commands ──
-
-async def cmd_pipeline(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await _require_admin(update):
-        return
-    try:
-        result = get_pipeline_summary()
-        await update.message.reply_text(result)
-    except Exception as e:
-        await update.message.reply_text("Something went wrong. Please try again.")
-
-
-async def cmd_overdue(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await _require_admin(update):
-        return
-    try:
-        result = get_overdue()
-        await update.message.reply_text(result)
-    except Exception as e:
-        await update.message.reply_text("Something went wrong. Please try again.")
-
-
-async def cmd_meetings(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await _require_admin(update):
-        return
-    try:
-        result = get_meetings()
-        await update.message.reply_text(result)
-    except Exception as e:
-        await update.message.reply_text("Something went wrong. Please try again.")
-
-
-async def cmd_calls(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await _require_admin(update):
-        return
-    try:
-        result = get_next_calls()
-        await update.message.reply_text(result)
-    except Exception as e:
-        await update.message.reply_text("Something went wrong. Please try again.")
-
-
-async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await _require_admin(update):
-        return
-    try:
-        result = get_win_loss_stats()
-        await update.message.reply_text(result)
-    except Exception as e:
-        await update.message.reply_text("Something went wrong. Please try again.")
-
-
 async def cmd_priority(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await _require_admin(update):
         return
@@ -2440,12 +2388,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "  /todo renew E&O insurance by March 20 remind me March 19 9am\n\n"
         "/tasks — view pending tasks\n"
         "/done <id> — mark a task complete\n\n"
-        "/pipeline — see your deals\n"
         "/priority — ranked call list with scores\n"
-        "/overdue — who needs follow-up\n"
-        "/meetings — view meetings\n"
-        "/calls — next prospects to call\n"
-        "/stats — win/loss stats\n"
         "/export — download pipeline database\n"
         "/lead — paste in a referral or lead email\n\n"
         "Send a voice message after any call/meeting and I'll auto-update your pipeline.\n"
@@ -3192,11 +3135,6 @@ def build_application():
     app.add_handler(CommandHandler("td", cmd_todo))    # alias
     app.add_handler(CommandHandler("tasks", cmd_tasks))
     app.add_handler(CommandHandler("done", cmd_done))
-    app.add_handler(CommandHandler("pipeline", cmd_pipeline))
-    app.add_handler(CommandHandler("overdue", cmd_overdue))
-    app.add_handler(CommandHandler("meetings", cmd_meetings))
-    app.add_handler(CommandHandler("calls", cmd_calls))
-    app.add_handler(CommandHandler("stats", cmd_stats))
     app.add_handler(CommandHandler("priority", cmd_priority))
     app.add_handler(CommandHandler("p", cmd_priority))  # shortcut
     app.add_handler(CommandHandler("lead", cmd_lead))
