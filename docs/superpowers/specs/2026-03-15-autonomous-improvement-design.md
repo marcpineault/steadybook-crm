@@ -74,38 +74,82 @@ Shell script that cron calls. Handles:
 
 ```bash
 #!/bin/bash
-set -euo pipefail
 
 REPO_DIR="/Users/map98/Desktop/calm-money-bot"
 LOG_DIR="${REPO_DIR}/logs/autonomous"
 DATE=$(date +%Y-%m-%d)
+DAY_OF_WEEK=$(date +%A)
 ERROR_LOG="${LOG_DIR}/errors.log"
+LOCKFILE="/tmp/calm-money-bot-autonomous.lock"
+PROMPT_FILE="${REPO_DIR}/prompts/autonomous-system.txt"
 
 mkdir -p "$LOG_DIR"
 
+# Prevent concurrent runs
+exec 200>"$LOCKFILE"
+flock -n 200 || { echo "[$DATE] Another run is already in progress" >> "$ERROR_LOG"; exit 1; }
+
 cd "$REPO_DIR"
 
-# Pull latest
+# Pull latest (abort rebase on conflict)
 git pull --rebase origin master 2>>"$ERROR_LOG" || {
-    echo "[$DATE] git pull failed" >> "$ERROR_LOG"
+    git rebase --abort 2>/dev/null
+    echo "[$DATE] git pull --rebase failed" >> "$ERROR_LOG"
     exit 1
 }
 
-# Run Claude Code with autonomous prompt
-claude --print \
-    --max-turns 50 \
-    --prompt "Read AUTONOMOUS.md in this repo. Work through every applicable task. For each change: write tests first, make the change, verify tests pass, commit with a clear message. When done, write a summary to logs/autonomous/${DATE}.md. Do NOT push — the wrapper script handles that. Do NOT ask questions — make your best judgment. If something is unclear or risky, skip it and note why in the log." \
+# Run Claude Code with autonomous prompt (1 hour timeout, $5 budget cap)
+timeout 3600 claude --print \
+    --dangerously-skip-permissions \
+    --max-budget-usd 5 \
+    --prompt "Today is ${DAY_OF_WEEK}, ${DATE}. $(cat "$PROMPT_FILE")" \
     2>>"$ERROR_LOG"
 
 # Verify tests pass before pushing
 cd "$REPO_DIR"
-python3 -m pytest tests/ --tb=short -q 2>>"$ERROR_LOG"
-if [ $? -eq 0 ]; then
+pytest_exit=0
+python3 -m pytest tests/ --tb=short -q 2>>"$ERROR_LOG" || pytest_exit=$?
+
+if [ $pytest_exit -eq 0 ]; then
     git push origin master 2>>"$ERROR_LOG"
 else
     echo "[$DATE] Tests failed after autonomous run — not pushing" >> "$ERROR_LOG"
+    # Notify Marc via the bot's Telegram
+    curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+        -d chat_id="${TELEGRAM_CHAT_ID}" \
+        -d text="⚠️ Autonomous run failed — tests didn't pass. Check logs/autonomous/errors.log" \
+        >/dev/null 2>&1
 fi
 ```
+
+The prompt is stored in `prompts/autonomous-system.txt` (not inline) for maintainability:
+
+```text
+Read AUTONOMOUS.md in this repo. Work through every applicable task.
+
+Rules:
+- For each change: write tests first, make the change, verify tests pass, commit with a clear message.
+- When done, write a summary to logs/autonomous/YYYY-MM-DD.md (use today's date).
+- Do NOT push — the wrapper script handles that.
+- Do NOT ask questions — make your best judgment.
+- If something is unclear or risky, skip it and note why in the log.
+- NEVER read, display, commit, or log .env or any file containing secrets.
+- NEVER delete files, drop database tables, or make breaking schema changes.
+- Weekly tasks only run on Sunday. Check today's day of week (passed in the prompt).
+- Commit daily log files so Marc can see them from any machine.
+```
+
+**Key changes from review:**
+- Removed `set -e` — handle errors explicitly so the test-gate works
+- Replaced `--max-turns` with `--max-budget-usd 5` (real CLI flag)
+- Added `--dangerously-skip-permissions` for unattended operation
+- Added flock-based concurrent run protection
+- Added `git rebase --abort` on pull failure
+- Added `timeout 3600` (1 hour max)
+- Moved prompt to external file
+- Pass day-of-week for weekly task logic
+- Added Telegram notification on failure
+- Added secrets protection instruction
 
 ### 3. Daily Log (logs/autonomous/YYYY-MM-DD.md)
 
@@ -189,10 +233,11 @@ calm-money-bot/
 
 ## Constraints
 
-- **Spare desktop must be running** — if it's off or asleep, cron doesn't fire
+- **Spare desktop must be running** — if it's off or asleep, cron doesn't fire. Disable sleep in System Settings.
 - **Claude Code CLI must be authenticated** — API key or login must be active
 - **Network access required** — for git pull/push and any web research
-- **API costs** — each nightly run uses Claude API tokens. Max-turns cap of 50 limits spend. Estimated ~$1-5 per run depending on complexity.
+- **API costs** — each nightly run uses Claude API tokens. Budget capped at $5/run via `--max-budget-usd`. Estimated ~$1-5 per run depending on complexity.
+- **`--dangerously-skip-permissions`** — required for unattended operation. Safe because: runs on a trusted local machine, against a trusted repo, with explicit safety instructions in the prompt, and tests must pass before push.
 
 ## Non-Goals
 
