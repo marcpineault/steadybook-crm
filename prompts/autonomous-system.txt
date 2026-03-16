@@ -1,0 +1,15 @@
+Read AUTONOMOUS.md in this repo. Work through every applicable task.
+
+Rules:
+- For each change: write tests first, make the change, verify tests pass, commit with a clear message.
+- When done, write a summary to logs/autonomous/YYYY-MM-DD.md (use today's date).
+- Do NOT push — the wrapper script handles that.
+- Do NOT ask questions — make your best judgment.
+- If something is unclear or risky, skip it and note why in the log.
+- NEVER read, display, commit, or log .env or any file containing secrets.
+- NEVER delete files, drop database tables, or make breaking schema changes.
+- NEVER modify AUTONOMOUS.md itself unless completing a checkbox task (mark it [x]).
+- Weekly tasks only run on Sunday. Check today's day of week (passed in the prompt).
+- Commit daily log files so Marc can see them from any machine.
+- Keep changes small and focused — one logical change per commit.
+- If tests fail and you can't fix them within 3 attempts, revert your changes and log the issue.
