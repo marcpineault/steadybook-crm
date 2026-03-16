@@ -137,14 +137,30 @@ def _set_security_headers(response):
     return response
 
 STAGE_COLORS = {
-    "New Lead": "#BDC3C7", "Contacted": "#3498DB", "Discovery Call": "#8E44AD",
-    "Needs Analysis": "#E67E22", "Plan Presentation": "#F39C12", "Proposal Sent": "#2980B9",
-    "Negotiation": "#E74C3C", "Closed-Won": "#27AE60", "Closed-Lost": "#95A5A6", "Nurture": "#1ABC9C",
+    "New Lead":          ("#3498DB", "#fff"),
+    "Contacted":         ("#9B59B6", "#fff"),
+    "Discovery Call":    ("#E67E22", "#fff"),
+    "Needs Analysis":    ("#F39C12", "#fff"),
+    "Plan Presentation": ("#1ABC9C", "#fff"),
+    "Proposal Sent":     ("#2ECC71", "#fff"),
+    "Negotiation":       ("#E74C3C", "#fff"),
+    "Nurture":           ("#95A5A6", "#fff"),
+    "Closed-Won":        ("#27AE60", "#fff"),
+    "Closed-Lost":       ("#7F8C8D", "#fff"),
 }
 PRIORITY_COLORS = {"Hot": "#E74C3C", "Warm": "#F39C12", "Cold": "#3498DB"}
-STAGE_TEXT = {
-    "New Lead": "#2C3E50", "Plan Presentation": "#2C3E50",
-}
+
+
+def _stage_bg(stage):
+    """Return background color for a stage badge."""
+    pair = STAGE_COLORS.get(stage)
+    return pair[0] if pair else "#BDC3C7"
+
+
+def _stage_fg(stage):
+    """Return foreground color for a stage badge."""
+    pair = STAGE_COLORS.get(stage)
+    return pair[1] if pair else "#fff"
 
 
 def read_data():
@@ -487,6 +503,29 @@ def _health_badge(score):
         return f'<span style="background:#F39C12;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">{score}</span>'
     else:
         return f'<span style="background:#E74C3C;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">{score}</span>'
+
+
+def _relative_time(date_str, today):
+    """Convert a date string to relative time: 'today', '1d ago', '2w ago', etc."""
+    if not date_str:
+        return "—"
+    try:
+        d = datetime.strptime(date_str.split(" ")[0], "%Y-%m-%d").date()
+        delta = (today - d).days
+        if delta == 0:
+            return "today"
+        elif delta == 1:
+            return "1d ago"
+        elif delta < 7:
+            return f"{delta}d ago"
+        elif delta < 30:
+            return f"{delta // 7}w ago"
+        elif delta < 365:
+            return f"{delta // 30}mo ago"
+        else:
+            return f"{delta // 365}y ago"
+    except (ValueError, IndexError):
+        return "—"
 
 
 def _build_ai_recommendations(active, overdue, overdue_tasks, stale_prospects, last_activity_map, today, meetings):
@@ -951,8 +990,7 @@ def dashboard():
         else:
             days_open = "?"
             stale = "?"
-        stage_bg = STAGE_COLORS.get(p["stage"], "#BDC3C7")
-        aging_rows += f'<tr><td class="name-cell">{_esc(p["name"])}</td><td><span class="badge" style="background:{stage_bg}">{_esc(p["stage"])}</span></td><td>{days_open}</td><td>{stale}</td></tr>'
+        aging_rows += f'<tr><td class="name-cell">{_esc(p["name"])}</td><td><span class="badge" style="background:{_stage_bg(p["stage"])}">{_esc(p["stage"])}</span></td><td>{days_open}</td><td>{stale}</td></tr>'
 
     # Pre-compute source effectiveness rows
     source_eff_rows = ""
@@ -1079,27 +1117,24 @@ def dashboard():
     # Build prospect rows
     prospect_rows = ""
     for p in active:
-        stage_bg = STAGE_COLORS.get(p["stage"], "#BDC3C7")
-        stage_fg = STAGE_TEXT.get(p["stage"], "#fff")
         pri_bg = PRIORITY_COLORS.get(p["priority"], "#BDC3C7")
 
         is_overdue = p in overdue
         fu_class = "overdue" if is_overdue else ""
         fu_display = p["next_followup"].split(" ")[0] if p["next_followup"] and p["next_followup"] != "None" else ""
 
-        # Days since last touch
+        # Days since last touch — relative time with color coding
         pname_lower = p["name"].strip().lower()
         last_touch = last_activity_map.get(pname_lower)
         if last_touch:
             idle_days = (today - last_touch).days
-            if idle_days == 0:
-                idle_display = '<span style="color:#27AE60">Today</span>'
-            elif idle_days <= 7:
-                idle_display = f'{idle_days}d'
-            elif idle_days <= 14:
-                idle_display = f'<span style="color:#F39C12">{idle_days}d</span>'
+            rel = _relative_time(last_touch.strftime("%Y-%m-%d"), today)
+            if idle_days == 0 or idle_days == 1:
+                idle_display = f'<span style="color:#27AE60;font-weight:600">{rel}</span>'
+            elif idle_days < 7:
+                idle_display = f'<span style="color:#F39C12">{rel}</span>'
             else:
-                idle_display = f'<span style="color:#E74C3C;font-weight:600">{idle_days}d</span>'
+                idle_display = f'<span style="color:#E74C3C;font-weight:600">{rel}</span>'
         else:
             idle_display = '<span style="color:#95A5A6">—</span>'
 
@@ -1113,7 +1148,7 @@ def dashboard():
             <td class="name-cell"><span style="color:#2c3e50;font-weight:600;text-decoration:none;border-bottom:2px solid #1abc9c">{_esc(p["name"])}</span></td>
             <td style="text-align:center">{hbadge}</td>
             <td><span class="badge" style="background:{pri_bg}">{_esc(p["priority"])}</span></td>
-            <td><span class="badge" style="background:{stage_bg};color:{stage_fg}">{_esc(p["stage"])}</span></td>
+            <td><span class="badge" style="background:{_stage_bg(p["stage"])};color:{_stage_fg(p["stage"])}">{_esc(p["stage"])}</span></td>
             <td>{_esc(p["product"])}</td>
             <td class="money">{fmt_money_full(p["aum"])}</td>
             <td class="money">{fmt_money_full(p["revenue"])}</td>
@@ -1172,7 +1207,7 @@ def dashboard():
     # Chart data as JSON-like strings for inline JS
     stage_labels = list(stage_counts.keys())
     stage_values = list(stage_counts.values())
-    stage_chart_colors = [STAGE_COLORS.get(s, "#BDC3C7") for s in stage_labels]
+    stage_chart_colors = [_stage_bg(s) for s in stage_labels]
 
     source_labels = list(source_counts.keys())
     source_values = list(source_counts.values())
@@ -1762,6 +1797,8 @@ tr:hover {{ background: #f8f9fa; }}
     /* Refresh note */
     .refresh-note {{ font-size: 11px; padding: 8px; }}
 }}
+
+@keyframes slideUp {{ from {{ transform: translateY(20px); opacity: 0; }} to {{ transform: translateY(0); opacity: 1; }} }}
 </style>
 </head>
 <body>
@@ -1983,7 +2020,7 @@ tr:hover {{ background: #f8f9fa; }}
             <h2>Pipeline Weighted Forecast</h2>
             <table>
                 <tr><th>Stage</th><th>Deals</th><th>Prob</th><th>Premium</th><th>Wtd Premium</th><th>AUM</th><th>Wtd AUM</th><th>FYC</th><th>Wtd FYC</th></tr>
-                {''.join(f'<tr><td><span class="badge" style="background:{STAGE_COLORS.get(s, "#BDC3C7")}">{_esc(s)}</span></td><td>{stage_counts.get(s, 0)}</td><td>{int(stage_probability.get(s, 0.1)*100)}%</td><td class="money">{fmt_money(stage_revenue.get(s, 0))}</td><td class="money">{fmt_money(stage_revenue.get(s, 0) * stage_probability.get(s, 0.1))}</td><td class="money">{fmt_money(sum(parse_money(p["aum"]) for p in active if p["stage"]==s))}</td><td class="money">{fmt_money(sum(parse_money(p["aum"]) for p in active if p["stage"]==s) * stage_probability.get(s, 0.1))}</td><td class="money">{fmt_money(stage_fyc.get(s, 0))}</td><td class="money">{fmt_money(stage_fyc.get(s, 0) * stage_probability.get(s, 0.1))}</td></tr>' for s in stage_order[:-1] if stage_counts.get(s, 0) > 0)}
+                {''.join(f'<tr><td><span class="badge" style="background:{_stage_bg(s)};color:{_stage_fg(s)}">{_esc(s)}</span></td><td>{stage_counts.get(s, 0)}</td><td>{int(stage_probability.get(s, 0.1)*100)}%</td><td class="money">{fmt_money(stage_revenue.get(s, 0))}</td><td class="money">{fmt_money(stage_revenue.get(s, 0) * stage_probability.get(s, 0.1))}</td><td class="money">{fmt_money(sum(parse_money(p["aum"]) for p in active if p["stage"]==s))}</td><td class="money">{fmt_money(sum(parse_money(p["aum"]) for p in active if p["stage"]==s) * stage_probability.get(s, 0.1))}</td><td class="money">{fmt_money(stage_fyc.get(s, 0))}</td><td class="money">{fmt_money(stage_fyc.get(s, 0) * stage_probability.get(s, 0.1))}</td></tr>' for s in stage_order[:-1] if stage_counts.get(s, 0) > 0)}
                 <tr style="font-weight:700;border-top:2px solid #2c3e50"><td>Total Weighted</td><td></td><td></td><td></td><td class="money">{fmt_money(weighted_revenue)}</td><td></td><td class="money">{fmt_money(weighted_aum)}</td><td></td><td class="money">{fmt_money(weighted_fyc)}</td></tr>
             </table>
         </div>
@@ -1996,7 +2033,7 @@ tr:hover {{ background: #f8f9fa; }}
         <div class="section">
             <h2>Sales Funnel</h2>
             <div style="max-width:700px;margin:0 auto;padding:20px 0">
-                {''.join(f'<div class="funnel-stage"><div class="funnel-label">{_esc(stage_order[i])}</div><div class="funnel-bar-wrap"><div class="funnel-bar" style="width:{max(8, funnel_counts[stage_order[i]] / max(1, funnel_counts[stage_order[0]]) * 100):.0f}%;background:{STAGE_COLORS.get(stage_order[i], "#BDC3C7")}">{funnel_counts[stage_order[i]]}</div><div class="funnel-rate">{f"{funnel_rates[i]:.0f}% pass" if i < len(funnel_rates) else ""}</div><div class="funnel-velocity">{f"~{avg_stage_days.get(stage_order[i], 0):.0f}d avg" if stage_order[i] in avg_stage_days else ""}</div></div></div>' for i in range(len(stage_order)))}
+                {''.join(f'<div class="funnel-stage"><div class="funnel-label">{_esc(stage_order[i])}</div><div class="funnel-bar-wrap"><div class="funnel-bar" style="width:{max(8, funnel_counts[stage_order[i]] / max(1, funnel_counts[stage_order[0]]) * 100):.0f}%;background:{_stage_bg(stage_order[i])}">{funnel_counts[stage_order[i]]}</div><div class="funnel-rate">{f"{funnel_rates[i]:.0f}% pass" if i < len(funnel_rates) else ""}</div><div class="funnel-velocity">{f"~{avg_stage_days.get(stage_order[i], 0):.0f}d avg" if stage_order[i] in avg_stage_days else ""}</div></div></div>' for i in range(len(stage_order)))}
             </div>
         </div>
 
@@ -2289,6 +2326,19 @@ function _saveTabAndReload() {{
     location.reload();
 }}
 
+function showToast(message, type) {{
+    const toast = document.createElement('div');
+    toast.style.cssText = 'position:fixed;bottom:24px;right:24px;background:' + (type === 'error' ? '#E74C3C' : '#27AE60') + ';color:#fff;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:500;z-index:10001;box-shadow:0 4px 20px rgba(0,0,0,0.2);animation:slideUp 0.3s ease';
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(function() {{ toast.style.opacity = '0'; toast.style.transition = 'opacity 0.3s'; setTimeout(function() {{ toast.remove(); }}, 300); }}, 3000);
+}}
+
+function _toastAndReload(message) {{
+    showToast(message, 'success');
+    setTimeout(_saveTabAndReload, 500);
+}}
+
 // Restore active tab on page load
 (function() {{
     const saved = localStorage.getItem('activeTab');
@@ -2414,7 +2464,7 @@ async function saveProspect() {{
             res = await fetch('/api/prospect/' + encodeURIComponent(origName), {{ method: 'PUT', headers: hdrs, body: JSON.stringify(data) }});
         }}
         const result = await res.json();
-        if (result.ok) {{ closeModal(); _saveTabAndReload(); }}
+        if (result.ok) {{ closeModal(); _toastAndReload(isAdding ? 'Prospect added!' : 'Prospect saved!'); }}
         else alert(result.error || 'Error saving');
     }} catch(e) {{ alert('Error: ' + e.message); }}
 }}
@@ -2425,7 +2475,7 @@ async function deleteProspect() {{
     try {{
         const res = await fetch('/api/prospect/' + encodeURIComponent(name), {{ method: 'DELETE', headers: {{'X-CSRF-Token': _csrfToken}} }});
         const result = await res.json();
-        if (result.ok) {{ closeModal(); _saveTabAndReload(); }}
+        if (result.ok) {{ closeModal(); _toastAndReload('Prospect deleted.'); }}
         else alert(result.error || 'Error deleting');
     }} catch(e) {{ alert('Error: ' + e.message); }}
 }}
@@ -2490,7 +2540,7 @@ async function saveTask() {{
             res = await fetch('/api/task', {{ method: 'POST', headers: {{'Content-Type': 'application/json', 'X-CSRF-Token': _csrfToken}}, body: JSON.stringify(data) }});
         }}
         const result = await res.json();
-        if (result.ok) {{ closeTaskModal(); _saveTabAndReload(); }}
+        if (result.ok) {{ closeTaskModal(); _toastAndReload('Task saved!'); }}
         else alert(result.error || 'Error saving task');
     }} catch(e) {{ alert('Error: ' + e.message); }}
 }}
@@ -2499,7 +2549,7 @@ async function completeTask(id, checkbox) {{
     try {{
         const res = await fetch('/api/task/' + id + '/complete', {{ method: 'PUT', headers: {{'X-CSRF-Token': _csrfToken}} }});
         const result = await res.json();
-        if (result.ok) {{ _saveTabAndReload(); }}
+        if (result.ok) {{ showToast('Task completed!', 'success'); setTimeout(_saveTabAndReload, 500); }}
         else {{ checkbox.checked = false; alert(result.error || 'Error'); }}
     }} catch(e) {{ checkbox.checked = false; alert('Error: ' + e.message); }}
 }}
@@ -2509,7 +2559,7 @@ async function deleteTask(id) {{
     try {{
         const res = await fetch('/api/task/' + id, {{ method: 'DELETE', headers: {{'X-CSRF-Token': _csrfToken}} }});
         const result = await res.json();
-        if (result.ok) {{ closeTaskModal(); _saveTabAndReload(); }}
+        if (result.ok) {{ closeTaskModal(); _toastAndReload('Task deleted.'); }}
         else alert(result.error || 'Error');
     }} catch(e) {{ alert('Error: ' + e.message); }}
 }}
@@ -2550,6 +2600,15 @@ async function openProspectDetail(name) {{
         if (p.notes) html += '<div style="grid-column:1/-1"><strong>Notes:</strong> ' + _e(p.notes) + '</div>';
         html += '</div>';
 
+        // Store current notes for addQuickNote()
+        window._detailCurrentNotes = p.notes || '';
+
+        // Quick note input
+        html += '<div style="margin-top:12px;display:flex;gap:8px">';
+        html += '<input type="text" id="quickNoteInput" placeholder="Add a quick note..." style="flex:1;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:13px" onkeydown="if(event.key===\'Enter\')addQuickNote()">';
+        html += '<button onclick="addQuickNote()" style="background:#3498DB;color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:13px">Add</button>';
+        html += '</div>';
+
         // Tasks
         if (data.tasks && data.tasks.length > 0) {{
             html += '<h3 style="margin:16px 0 8px;font-size:15px">Tasks (' + data.tasks.length + ')</h3>';
@@ -2588,6 +2647,33 @@ async function openProspectDetail(name) {{
 
         document.getElementById('detailContent').innerHTML = html;
     }} catch(e) {{ document.getElementById('detailContent').innerHTML = '<p>Error loading: ' + _e(e.message) + '</p>'; }}
+}}
+
+async function addQuickNote() {{
+    const input = document.getElementById('quickNoteInput');
+    if (!input) return;
+    const noteText = input.value.trim();
+    if (!noteText) return;
+    // Build timestamp prefix like [Mar 16]
+    const now = new Date();
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const prefix = '[' + months[now.getMonth()] + ' ' + now.getDate() + '] ';
+    const existing = window._detailCurrentNotes || '';
+    const updated = existing ? existing + '\n' + prefix + noteText : prefix + noteText;
+    try {{
+        const res = await fetch('/api/prospect/update', {{
+            method: 'PUT',
+            headers: {{'Content-Type': 'application/json', 'X-CSRF-Token': _csrfToken}},
+            body: JSON.stringify({{ name: _detailProspect, updates: {{ notes: updated }} }})
+        }});
+        const result = await res.json();
+        if (result.ok) {{
+            showToast('Note added!', 'success');
+            openProspectDetail(_detailProspect);
+        }} else {{
+            showToast(result.error || 'Error saving note', 'error');
+        }}
+    }} catch(e) {{ showToast('Error: ' + e.message, 'error'); }}
 }}
 
 function closeDetail() {{ document.getElementById('detailModal').classList.remove('active'); document.getElementById('mergeSection').style.display='none'; }}
@@ -2639,8 +2725,7 @@ async function doMerge() {{
         }});
         const result = await res.json();
         if (result.ok) {{
-            alert(result.message);
-            _saveTabAndReload();
+            _toastAndReload('Prospects merged!');
         }} else {{
             alert('Error: ' + (result.error || 'Unknown error'));
         }}
@@ -2683,8 +2768,11 @@ async function submitLog() {{
     try {{
         const res = await fetch('/api/activity', {{ method: 'POST', headers: {{'Content-Type': 'application/json', 'X-CSRF-Token': _csrfToken}}, body: JSON.stringify(data) }});
         const result = await res.json();
-        if (result.ok) {{ closeLogModal(); openProspectDetail(_detailProspect); }}
-        else alert(result.error || 'Error');
+        if (result.ok) {{
+            showToast('Activity logged!', 'success');
+            closeLogModal();
+            openProspectDetail(_detailProspect);
+        }} else alert(result.error || 'Error');
     }} catch(e) {{ alert('Error: ' + e.message); }}
 }}
 
@@ -2713,7 +2801,7 @@ async function quickReschedule(prospectName, days) {{
             body: JSON.stringify({{ name: prospectName, updates: {{ next_followup: dateStr }} }})
         }});
         const result = await res.json();
-        if (result.ok) _saveTabAndReload();
+        if (result.ok) _toastAndReload('Follow-up rescheduled!');
         else alert(result.error || 'Error rescheduling');
     }} catch(e) {{ alert('Error: ' + e.message); }}
 }}
