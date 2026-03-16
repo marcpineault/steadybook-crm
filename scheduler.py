@@ -744,48 +744,6 @@ async def send_meeting_prep_docs():
         logger.exception("Meeting prep doc check failed")
 
 
-# ── Weekly Content Plan ──
-
-async def weekly_content_plan():
-    """Generate and send weekly content plan every Sunday at 6PM."""
-    if not _bot or not CHAT_ID:
-        return
-
-    try:
-        import content_engine
-        import approval_queue
-
-        plan = content_engine.generate_weekly_plan()
-        if not plan:
-            await _bot.send_message(chat_id=CHAT_ID, text="Failed to generate weekly content plan. Use /content plan to try manually.")
-            return
-
-        text = content_engine.format_plan_for_telegram(plan)
-
-        # Store in approval queue
-        draft = approval_queue.add_draft(
-            draft_type="content_plan",
-            channel="social_media",
-            content=text,
-            context="Weekly content plan — approve to generate all posts",
-        )
-
-        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-        keyboard = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("Approve & Generate", callback_data=f"content_approve_{draft['id']}"),
-                InlineKeyboardButton("Dismiss", callback_data=f"content_dismiss_{draft['id']}"),
-            ],
-        ])
-
-        msg = await _bot.send_message(chat_id=CHAT_ID, text=text, reply_markup=keyboard)
-        approval_queue.set_telegram_message_id(draft["id"], str(msg.message_id))
-        logger.info("Weekly content plan sent (queue #%s)", draft["id"])
-
-    except Exception:
-        logger.exception("Weekly content plan generation failed")
-
-
 # ── Nurture Sequence Check ──
 
 async def check_nurture_sequences():
@@ -938,17 +896,6 @@ def start_scheduler(telegram_app, event_loop=None):
         name="Meeting Prep Docs",
     )
 
-    # Weekly content plan — Sunday 6PM ET
-    scheduler.add_job(
-        weekly_content_plan,
-        "cron",
-        day_of_week="sun",
-        hour=18,
-        minute=0,
-        id="weekly_content_plan",
-        name="Weekly Content Plan",
-    )
-
     # Daily nurture check — 9:15AM ET weekdays (offset from 9AM auto_nag)
     scheduler.add_job(
         check_nurture_sequences,
@@ -961,4 +908,4 @@ def start_scheduler(telegram_app, event_loop=None):
     )
 
     scheduler.start()
-    logger.info("Scheduler started — briefing 8AM (weekdays), nag 9AM+2PM, midday 12:30PM, EOD 5:30PM, weekly Sun 6:30PM, content plan Sun 6PM, task reminders every 60s, meeting prep hourly ET.")
+    logger.info("Scheduler started — briefing 8AM (weekdays), nag 9AM+2PM, midday 12:30PM, EOD 5:30PM, weekly Sun 6:30PM, task reminders every 60s, meeting prep hourly ET.")

@@ -2676,104 +2676,6 @@ async def cmd_voice(update, context):
         await update.message.reply_text("Unknown action. Use /voice add or /voice list")
 
 
-async def cmd_content(update, context):
-    """Generate content: /content plan or /content post <platform> <type> <topic>"""
-    if not await _require_admin(update):
-        return
-
-    import content_engine
-
-    args = context.args
-    if not args:
-        await update.message.reply_text(
-            "Usage:\n"
-            "/content plan — Generate this week's 5-post content plan\n"
-            "/content post linkedin educational RRSP tips — Generate a single post"
-        )
-        return
-
-    action = args[0].lower()
-
-    if action == "plan":
-        await update.message.reply_text("Generating your weekly content plan...")
-        plan = content_engine.generate_weekly_plan()
-        if not plan:
-            await update.message.reply_text("Failed to generate content plan. Try again.")
-            return
-
-        text = content_engine.format_plan_for_telegram(plan)
-
-        # Store plan in approval queue
-        import approval_queue
-        draft = approval_queue.add_draft(
-            draft_type="content_plan",
-            channel="social_media",
-            content=text,
-            context="Weekly content plan — approve to generate all posts",
-        )
-
-        keyboard = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("Approve & Generate", callback_data=f"content_approve_{draft['id']}"),
-                InlineKeyboardButton("Dismiss", callback_data=f"content_dismiss_{draft['id']}"),
-            ],
-        ])
-        msg = await update.message.reply_text(text, reply_markup=keyboard)
-        approval_queue.set_telegram_message_id(draft["id"], str(msg.message_id))
-
-    elif action == "post":
-        if len(args) < 4:
-            await update.message.reply_text("Usage: /content post <platform> <type> <topic>")
-            return
-        platform = args[1].lower()
-        post_type = args[2].lower()
-        topic = " ".join(args[3:])
-        await update.message.reply_text(f"Generating {post_type} post for {platform}...")
-
-        import market_intel
-        context_text = market_intel.get_seasonal_context()
-        post = content_engine.generate_post(platform, post_type, topic, context=context_text)
-        if not post:
-            await update.message.reply_text("Failed to generate post. Try again.")
-            return
-
-        # Run compliance
-        import compliance as comp
-        comp_result = comp.check_compliance(post["content"])
-        comp.log_action(
-            action_type="content_generation",
-            target=f"{platform}/{post_type}",
-            content=post["content"],
-            compliance_check="PASS" if comp_result["passed"] else f"FAIL: {'; '.join(comp_result['issues'])}",
-        )
-
-        # Queue for approval
-        import approval_queue
-        draft = approval_queue.add_draft(
-            draft_type="content_post",
-            channel=f"{platform}_post",
-            content=post["content"],
-            context=f"{post_type}: {topic}",
-        )
-
-        comp_flag = ""
-        if not comp_result["passed"]:
-            comp_flag = f"\n\nCOMPLIANCE FLAG: {'; '.join(comp_result['issues'])}"
-
-        text = (
-            f"CONTENT DRAFT — {platform.title()} ({post_type})\n"
-            f"Topic: {topic}\n\n"
-            f"{post['content']}"
-            f"{comp_flag}\n\n"
-            f"Queue #{draft['id']}"
-        )
-        keyboard = _draft_keyboard(draft["id"])
-        msg = await update.message.reply_text(text, reply_markup=keyboard)
-        approval_queue.set_telegram_message_id(draft["id"], str(msg.message_id))
-    else:
-        await update.message.reply_text("Unknown action. Use /content plan or /content post")
-
-
 async def cmd_calendar(update, context):
     """View market calendar or add events: /calendar or /calendar add <date> <title>"""
     if not await _require_admin(update):
@@ -2815,58 +2717,6 @@ async def cmd_calendar(update, context):
         await update.message.reply_text(f"Added market event: {title} on {date_str}")
     else:
         await update.message.reply_text(f"Usage: {cmd} or {cmd} add <date> <title>")
-
-
-async def handle_content_callback(update, context):
-    """Handle inline keyboard callbacks for content plan approval."""
-    query = update.callback_query
-    await query.answer()
-
-    if not _is_admin(update):
-        return
-
-    data = query.data
-    if not data.startswith("content_"):
-        return
-
-    parts = data.split("_", 2)
-    if len(parts) < 3:
-        return
-
-    action = parts[1]
-    try:
-        queue_id = int(parts[2])
-    except ValueError:
-        return
-
-    import approval_queue
-    draft = approval_queue.get_draft_by_id(queue_id)
-    if not draft:
-        await query.edit_message_text("Content plan not found or already processed.")
-        return
-
-    if action == "approve":
-        approval_queue.update_draft_status(queue_id, "approved")
-        # Brand voice evolution for content_post is handled in handle_draft_callback
-        # (content_post drafts use _draft_keyboard, not content_ buttons)
-
-        if draft.get("type") == "content_plan":
-            await query.edit_message_text(
-                f"Content plan approved (#{queue_id}).\n\n"
-                "Use /content post to generate individual posts from this plan."
-            )
-        else:
-            content = draft.get("content", "")
-            if len(content) > 3800:
-                content = content[:3800] + "\n...(truncated)"
-            await query.edit_message_text(
-                f"APPROVED — content post #{queue_id}\n\n"
-                f"{content}\n\n"
-                "Copy-paste into Publer for scheduling."
-            )
-    elif action == "dismiss":
-        approval_queue.update_draft_status(queue_id, "dismissed")
-        await query.edit_message_text(f"Content dismissed (#{queue_id}).")
 
 
 async def cmd_trust(update, context):
@@ -3146,10 +2996,8 @@ def build_application():
     app.add_handler(CallbackQueryHandler(handle_outcome_callback, pattern=r"^outcome_"))
     app.add_handler(CallbackQueryHandler(handle_draft_callback, pattern=r"^draft_"))
     app.add_handler(CommandHandler("voice", cmd_voice))
-    app.add_handler(CommandHandler("content", cmd_content))
     app.add_handler(CommandHandler("calendar", cmd_calendar))
     app.add_handler(CommandHandler("news", cmd_calendar))  # alias for /calendar
-    app.add_handler(CallbackQueryHandler(handle_content_callback, pattern=r"^content_"))
     app.add_handler(CommandHandler("trust", cmd_trust))
     app.add_handler(CommandHandler("campaign", cmd_campaign))
     app.add_handler(CommandHandler("nurture", cmd_nurture))
