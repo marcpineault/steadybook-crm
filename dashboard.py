@@ -1835,6 +1835,58 @@ tr:hover {{ background: #f8f9fa; }}
     .refresh-note {{ font-size: 11px; padding: 8px; }}
 }}
 
+/* ── Additional 768px breakpoints ── */
+@media (max-width: 768px) {{
+    .tab-nav {{
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        gap: 0;
+    }}
+    .tab-btn {{
+        white-space: nowrap;
+        padding: 12px 16px;
+        font-size: 12px;
+    }}
+    .kpi-grid {{
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 8px;
+    }}
+    .kpi-value {{ font-size: 22px; }}
+    .kanban-board {{
+        flex-wrap: nowrap;
+    }}
+    .kanban-col {{
+        min-width: 180px;
+    }}
+    .section table {{
+        display: block;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }}
+    .two-col {{
+        grid-template-columns: 1fr !important;
+    }}
+    .focus-banner {{
+        padding: 12px;
+        font-size: 13px;
+    }}
+    .chart-grid {{
+        grid-template-columns: 1fr !important;
+    }}
+    .modal {{
+        width: 95% !important;
+        max-width: 95% !important;
+        margin: 10px;
+        max-height: 90vh;
+    }}
+}}
+
+@media (max-width: 480px) {{
+    .kpi-grid {{
+        grid-template-columns: 1fr !important;
+    }}
+}}
+
 @keyframes slideUp {{ from {{ transform: translateY(20px); opacity: 0; }} to {{ transform: translateY(0); opacity: 1; }} }}
 
 /* ── Kanban board ── */
