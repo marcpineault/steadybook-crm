@@ -566,6 +566,14 @@ def _calc_deal_velocity(prospects, activities):
 
 @app.route("/")
 def dashboard():
+    # Check API key from header (programmatic) or query param (browser bookmark)
+    api_key = request.headers.get("X-API-Key", "") or request.args.get("key", "")
+    if DASHBOARD_API_KEY and not (api_key and hmac.compare_digest(api_key, DASHBOARD_API_KEY)):
+        return Response(
+            "<html><body><h2>Unauthorized</h2><p>Append ?key=YOUR_KEY to the URL.</p></body></html>",
+            status=401,
+            mimetype="text/html",
+        )
     csrf_token = _generate_csrf_token()
     prospects, activities, meetings, book_entries = read_data()
     try:
