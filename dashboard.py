@@ -369,9 +369,31 @@ def _build_focus_banner(overdue_followups, overdue_tasks, due_today_tasks, today
         items.append(f'<span style="color:#3498DB">&#128197; {len(todays_meetings)} meeting{"s" if len(todays_meetings) != 1 else ""} today</span>')
     if stale_prospects:
         items.append(f'<span style="color:#E67E22">&#128164; {len(stale_prospects)} prospect{"s" if len(stale_prospects) != 1 else ""} going cold (14+ days idle)</span>')
+
+    # Build meeting detail lines
+    meeting_details_html = ""
+    if todays_meetings:
+        detail_lines = []
+        for m in todays_meetings:
+            time_str = _html.escape(m.get("time", "").strip()) if m.get("time") else ""
+            prospect_str = _html.escape(m.get("prospect", "").strip()) if m.get("prospect") else ""
+            meeting_type = _html.escape(m.get("type", "").strip()) if m.get("type") else ""
+            parts = []
+            if time_str:
+                parts.append(time_str)
+            label = prospect_str
+            if meeting_type:
+                label += f" ({meeting_type})"
+            if label:
+                parts.append(label)
+            if parts:
+                detail_lines.append(" — ".join(parts))
+        if detail_lines:
+            meeting_details_html = '<div style="margin-top:6px;padding-top:6px;border-top:1px solid #fce5b5;font-size:13px;color:#2c3e50">' + " &nbsp;&bull;&nbsp; ".join(detail_lines) + "</div>"
+
     if not items:
         return '<div style="background:#f0faf8;border:1px solid #1abc9c;border-radius:8px;padding:12px 20px;margin-bottom:16px;font-size:14px;color:#27AE60"><strong>&#10003; All clear!</strong> No urgent items today.</div>'
-    return '<div style="background:#fef9f0;border:1px solid #F39C12;border-radius:8px;padding:12px 20px;margin-bottom:16px;font-size:14px"><strong>Today\'s Focus:</strong> ' + ' &nbsp;|&nbsp; '.join(items) + '</div>'
+    return '<div style="background:#fef9f0;border:1px solid #F39C12;border-radius:8px;padding:12px 20px;margin-bottom:16px;font-size:14px"><strong>Today\'s Focus:</strong> ' + ' &nbsp;|&nbsp; '.join(items) + meeting_details_html + '</div>'
 
 
 def _build_rec_html(rec):
@@ -1086,6 +1108,7 @@ def dashboard():
 
         p_json_escaped = _esc_json_attr(json.dumps(p))
         esc_detail_name = json.dumps(p["name"])[1:-1]
+        esc_action_name = json.dumps(p["name"])[1:-1]
         prospect_rows += f"""<tr class="editable-row" data-prospect="{p_json_escaped}" onclick="openProspectDetail('{esc_detail_name}')" style="cursor:pointer">
             <td class="name-cell"><span style="color:#2c3e50;font-weight:600;text-decoration:none;border-bottom:2px solid #1abc9c">{_esc(p["name"])}</span></td>
             <td style="text-align:center">{hbadge}</td>
@@ -1097,6 +1120,10 @@ def dashboard():
             <td class="{fu_class}">{_esc(fu_display)}</td>
             <td style="text-align:center">{idle_display}</td>
             <td class="notes">{_esc(p["notes"][:60])}{'...' if len(p["notes"]) > 60 else ''}</td>
+            <td style="text-align:center;white-space:nowrap" onclick="event.stopPropagation()">
+                <button onclick="quickLogActivity('Call','{esc_action_name}')" title="Log Call" style="background:none;border:none;cursor:pointer;font-size:16px;padding:2px 4px">&#128222;</button>
+                <button onclick="quickLogActivity('Email','{esc_action_name}')" title="Log Email" style="background:none;border:none;cursor:pointer;font-size:16px;padding:2px 4px">&#9993;</button>
+            </td>
         </tr>"""
 
     # Won deals rows
@@ -1213,12 +1240,48 @@ def dashboard():
         status_bg = "#27ae60" if m["status"] == "Completed" else "#e74c3c" if m["status"] == "Cancelled" else "#3498db"
         meeting_rows += f'<tr {row_style}><td>{_esc(m["date"])}</td><td>{_esc(m["time"])}</td><td class="name-cell">{_esc(m["prospect"])}</td><td>{_esc(m["type"])}</td><td><span class="badge" style="background:{status_bg}">{_esc(m["status"])}</span></td><td class="notes">{_esc(m["prep_notes"][:50])}{"..." if len(m["prep_notes"]) > 50 else ""}</td></tr>'
 
-    # Pending approvals count
+    # Pending approvals count + drafts
     try:
         import approval_queue as _aq
         pending_approvals = _aq.get_pending_count()
+        pending_drafts = _aq.get_pending_drafts()
     except Exception:
         pending_approvals = 0
+        pending_drafts = []
+
+    # Build pending drafts section HTML
+    _draft_items_html = ""
+    for _d in pending_drafts:
+        _dtype = _html.escape(str(_d.get("type") or "Draft"))
+        _dprospect = ""
+        if _d.get("prospect_id"):
+            # Try to resolve name from prospect_id via pipeline
+            _pid = _d.get("prospect_id")
+            _matched = next((p["name"] for p in prospects if str(p.get("id", "")) == str(_pid)), None)
+            if _matched:
+                _dprospect = _html.escape(_matched)
+        _dcontent = _html.escape(str(_d.get("content") or "")[:200])
+        _dts = _html.escape(str(_d.get("created_at") or "")[:16])
+        _ellipsis = "..." if len(str(_d.get("content") or "")) > 200 else ""
+        _prospect_span = (
+            '<span style="font-size:12px;color:#7f8c8d">' + _dprospect + '</span>'
+            if _dprospect else ""
+        )
+        _draft_items_html += (
+            '<div style="padding:12px;margin-bottom:10px;border:1px solid #e0d5f0;border-radius:8px;background:#faf8ff">'
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+            '<span style="background:#8e44ad;color:#fff;padding:2px 10px;border-radius:10px;font-size:11px;font-weight:600">' + _dtype + '</span>'
+            + _prospect_span +
+            '<span style="font-size:11px;color:#aaa;margin-left:auto">' + _dts + '</span>'
+            '</div>'
+            '<div style="font-size:13px;color:#2c3e50;white-space:pre-wrap">' + _dcontent + _ellipsis + '</div>'
+            '</div>'
+        )
+
+    _pending_drafts_section_html = f"""<div id="pendingDraftsSection" style="display:none;margin-top:12px;padding:20px;background:white;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.08);border-top:4px solid #8e44ad">
+  <h3 style="font-size:15px;font-weight:700;color:#8e44ad;margin-bottom:14px">&#9993; Drafts Awaiting Approval ({len(pending_drafts)})</h3>
+  {_draft_items_html if _draft_items_html else '<div style="color:#7f8c8d;font-size:14px;text-align:center;padding:12px">No pending drafts.</div>'}
+</div>""" if pending_approvals > 0 else ""
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -1226,7 +1289,6 @@ def dashboard():
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="csrf-token" content="{csrf_token}">
-<meta http-equiv="refresh" content="300">
 <title>Calm Money — Pipeline Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <style>
@@ -1737,7 +1799,8 @@ tr:hover {{ background: #f8f9fa; }}
             <div class="kpi-value">{win_rate:.0f}%</div>
         </div>
     </div>
-    {'<div style="margin-top:12px"><div class="kpi-card purple" style="cursor:pointer;display:inline-block;min-width:220px" title="' + str(pending_approvals) + ' draft' + ('s' if pending_approvals != 1 else '') + ' waiting for your approval"><div class="kpi-label">&#9993; Drafts Pending Approval</div><div class="kpi-value">' + str(pending_approvals) + '</div></div></div>' if pending_approvals > 0 else ''}
+    {'<div style="margin-top:12px"><div class="kpi-card purple" style="cursor:pointer;display:inline-block;min-width:220px" onclick="togglePendingDrafts()" title="Click to view pending drafts"><div class="kpi-label">&#9993; Drafts Pending Approval</div><div class="kpi-value">' + str(pending_approvals) + '</div><div style="font-size:11px;color:#8e44ad;margin-top:4px">Click to view &#9660;</div></div></div>' if pending_approvals > 0 else ''}
+    {_pending_drafts_section_html}
 
     <div class="tab-nav">
         <button class="tab-btn active" data-tab="pipeline" onclick="showTab('pipeline')">Pipeline</button>
@@ -1750,22 +1813,7 @@ tr:hover {{ background: #f8f9fa; }}
     <!-- ═══ TAB 1: PIPELINE (existing) ═══ -->
     <div class="tab-content active" id="tab-pipeline">
 
-    <div class="chart-grid" style="margin-top:24px">
-        <div class="chart-card">
-            <h3>By Stage</h3>
-            <canvas id="stageChart"></canvas>
-        </div>
-        <div class="chart-card">
-            <h3>By Source</h3>
-            <canvas id="sourceChart"></canvas>
-        </div>
-        <div class="chart-card">
-            <h3>By Product</h3>
-            <canvas id="productChart"></canvas>
-        </div>
-    </div>
-
-    <!-- Intelligence Section -->
+    <!-- Intelligence Section (AI Recommendations first — daily action items) -->
     <div class="two-col" style="margin-top:24px">
         <div class="section" style="border-left:4px solid #8E44AD">
             <h2 style="color:#8E44AD">AI Recommends</h2>
@@ -1798,11 +1846,27 @@ tr:hover {{ background: #f8f9fa; }}
         </div>
     </div>
 
+    <!-- Pipeline Charts (reference material — below AI recommendations) -->
+    <div class="chart-grid" style="margin-top:24px">
+        <div class="chart-card">
+            <h3>By Stage</h3>
+            <canvas id="stageChart"></canvas>
+        </div>
+        <div class="chart-card">
+            <h3>By Source</h3>
+            <canvas id="sourceChart"></canvas>
+        </div>
+        <div class="chart-card">
+            <h3>By Product</h3>
+            <canvas id="productChart"></canvas>
+        </div>
+    </div>
+
     {'<div class="section"><h2>Overdue Follow-Ups <span class="count">(' + str(len(overdue)) + ')</span></h2><table><tr><th>Prospect</th><th>Was Due</th><th>Status</th><th>Phone</th><th>Reschedule</th></tr>' + overdue_rows + '</table></div>' if overdue else ''}
 
     <div class="section">
         <h2 style="display:flex;justify-content:space-between;align-items:center">Active Pipeline <span class="count">({len(active)} deals)</span> <button class="btn btn-primary" onclick="openAdd()">+ Add Prospect</button></h2>
-        {'<div style="margin-bottom:12px"><input type="text" id="prospectSearch" placeholder="Search prospects..." oninput="filterProspects(this.value)" style="width:100%;max-width:300px;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px"></div><table id="prospectTable"><tr><th>Prospect</th><th>Health</th><th>Priority</th><th>Stage</th><th>Product</th><th>AUM</th><th>Premium</th><th>Follow-Up</th><th>Last Touch</th><th>Notes</th></tr>' + prospect_rows + '</table>' if active else '<div class="empty-state"><p>No active deals yet. Text your Telegram bot to add prospects.</p></div>'}
+        {'<div style="margin-bottom:12px"><input type="text" id="prospectSearch" placeholder="Search prospects..." oninput="filterProspects(this.value)" style="width:100%;max-width:300px;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px"></div><table id="prospectTable"><tr><th>Prospect</th><th>Health</th><th>Priority</th><th>Stage</th><th>Product</th><th>AUM</th><th>Premium</th><th>Follow-Up</th><th>Last Touch</th><th>Notes</th><th>Actions</th></tr>' + prospect_rows + '</table>' if active else '<div class="empty-state"><p>No active deals yet. Text your Telegram bot to add prospects.</p></div>'}
     </div>
 
     <div class="two-col">
@@ -2583,8 +2647,16 @@ async function doMerge() {{
     }} catch(e) {{ alert('Error: ' + e.message); }}
 }}
 
+// Toggle pending drafts section
+function togglePendingDrafts() {{
+    const sec = document.getElementById('pendingDraftsSection');
+    if (!sec) return;
+    sec.style.display = sec.style.display === 'none' ? 'block' : 'none';
+}}
+
 // Quick log activity
-function quickLogActivity(action) {{
+function quickLogActivity(action, prospectName) {{
+    _detailProspect = prospectName || _detailProspect;
     document.getElementById('logProspect').value = _detailProspect;
     document.getElementById('logAction').value = action;
     document.getElementById('logTitle').textContent = 'Log ' + action + ': ' + _detailProspect;
@@ -2688,6 +2760,48 @@ function initForecastCharts() {{
         }}
     }});
 }}
+
+// Smart auto-refresh: only refresh when idle for 5 minutes
+(function() {{
+    const IDLE_MS = 5 * 60 * 1000; // 5 minutes
+    const CHECK_MS = 10 * 1000;    // check every 10s
+    let lastInteraction = Date.now();
+
+    function resetIdle() {{ lastInteraction = Date.now(); hideBanner(); }}
+    document.addEventListener('click', resetIdle, true);
+    document.addEventListener('keypress', resetIdle, true);
+    document.addEventListener('mousemove', resetIdle, true);
+    document.addEventListener('touchstart', resetIdle, true);
+
+    const banner = document.createElement('div');
+    banner.id = 'refreshBanner';
+    banner.style.cssText = 'display:none;position:fixed;bottom:0;left:0;right:0;background:#0f1b2d;color:#e8e6f0;text-align:center;padding:10px 16px;font-size:13px;z-index:9999;box-shadow:0 -2px 8px rgba(0,0,0,0.3)';
+    banner.innerHTML = '<span id="refreshCountdown"></span> &nbsp;<a href="javascript:void(0)" onclick="doRefresh()" style="color:#1abc9c;font-weight:600">Refresh now</a> &nbsp;<a href="javascript:void(0)" onclick="dismissRefresh()" style="color:#7f8c8d;font-size:11px">Dismiss</a>';
+    document.body.appendChild(banner);
+
+    let dismissed = false;
+    function hideBanner() {{ banner.style.display = 'none'; dismissed = false; }}
+    window.dismissRefresh = function() {{ dismissed = true; banner.style.display = 'none'; lastInteraction = Date.now(); }};
+    window.doRefresh = function() {{ _saveTabAndReload(); }};
+
+    setInterval(function() {{
+        if (document.hidden) return;
+        const idleMs = Date.now() - lastInteraction;
+        if (idleMs >= IDLE_MS) {{
+            if (!dismissed) {{
+                const secsLeft = Math.max(0, Math.round((IDLE_MS * 2 - idleMs) / 1000));
+                document.getElementById('refreshCountdown').textContent = 'Dashboard will refresh in ' + secsLeft + 's (idle)';
+                banner.style.display = 'block';
+            }}
+            // Auto-refresh after another 5 minutes of idleness (10 min total)
+            if (idleMs >= IDLE_MS * 2) {{
+                _saveTabAndReload();
+            }}
+        }} else {{
+            hideBanner();
+        }}
+    }}, CHECK_MS);
+}})();
 
 // Velocity chart (lazy init)
 function initFunnelCharts() {{
