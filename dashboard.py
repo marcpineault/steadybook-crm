@@ -1197,6 +1197,29 @@ def dashboard():
             <td>{_esc((t.get('completed_at') or '')[:10])}</td>
         </tr>"""
 
+    # Sort meetings by date for display, highlight today
+    def _meeting_sort_key(m):
+        try:
+            return datetime.strptime((m.get("date") or "9999-12-31").split(" ")[0], "%Y-%m-%d").date()
+        except (ValueError, IndexError):
+            return date(9999, 12, 31)
+
+    sorted_meetings = sorted([m for m in meetings if m.get("status") != "Cancelled"], key=_meeting_sort_key)
+
+    meeting_rows = ""
+    for m in sorted_meetings:
+        is_today_meeting = (m.get("date", "") == today_str)
+        row_style = 'style="background:#fffbec"' if is_today_meeting else ""
+        status_bg = "#27ae60" if m["status"] == "Completed" else "#e74c3c" if m["status"] == "Cancelled" else "#3498db"
+        meeting_rows += f'<tr {row_style}><td>{_esc(m["date"])}</td><td>{_esc(m["time"])}</td><td class="name-cell">{_esc(m["prospect"])}</td><td>{_esc(m["type"])}</td><td><span class="badge" style="background:{status_bg}">{_esc(m["status"])}</span></td><td class="notes">{_esc(m["prep_notes"][:50])}{"..." if len(m["prep_notes"]) > 50 else ""}</td></tr>'
+
+    # Pending approvals count
+    try:
+        import approval_queue as _aq
+        pending_approvals = _aq.get_pending_count()
+    except Exception:
+        pending_approvals = 0
+
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1692,49 +1715,36 @@ tr:hover {{ background: #f8f9fa; }}
 
     {_build_focus_banner(overdue, overdue_tasks, due_today_tasks, todays_meetings, stale_prospects)}
 
-    <div class="kpi-grid" style="grid-template-columns: repeat(4, 1fr)">
-        <div class="kpi-card blue">
-            <div class="kpi-label">Total AUM</div>
-            <div class="kpi-value">{fmt_money(forecast_aum)}</div>
-        </div>
-        <div class="kpi-card green">
-            <div class="kpi-label">Premium YTD</div>
-            <div class="kpi-value">{fmt_money(forecast_revenue)}</div>
-        </div>
-        <div class="kpi-card gold">
-            <div class="kpi-label">FYC YTD</div>
-            <div class="kpi-value">{fmt_money(won_fyc)}</div>
-        </div>
-        <div class="kpi-card purple">
-            <div class="kpi-label">Pipeline AUM</div>
-            <div class="kpi-value">{fmt_money(total_pipeline)}</div>
-        </div>
-    </div>
-    <div class="kpi-grid" style="grid-template-columns: repeat(4, 1fr); margin-top: 12px">
-        <div class="kpi-card">
-            <div class="kpi-label">Active Deals</div>
-            <div class="kpi-value">{len(active)}</div>
+    <div class="kpi-grid" style="grid-template-columns: repeat(5, 1fr)">
+        <div class="kpi-card{'  red' if overdue else ''}">
+            <div class="kpi-label">Overdue</div>
+            <div class="kpi-value">{len(overdue)}</div>
         </div>
         <div class="kpi-card red">
             <div class="kpi-label">Hot Leads</div>
             <div class="kpi-value">{hot_count}</div>
         </div>
-        <div class="kpi-card">
+        <div class="kpi-card blue">
+            <div class="kpi-label">Active Deals</div>
+            <div class="kpi-value">{len(active)}</div>
+        </div>
+        <div class="kpi-card gold">
+            <div class="kpi-label">FYC YTD</div>
+            <div class="kpi-value">{fmt_money(won_fyc)}</div>
+        </div>
+        <div class="kpi-card green">
             <div class="kpi-label">Win Rate</div>
             <div class="kpi-value">{win_rate:.0f}%</div>
         </div>
-        <div class="kpi-card">
-            <div class="kpi-label">Overdue</div>
-            <div class="kpi-value">{len(overdue)}</div>
-        </div>
     </div>
+    {'<div style="margin-top:12px"><div class="kpi-card purple" style="cursor:pointer;display:inline-block;min-width:220px" title="' + str(pending_approvals) + ' draft' + ('s' if pending_approvals != 1 else '') + ' waiting for your approval"><div class="kpi-label">&#9993; Drafts Pending Approval</div><div class="kpi-value">' + str(pending_approvals) + '</div></div></div>' if pending_approvals > 0 else ''}
 
     <div class="tab-nav">
         <button class="tab-btn active" data-tab="pipeline" onclick="showTab('pipeline')">Pipeline</button>
         <button class="tab-btn" data-tab="forecast" onclick="showTab('forecast')">Revenue Forecast</button>
         <button class="tab-btn" data-tab="funnel" onclick="showTab('funnel')">Conversion Funnel</button>
         <button class="tab-btn" data-tab="scoreboard" onclick="showTab('scoreboard')">Activity Score</button>
-        <button class="tab-btn" data-tab="tasks" onclick="showTab('tasks')">Tasks</button>
+        <button class="tab-btn" data-tab="tasks" onclick="showTab('tasks')">Tasks{'<span style="display:inline-block;background:#e74c3c;color:#fff;border-radius:10px;font-size:10px;font-weight:700;padding:1px 7px;margin-left:6px;vertical-align:middle">' + str(len(overdue_tasks)) + '</span>' if overdue_tasks else ''}</button>
     </div>
 
     <!-- ═══ TAB 1: PIPELINE (existing) ═══ -->
@@ -1808,8 +1818,8 @@ tr:hover {{ background: #f8f9fa; }}
 
     <div class="two-col">
         <div class="section">
-            <h2>Upcoming Meetings <span class="count">({len([m for m in meetings if m['status'] != 'Cancelled'])})</span></h2>
-            {'<table><tr><th>Date</th><th>Time</th><th>Prospect</th><th>Type</th><th>Status</th><th>Prep</th></tr>' + ''.join(f'<tr><td>{_esc(m["date"])}</td><td>{_esc(m["time"])}</td><td class="name-cell">{_esc(m["prospect"])}</td><td>{_esc(m["type"])}</td><td><span class="badge" style="background:{"#27ae60" if m["status"]=="Completed" else "#e74c3c" if m["status"]=="Cancelled" else "#3498db"}">{_esc(m["status"])}</span></td><td class="notes">{_esc(m["prep_notes"][:50])}{"..." if len(m["prep_notes"])>50 else ""}</td></tr>' for m in meetings if m['status'] != 'Cancelled') + '</table>' if meetings else '<div class="empty-state"><p>No meetings scheduled. Text the bot to add one.</p></div>'}
+            <h2>Upcoming Meetings <span class="count">({len(sorted_meetings)})</span></h2>
+            {'<table><tr><th>Date</th><th>Time</th><th>Prospect</th><th>Type</th><th>Status</th><th>Prep</th></tr>' + meeting_rows + '</table>' if sorted_meetings else '<div class="empty-state"><p>No meetings scheduled. Text the bot to add one.</p></div>'}
         </div>
         <div class="section">
             <h2>Insurance Book <span class="count">({len(book_entries)} contacts)</span></h2>
