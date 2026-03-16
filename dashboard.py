@@ -165,7 +165,7 @@ def api_add_prospect():
     return jsonify({"ok": True, "message": result})
 
 
-@app.route("/api/prospect/<name>", methods=["PUT"])
+@app.route("/api/prospect/<path:name>", methods=["PUT"])
 @_require_auth
 def api_update_prospect(name):
     data = request.json
@@ -177,7 +177,7 @@ def api_update_prospect(name):
     return jsonify({"ok": True, "message": result})
 
 
-@app.route("/api/prospect/<name>", methods=["DELETE"])
+@app.route("/api/prospect/<path:name>", methods=["DELETE"])
 @_require_auth
 def api_delete_prospect(name):
     result = db.delete_prospect(name)
@@ -249,7 +249,7 @@ def api_add_activity():
     return jsonify({"ok": True, "message": result})
 
 
-@app.route("/api/prospect/<name>/detail")
+@app.route("/api/prospect/<path:name>/detail")
 @_require_auth
 def api_prospect_detail(name):
     """Get full prospect detail: info + activities + tasks + interactions."""
