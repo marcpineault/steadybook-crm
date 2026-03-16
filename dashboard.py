@@ -1086,8 +1086,8 @@ def dashboard():
 
         p_json_escaped = _esc_json_attr(json.dumps(p))
         esc_detail_name = json.dumps(p["name"])[1:-1]
-        prospect_rows += f"""<tr class="editable-row" data-prospect="{p_json_escaped}" onclick="openEdit(JSON.parse(this.dataset.prospect))" style="cursor:pointer">
-            <td class="name-cell"><a href="javascript:void(0)" onclick="event.stopPropagation();openProspectDetail('{esc_detail_name}')" style="color:#2c3e50;font-weight:600;text-decoration:none;border-bottom:2px solid #1abc9c">{_esc(p["name"])}</a></td>
+        prospect_rows += f"""<tr class="editable-row" data-prospect="{p_json_escaped}" onclick="openProspectDetail('{esc_detail_name}')" style="cursor:pointer">
+            <td class="name-cell"><span style="color:#2c3e50;font-weight:600;text-decoration:none;border-bottom:2px solid #1abc9c">{_esc(p["name"])}</span></td>
             <td style="text-align:center">{hbadge}</td>
             <td><span class="badge" style="background:{pri_bg}">{_esc(p["priority"])}</span></td>
             <td><span class="badge" style="background:{stage_bg};color:{stage_fg}">{_esc(p["stage"])}</span></td>
@@ -1690,6 +1690,8 @@ tr:hover {{ background: #f8f9fa; }}
 
 <div class="container">
 
+    {_build_focus_banner(overdue, overdue_tasks, due_today_tasks, todays_meetings, stale_prospects)}
+
     <div class="kpi-grid" style="grid-template-columns: repeat(4, 1fr)">
         <div class="kpi-card blue">
             <div class="kpi-label">Total AUM</div>
@@ -1726,8 +1728,6 @@ tr:hover {{ background: #f8f9fa; }}
             <div class="kpi-value">{len(overdue)}</div>
         </div>
     </div>
-
-    {_build_focus_banner(overdue, overdue_tasks, due_today_tasks, todays_meetings, stale_prospects)}
 
     <div class="tab-nav">
         <button class="tab-btn active" onclick="showTab('pipeline')">Pipeline</button>
@@ -2148,7 +2148,10 @@ tr:hover {{ background: #f8f9fa; }}
     </div>
     <div style="margin-top:16px;display:flex;justify-content:space-between">
         <button onclick="toggleMerge()" style="background:#E67E22;color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:13px">Merge Duplicate</button>
-        <button onclick="closeDetail()" style="background:#95A5A6;color:#fff;border:none;padding:8px 20px;border-radius:6px;cursor:pointer">Close</button>
+        <div style="display:flex;gap:8px">
+            <button onclick="openEditFromDetail()" style="background:#1abc9c;color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:13px">Edit</button>
+            <button onclick="closeDetail()" style="background:#95A5A6;color:#fff;border:none;padding:8px 20px;border-radius:6px;cursor:pointer">Close</button>
+        </div>
     </div>
 </div>
 </div>
@@ -2174,6 +2177,10 @@ tr:hover {{ background: #f8f9fa; }}
             <option>Follow-up Needed</option>
             <option>Other</option>
         </select>
+    </div>
+    <div style="margin-bottom:12px">
+        <label>Date</label>
+        <input id="logDate" type="date" style="width:100%">
     </div>
     <div style="margin-bottom:12px">
         <label>Next Step</label>
@@ -2485,6 +2492,24 @@ async function openProspectDetail(name) {{
 function closeDetail() {{ document.getElementById('detailModal').classList.remove('active'); document.getElementById('mergeSection').style.display='none'; }}
 document.getElementById('detailModal').addEventListener('click', function(e) {{ if (e.target === this) closeDetail(); }});
 
+function openEditFromDetail() {{
+    // Find the prospect data from the table and open the edit modal
+    const rows = document.querySelectorAll('.editable-row');
+    let found = null;
+    rows.forEach(r => {{
+        try {{
+            const p = JSON.parse(r.dataset.prospect);
+            if (p.name === _detailProspect) found = p;
+        }} catch(e) {{}}
+    }});
+    if (found) {{
+        closeDetail();
+        openEdit(found);
+    }} else {{
+        alert('Could not find prospect data to edit. Please refresh the page.');
+    }}
+}}
+
 const _allProspectNames = {json.dumps([p["name"] for p in prospects])};
 
 function toggleMerge() {{
@@ -2529,6 +2554,8 @@ function quickLogActivity(action) {{
     document.getElementById('logOutcome').value = '';
     document.getElementById('logNextStep').value = '';
     document.getElementById('logNotes').value = '';
+    // Default date to today
+    document.getElementById('logDate').value = new Date().toISOString().split('T')[0];
     document.getElementById('logModal').classList.add('active');
 }}
 
@@ -2542,6 +2569,7 @@ async function submitLog() {{
         outcome: document.getElementById('logOutcome').value,
         next_step: document.getElementById('logNextStep').value,
         notes: document.getElementById('logNotes').value.trim(),
+        date: document.getElementById('logDate').value || new Date().toISOString().split('T')[0],
     }};
     try {{
         const res = await fetch('/api/activity', {{ method: 'POST', headers: {{'Content-Type': 'application/json', 'X-CSRF-Token': _csrfToken}}, body: JSON.stringify(data) }});
