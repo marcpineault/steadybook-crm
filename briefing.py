@@ -50,6 +50,12 @@ def assemble_briefing_data():
     # Ranked call list
     call_list = scoring.get_ranked_call_list(10)
 
+    # Referral nudge candidates
+    try:
+        referral_candidates = scoring.get_referral_candidates()
+    except Exception:
+        referral_candidates = []
+
     # Pending approval count (import here to avoid circular)
     try:
         import approval_queue
@@ -75,6 +81,7 @@ def assemble_briefing_data():
         "tasks_pending_count": len(tasks_all),
         "meetings_today": meetings_today,
         "call_list": call_list,
+        "referral_candidates": referral_candidates,
         "pending_approvals": pending_approvals,
         "market_events": market_events_text,
         "pipeline_stats": {
@@ -147,6 +154,9 @@ OVERDUE TASKS:
 
 CALL LIST (ranked by impact):
 {call_list_summary}
+
+REFERRAL OPPORTUNITIES:
+{referral_summary}
 
 RECENT ACTIVITY (last 7 days):
 {activity_summary}
@@ -267,6 +277,13 @@ def _build_briefing_prompt(data):
         act_lines.append(pii_ctx.redact(line))
     activity_summary = "\n".join(act_lines) if act_lines else "No recent activity"
 
+    # Referral candidates
+    ref_lines = []
+    for r in data.get("referral_candidates", []):
+        nudge = "first follow-up (2-4 weeks post-close)" if r["nudge_type"] == "first" else "second check-in (3-4 months)"
+        ref_lines.append(f"- {r['name']} ({r['product']}) — {r['days_since_close']} days since close, {nudge}")
+    referral_summary = "\n".join(ref_lines) if ref_lines else "None right now"
+
     user_prompt = BRIEFING_USER_TEMPLATE.format(
         date=data["date"],
         active_count=stats["active_count"],
@@ -277,6 +294,7 @@ def _build_briefing_prompt(data):
         tasks_today_summary=_escape_braces(tasks_today_summary),
         tasks_overdue_summary=_escape_braces(tasks_overdue_summary),
         call_list_summary=_escape_braces(call_list_summary),
+        referral_summary=_escape_braces(referral_summary),
         activity_summary=_escape_braces(activity_summary),
         pending_approvals=data["pending_approvals"],
         market_events=_escape_braces(data.get("market_events", "")),

@@ -113,3 +113,18 @@ def test_generate_briefing_text_api_failure(mock_client):
     # Should fall back to simple format
     assert text is not None
     assert len(text) > 0
+
+
+def test_briefing_includes_referral_candidates(monkeypatch):
+    """Morning briefing data should include referral candidates."""
+    import briefing
+    import scoring
+
+    monkeypatch.setattr(scoring, "get_referral_candidates", lambda: [
+        {"name": "Jane Won", "product": "RRSP", "days_since_close": 20, "nudge_type": "first"}
+    ])
+
+    data = briefing.assemble_briefing_data()
+    assert "referral_candidates" in data
+    assert len(data["referral_candidates"]) == 1
+    assert data["referral_candidates"][0]["name"] == "Jane Won"
