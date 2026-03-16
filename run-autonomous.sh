@@ -3,6 +3,7 @@
 # Called by cron. Launches Claude Code to audit and improve the codebase.
 
 REPO_DIR="/Users/map98/Desktop/calm-money-bot"
+WEBSITE_DIR="/Users/map98/Desktop/Pineault-wealth"
 LOG_DIR="${REPO_DIR}/logs/autonomous"
 DATE=$(date +%Y-%m-%d)
 DAY_OF_WEEK=$(date +%A)
@@ -20,12 +21,22 @@ cd "$REPO_DIR"
 
 echo "[$DATE] Starting autonomous run (${DAY_OF_WEEK})" >> "$ERROR_LOG"
 
-# Pull latest (abort rebase on conflict)
+# Pull latest for bot repo (abort rebase on conflict)
 git pull --rebase origin master 2>>"$ERROR_LOG" || {
     git rebase --abort 2>/dev/null
-    echo "[$DATE] git pull --rebase failed" >> "$ERROR_LOG"
+    echo "[$DATE] git pull --rebase failed (calm-money-bot)" >> "$ERROR_LOG"
     exit 1
 }
+
+# Pull latest for website repo if it exists
+if [ -d "$WEBSITE_DIR" ]; then
+    cd "$WEBSITE_DIR"
+    git pull --rebase origin main 2>>"$ERROR_LOG" || {
+        git rebase --abort 2>/dev/null
+        echo "[$DATE] git pull --rebase failed (Pineault-wealth) — continuing" >> "$ERROR_LOG"
+    }
+    cd "$REPO_DIR"
+fi
 
 # Run Claude Code with autonomous prompt (1 hour timeout, $5 budget cap)
 timeout 3600 claude --print \
@@ -41,7 +52,7 @@ python3 -m pytest tests/ --tb=short -q 2>>"$ERROR_LOG" || pytest_exit=$?
 
 if [ $pytest_exit -eq 0 ]; then
     git push origin master 2>>"$ERROR_LOG"
-    echo "[$DATE] Autonomous run completed — changes pushed" >> "$ERROR_LOG"
+    echo "[$DATE] Bot repo — changes pushed" >> "$ERROR_LOG"
 else
     echo "[$DATE] Tests failed after autonomous run — not pushing" >> "$ERROR_LOG"
     # Notify Marc via Telegram if env vars are available
@@ -52,3 +63,15 @@ else
             >/dev/null 2>&1
     fi
 fi
+
+# Push website repo changes if any were made
+if [ -d "$WEBSITE_DIR" ]; then
+    cd "$WEBSITE_DIR"
+    if [ -n "$(git status --porcelain)" ] || [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main 2>/dev/null)" ]; then
+        git push origin main 2>>"$ERROR_LOG" && \
+            echo "[$DATE] Website repo — changes pushed" >> "$ERROR_LOG" || \
+            echo "[$DATE] Website repo — push failed" >> "$ERROR_LOG"
+    fi
+fi
+
+echo "[$DATE] Autonomous run complete" >> "$ERROR_LOG"

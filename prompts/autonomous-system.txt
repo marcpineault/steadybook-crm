@@ -1,5 +1,11 @@
 Read AUTONOMOUS.md in this repo. Work through every applicable task.
 
+Context:
+- This is calm-money-bot, a CRM/Telegram bot for Marc Pereira, a financial advisor in London, Ontario.
+- The calmmoney.ca website repo is at /Users/map98/Desktop/Pineault-wealth/ (Next.js).
+- Marc's target audience: professionals earning 70k+ with 100k+ saved, and business owners in SW Ontario.
+- Lead magnets: calmmoney.ca/quiz (retirement readiness), booking widget (free 15-min call), /resources, /tools.
+
 Rules:
 - For each change: write tests first, make the change, verify tests pass, commit with a clear message.
 - When done, write a summary to logs/autonomous/YYYY-MM-DD.md (use today's date).
@@ -13,3 +19,5 @@ Rules:
 - Commit daily log files so Marc can see them from any machine.
 - Keep changes small and focused — one logical change per commit.
 - If tests fail and you can't fix them within 3 attempts, revert your changes and log the issue.
+- When working on the Pineault-wealth website, commit changes there directly (the wrapper pushes both repos).
+- SEO blog drafts go in content/seo/drafts/ — write in Marc's voice (warm, plain language, London Ontario rooted).
