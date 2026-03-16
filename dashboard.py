@@ -1343,7 +1343,8 @@ def dashboard():
             _krel = _relative_time(_klast.strftime("%Y-%m-%d") if _klast else "", today)
             aum_val = _kp.get("aum", "")
             aum_html = f'<div style="font-size:11px;color:#27ae60;font-weight:600">{fmt_money_full(aum_val)}</div>' if aum_val and aum_val != "0" and aum_val != "$0" else ""
-            _kcards_html += f"""<div class="kanban-card" draggable="true" ondragstart="onDragStart(event, '{_kname_js}')" ondragend="onDragEnd(event)" onclick="openProspectDetail('{_kname_js}')" style="border-left:3px solid {_kpri_color}">
+            _kname_jsattr = json.dumps(_kp["name"]).replace("&", "&amp;").replace('"', "&quot;")  # JSON string safe inside HTML attributes
+            _kcards_html += f"""<div class="kanban-card" draggable="true" ondragstart="onDragStart(event, {_kname_jsattr})" ondragend="onDragEnd(event)" onclick="onCardClick(event, {_kname_jsattr})" style="border-left:3px solid {_kpri_color}">
                 <div class="kanban-card-name">{_kname_esc}</div>
                 <div class="kanban-card-product">{_kproduct_esc}</div>
                 {aum_html}
@@ -1840,6 +1841,26 @@ tr:hover {{ background: #f8f9fa; }}
 
     /* Refresh note */
     .refresh-note {{ font-size: 11px; padding: 8px; }}
+
+    /* Detail modal header — stack title and action buttons */
+    #detailModal .modal > div:first-child {{
+        flex-direction: column;
+        gap: 10px;
+        align-items: flex-start;
+    }}
+    #detailModal .modal > div:first-child > div {{
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        width: 100%;
+    }}
+    #detailModal .modal > div:first-child button {{
+        flex: 1;
+        min-width: 0;
+        padding: 8px 10px;
+        font-size: 12px;
+        white-space: nowrap;
+    }}
 }}
 
 /* ── Additional 768px breakpoints ── */
@@ -1860,10 +1881,35 @@ tr:hover {{ background: #f8f9fa; }}
     }}
     .kpi-value {{ font-size: 22px; }}
     .kanban-board {{
-        flex-wrap: nowrap;
+        flex-direction: column;
+        gap: 8px;
+        min-height: auto;
     }}
     .kanban-col {{
-        min-width: 180px;
+        min-width: 100%;
+        max-width: 100%;
+        flex: none;
+    }}
+    .kanban-col-header {{
+        cursor: pointer;
+        position: relative;
+    }}
+    .kanban-col-header::after {{
+        content: '\\25BC';
+        font-size: 10px;
+        margin-left: 8px;
+        transition: transform 0.2s;
+    }}
+    .kanban-col.collapsed .kanban-col-header::after {{
+        content: '\\25B6';
+    }}
+    .kanban-col.collapsed .kanban-card,
+    .kanban-col.collapsed > div:not(.kanban-col-header):not(.kanban-card) {{
+        display: none;
+    }}
+    .kanban-card {{
+        -webkit-tap-highlight-color: transparent;
+        touch-action: manipulation;
     }}
     .section table {{
         display: block;
@@ -2539,13 +2585,22 @@ function togglePipelineView(view) {{
     if (saved === 'kanban') togglePipelineView('kanban');
 }})();
 
+// ── Kanban card click handler (works on both desktop and mobile) ──
+let _cardDragging = false;
+function onCardClick(e, prospectName) {{
+    if (_cardDragging) return;
+    openProspectDetail(prospectName);
+}}
+
 // ── Kanban drag-and-drop ──
 function onDragStart(e, prospectName) {{
+    _cardDragging = true;
     e.dataTransfer.setData('text/plain', prospectName);
     e.target.style.opacity = '0.5';
 }}
 function onDragEnd(e) {{
     e.target.style.opacity = '1';
+    setTimeout(() => {{ _cardDragging = false; }}, 0);
 }}
 function onDragOver(e) {{
     e.preventDefault();
@@ -2574,6 +2629,51 @@ async function onDrop(e, newStage) {{
         }}
     }} catch(err) {{ showToast('Error: ' + err.message, 'error'); }}
 }}
+
+// ── Mobile touch support for kanban cards ──
+(function() {{
+    const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    if (!isTouchDevice) return;
+    // On touch devices, disable draggable (HTML5 DnD doesn't work on mobile)
+    // and ensure taps work reliably
+    document.addEventListener('DOMContentLoaded', function() {{
+        document.querySelectorAll('.kanban-card').forEach(card => {{
+            card.removeAttribute('draggable');
+        }});
+    }});
+    // Also run immediately in case DOM is already loaded
+    if (document.readyState !== 'loading') {{
+        document.querySelectorAll('.kanban-card').forEach(card => {{
+            card.removeAttribute('draggable');
+        }});
+    }}
+}})();
+
+// ── Mobile kanban column collapse/expand ──
+(function() {{
+    function setupMobileKanban() {{
+        if (window.innerWidth > 768) return;
+        document.querySelectorAll('.kanban-col-header').forEach(header => {{
+            if (header._mobileSetup) return;
+            header._mobileSetup = true;
+            header.addEventListener('click', function() {{
+                const col = this.parentElement;
+                col.classList.toggle('collapsed');
+            }});
+        }});
+        // Collapse empty columns by default on mobile
+        document.querySelectorAll('.kanban-col').forEach(col => {{
+            const cards = col.querySelectorAll('.kanban-card');
+            if (cards.length === 0) col.classList.add('collapsed');
+        }});
+    }}
+    if (document.readyState === 'loading') {{
+        document.addEventListener('DOMContentLoaded', setupMobileKanban);
+    }} else {{
+        setupMobileKanban();
+    }}
+    window.addEventListener('resize', setupMobileKanban);
+}})();
 
 // ── Inline stage change dropdown ──
 function changeStage(e, prospectName) {{
@@ -2939,7 +3039,7 @@ async function openProspectDetail(name) {{
         html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;margin-bottom:20px;padding:12px;background:#f8f9fa;border-radius:8px">';
         html += '<div><strong>Phone:</strong> ' + _e(p.phone || '—') + '</div>';
         html += '<div><strong>Email:</strong> ' + _e(p.email || '—') + '</div>';
-        html += '<div><strong>Stage:</strong> ' + _e(p.stage || '—') + '</div>';
+        html += '<div><strong>Stage:</strong> <span style="cursor:pointer;text-decoration:underline dotted" onclick="changeStage(event, \'' + _e(p.name).replace(/'/g, "\\'") + '\')" title="Click to change">' + _e(p.stage || '—') + '</span></div>';
         html += '<div><strong>Priority:</strong> <span style="cursor:pointer;text-decoration:underline dotted" onclick="changePriority(event, \'' + _e(p.name).replace(/'/g, "\\'") + '\')" title="Click to change">' + _e(p.priority || '—') + '</span></div>';
         html += '<div><strong>Product:</strong> ' + _e(p.product || '—') + '</div>';
         html += '<div><strong>Follow-up:</strong> ' + _e(p.next_followup || '—');
