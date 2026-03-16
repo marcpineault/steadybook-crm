@@ -13,9 +13,17 @@ PROMPT_FILE="${REPO_DIR}/prompts/autonomous-system.txt"
 
 mkdir -p "$LOG_DIR"
 
-# Prevent concurrent runs
-exec 200>"$LOCKFILE"
-flock -n 200 || { echo "[$DATE] Another run is already in progress" >> "$ERROR_LOG"; exit 1; }
+# Prevent concurrent runs (macOS-compatible — no flock)
+if [ -f "$LOCKFILE" ]; then
+    # Check if the PID in the lockfile is still running
+    old_pid=$(cat "$LOCKFILE" 2>/dev/null)
+    if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
+        echo "[$DATE] Another run is already in progress (PID $old_pid)" >> "$ERROR_LOG"
+        exit 1
+    fi
+fi
+echo $$ > "$LOCKFILE"
+trap 'rm -f "$LOCKFILE"' EXIT
 
 cd "$REPO_DIR"
 
@@ -39,7 +47,7 @@ if [ -d "$WEBSITE_DIR" ]; then
 fi
 
 # Run Claude Code with autonomous prompt (1 hour timeout, $5 budget cap)
-timeout 3600 claude --print \
+gtimeout 3600 claude --print \
     --dangerously-skip-permissions \
     --max-budget-usd 5 \
     --prompt "Today is ${DAY_OF_WEEK}, ${DATE}. $(cat "$PROMPT_FILE")" \

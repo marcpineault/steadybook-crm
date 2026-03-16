@@ -13,9 +13,16 @@ PROMPT_FILE="${REPO_DIR}/prompts/morning-prep.txt"
 mkdir -p "$LOG_DIR"
 mkdir -p "${REPO_DIR}/content/morning-prep"
 
-# Prevent concurrent runs (shared lock with nightly)
-exec 200>"$LOCKFILE"
-flock -n 200 || { echo "[$DATE] Morning prep skipped — autonomous run in progress" >> "$ERROR_LOG"; exit 1; }
+# Prevent concurrent runs (macOS-compatible)
+if [ -f "$LOCKFILE" ]; then
+    old_pid=$(cat "$LOCKFILE" 2>/dev/null)
+    if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
+        echo "[$DATE] Morning prep skipped — autonomous run in progress (PID $old_pid)" >> "$ERROR_LOG"
+        exit 1
+    fi
+fi
+echo $$ > "$LOCKFILE"
+trap 'rm -f "$LOCKFILE"' EXIT
 
 cd "$REPO_DIR"
 
@@ -29,7 +36,7 @@ git pull --rebase origin master 2>>"$ERROR_LOG" || {
 }
 
 # Run Claude Code — shorter timeout and lower budget for morning prep
-timeout 900 claude --print \
+gtimeout 900 claude --print \
     --dangerously-skip-permissions \
     --max-budget-usd 2 \
     --prompt "Today is ${DAY_OF_WEEK}, ${DATE}. $(cat "$PROMPT_FILE")" \
