@@ -1370,13 +1370,25 @@ _chat_histories = {}
 
 async def _llm_respond(update, messages, tools=None):
     """Send messages to LLM, process tool calls, return reply."""
-    response = client.chat.completions.create(
-        model="gpt-5",
-        max_completion_tokens=4096,
-        tools=tools or TOOLS,
-        tool_choice="auto",
-        messages=messages,
-    )
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            response = client.chat.completions.create(
+                model="gpt-5",
+                max_completion_tokens=4096,
+                tools=tools or TOOLS,
+                tool_choice="auto",
+                messages=messages,
+            )
+            break  # Success
+        except Exception as api_err:
+            err_str = str(api_err)
+            if attempt < max_retries - 1 and any(code in err_str for code in ["429", "500", "503", "timeout"]):
+                wait = (attempt + 1) * 2  # 2s, 4s
+                logger.warning(f"GPT API error (attempt {attempt+1}/{max_retries}), retrying in {wait}s: {err_str[:100]}")
+                await asyncio.sleep(wait)
+            else:
+                raise
 
     msg = response.choices[0].message
 
@@ -1491,12 +1503,23 @@ async def _llm_respond(update, messages, tools=None):
                 "content": str(result),
             })
 
-        response = client.chat.completions.create(
-            model="gpt-5",
-            max_completion_tokens=4096,
-            tools=tools or TOOLS,
-            messages=messages,
-        )
+        for attempt in range(max_retries):
+            try:
+                response = client.chat.completions.create(
+                    model="gpt-5",
+                    max_completion_tokens=4096,
+                    tools=tools or TOOLS,
+                    messages=messages,
+                )
+                break  # Success
+            except Exception as api_err:
+                err_str = str(api_err)
+                if attempt < max_retries - 1 and any(code in err_str for code in ["429", "500", "503", "timeout"]):
+                    wait = (attempt + 1) * 2  # 2s, 4s
+                    logger.warning(f"GPT API error in tool loop (attempt {attempt+1}/{max_retries}), retrying in {wait}s: {err_str[:100]}")
+                    await asyncio.sleep(wait)
+                else:
+                    raise
         msg = response.choices[0].message
 
     if not msg.content and msg.tool_calls:

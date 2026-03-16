@@ -34,6 +34,15 @@ INSURANCE_DAILY_LIMIT = 5
 
 _bot = None
 
+# ── Job run tracking (watchdog) ──
+
+_job_last_run = {}
+
+
+def _mark_job_run(job_name):
+    """Record that a job ran successfully."""
+    _job_last_run[job_name] = datetime.now(ET)
+
 
 # ── Nag state persistence ──
 
@@ -162,6 +171,7 @@ async def _morning_briefing_inner():
         text = text[:4076] + "\n...(truncated)"
     await _bot.send_message(chat_id=CHAT_ID, text=text)
     logger.info("Morning briefing (strategic) sent.")
+    _mark_job_run("morning_briefing")
 
 
 # ── Auto-Nag System ──
@@ -795,6 +805,119 @@ async def check_nurture_sequences():
         logger.exception("Nurture sequence check failed")
 
 
+# ── Database Backup ──
+
+async def backup_database():
+    """Create a daily backup of the SQLite database."""
+    import shutil
+    import glob
+
+    data_dir = os.environ.get("DATA_DIR", ".")
+    db_path = os.path.join(data_dir, "pipeline.db")
+    backup_dir = os.path.join(data_dir, "backups")
+    os.makedirs(backup_dir, exist_ok=True)
+
+    today = datetime.now(ET).strftime("%Y-%m-%d")
+    backup_path = os.path.join(backup_dir, f"pipeline-{today}.db")
+
+    try:
+        # Use SQLite backup API for safe copy
+        import sqlite3
+        src = sqlite3.connect(db_path)
+        dst = sqlite3.connect(backup_path)
+        src.backup(dst)
+        dst.close()
+        src.close()
+        logger.info(f"Database backed up to {backup_path}")
+
+        # Remove backups older than 7 days
+        all_backups = sorted(glob.glob(os.path.join(backup_dir, "pipeline-*.db")))
+        while len(all_backups) > 7:
+            old = all_backups.pop(0)
+            os.remove(old)
+            logger.info(f"Removed old backup: {old}")
+    except Exception:
+        logger.exception("Database backup failed")
+        # Try to alert Marc
+        if _bot and CHAT_ID:
+            try:
+                await _bot.send_message(chat_id=CHAT_ID, text="Database backup failed. Check logs.")
+            except Exception:
+                pass
+
+
+# ── System Watchdog ──
+
+async def watchdog_check():
+    """Check if critical jobs fired on schedule. Alert if not."""
+    if not _bot or not CHAT_ID:
+        return
+
+    now = datetime.now(ET)
+    alerts = []
+
+    # Check morning briefing ran today (should have fired at 8 AM)
+    last_briefing = _job_last_run.get("morning_briefing")
+    if last_briefing is None or last_briefing.date() != now.date():
+        alerts.append("Morning briefing did not fire today")
+
+    if alerts:
+        try:
+            msg = "SYSTEM WATCHDOG ALERT:\n" + "\n".join(f"- {a}" for a in alerts)
+            await _bot.send_message(chat_id=CHAT_ID, text=msg)
+            logger.warning(f"Watchdog alerts: {alerts}")
+        except Exception:
+            logger.exception("Watchdog alert failed")
+
+
+# ── Webhook Health Check ──
+
+async def check_webhook_health():
+    """Verify Telegram webhook is properly registered."""
+    if not _bot or not CHAT_ID:
+        return
+
+    try:
+        import httpx
+        bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+        if not bot_token:
+            return
+
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(f"https://api.telegram.org/bot{bot_token}/getWebhookInfo")
+            data = resp.json()
+
+        if not data.get("ok"):
+            logger.error("Webhook health check: API returned not ok")
+            return
+
+        result = data.get("result", {})
+        webhook_url = result.get("url", "")
+        pending = result.get("pending_update_count", 0)
+        last_error = result.get("last_error_date")
+
+        # Alert if webhook URL is empty or wrong
+        expected_domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "")
+        if expected_domain and expected_domain not in webhook_url:
+            await _bot.send_message(
+                chat_id=CHAT_ID,
+                text=f"Webhook URL mismatch! Expected {expected_domain} but got: {webhook_url}"
+            )
+            logger.error(f"Webhook URL mismatch: {webhook_url}")
+
+        # Alert if too many pending updates (messages not being processed)
+        if pending > 10:
+            await _bot.send_message(
+                chat_id=CHAT_ID,
+                text=f"Webhook has {pending} pending updates — messages may not be processing."
+            )
+            logger.warning(f"Webhook pending updates: {pending}")
+
+        logger.info(f"Webhook health: url={webhook_url}, pending={pending}")
+    except Exception:
+        logger.exception("Webhook health check failed")
+
+
 # ── Scheduler entry point ──
 
 def start_scheduler(telegram_app, event_loop=None):
@@ -913,5 +1036,35 @@ def start_scheduler(telegram_app, event_loop=None):
         name="Nurture Sequence Check",
     )
 
+    # Daily database backup at 11 PM ET
+    scheduler.add_job(
+        backup_database,
+        "cron",
+        hour=23,
+        minute=0,
+        id="backup_database",
+        name="Daily Database Backup",
+    )
+
+    # System watchdog at 8:45 AM ET weekdays
+    scheduler.add_job(
+        watchdog_check,
+        "cron",
+        day_of_week="mon-fri",
+        hour=8,
+        minute=45,
+        id="watchdog_check",
+        name="System Watchdog",
+    )
+
+    # Webhook health check every 6 hours
+    scheduler.add_job(
+        check_webhook_health,
+        "interval",
+        hours=6,
+        id="check_webhook_health",
+        name="Webhook Health Check",
+    )
+
     scheduler.start()
-    logger.info("Scheduler started — briefing 8AM (weekdays), nag 9AM+2PM, midday 12:30PM, EOD 5:30PM, weekly Sun 6:30PM, task reminders every 60s, meeting prep hourly ET.")
+    logger.info("Scheduler started — briefing 8AM (weekdays), nag 9AM+2PM, midday 12:30PM, EOD 5:30PM, weekly Sun 6:30PM, task reminders every 60s, meeting prep hourly, backup 11PM, watchdog 8:45AM, webhook check every 6h ET.")

@@ -14,7 +14,7 @@ import re
 import sqlite3
 import logging
 from contextlib import contextmanager
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -312,7 +312,25 @@ def init_db():
         )
 
     _migrate_phase6()
+    cleanup_old_data()
     logger.info(f"Database initialized at {DB_PATH}")
+
+
+def cleanup_old_data():
+    """Remove interactions and audit log entries older than 90 days."""
+    cutoff = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
+    with get_db() as conn:
+        # Clean old interactions (keep the data in activities table which is more compact)
+        deleted_interactions = conn.execute(
+            "DELETE FROM interactions WHERE date < ? AND date != ''", (cutoff,)
+        ).rowcount
+        # Clean old audit log entries
+        deleted_audit = conn.execute(
+            "DELETE FROM audit_log WHERE timestamp < ?", (cutoff,)
+        ).rowcount
+        if deleted_interactions or deleted_audit:
+            logger.info(f"Cleanup: removed {deleted_interactions} old interactions, {deleted_audit} old audit entries (before {cutoff})")
+            conn.execute("VACUUM")  # Reclaim disk space
 
 
 def _migrate_phase6():
