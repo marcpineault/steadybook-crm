@@ -38,6 +38,10 @@ _bot = None
 
 _job_last_run = {}
 
+# Track failed reminder sends to prevent infinite spam
+_reminder_failures: dict[int, int] = {}
+_REMINDER_MAX_RETRIES = 3
+
 
 def _mark_job_run(job_name):
     """Record that a job ran successfully."""
@@ -624,6 +628,16 @@ async def check_task_reminders():
                 logger.debug(f"Task reminders: now={now_str}, no matches. Pending reminders: {reminders}")
 
         for t in tasks:
+            task_id = t["id"]
+
+            # Skip if we've already failed too many times — clear it so it stops spamming
+            fail_count = _reminder_failures.get(task_id, 0)
+            if fail_count >= _REMINDER_MAX_RETRIES:
+                logger.error(f"Task reminder #{task_id} failed {fail_count} times, clearing to stop spam")
+                db.clear_reminder(task_id)
+                _reminder_failures.pop(task_id, None)
+                continue
+
             due_str = f" (due {t['due_date']})" if t.get("due_date") else ""
             prospect_str = f" [{t['prospect']}]" if t.get("prospect") else ""
             msg = f"Reminder: {t['title']}{prospect_str}{due_str}"
@@ -631,10 +645,12 @@ async def check_task_reminders():
             # Always send to admin CHAT_ID (most reliable)
             try:
                 await _bot.send_message(chat_id=CHAT_ID, text=msg)
-                db.clear_reminder(t["id"])
-                logger.info(f"Task reminder sent: #{t['id']} to admin {CHAT_ID}")
+                db.clear_reminder(task_id)
+                _reminder_failures.pop(task_id, None)
+                logger.info(f"Task reminder sent: #{task_id} to admin {CHAT_ID}")
             except Exception as e:
-                logger.error(f"Could not send task reminder #{t['id']} to {CHAT_ID}: {e}")
+                _reminder_failures[task_id] = fail_count + 1
+                logger.error(f"Could not send task reminder #{task_id} to {CHAT_ID} (attempt {fail_count + 1}/{_REMINDER_MAX_RETRIES}): {e}")
                 continue
 
             # Also notify the assignee if different from admin

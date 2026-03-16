@@ -221,6 +221,7 @@ async def extract_and_update(transcript: str, bot=None, source: str = "voice_not
                 )
         except Exception:
             logger.exception("Memory extraction failed for %s (non-blocking)", name)
+            results.append(f"  (memory extraction failed for {name} — client intel not saved)")
 
         # Auto-draft follow-up email
         try:
@@ -233,8 +234,11 @@ async def extract_and_update(transcript: str, bot=None, source: str = "voice_not
             )
             if fu_draft:
                 logger.info("Follow-up draft generated for %s (queue #%s)", name, fu_draft["queue_id"])
+            else:
+                results.append(f"  (follow-up draft not generated for {name})")
         except Exception:
             logger.exception("Follow-up draft failed for %s (non-blocking)", name)
+            results.append(f"  (follow-up draft failed for {name})")
 
         # Check for urgency signals in transcript
         urgency_keywords = ["urgent", "asap", "emergency", "right away", "immediately", "time sensitive", "deadline"]
