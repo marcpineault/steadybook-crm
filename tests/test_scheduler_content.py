@@ -69,53 +69,11 @@ def test_weekly_content_plan_no_bot():
     asyncio.run(scheduler.weekly_content_plan())
 
 
-def test_daily_market_check_no_events():
-    import scheduler
-
-    scheduler._bot = AsyncMock()
-
-    asyncio.run(scheduler.daily_market_check())
-    # No events today = no message sent
-    scheduler._bot.send_message.assert_not_called()
-
-
-def test_daily_market_check_with_events():
-    import scheduler
-    import market_intel
-
-    scheduler._bot = AsyncMock()
-
-    # Seed an event for today
-    from datetime import datetime
-    today = datetime.now().strftime("%Y-%m-%d")
-    market_intel.add_event(
-        event_type="rate_decision",
-        title="BoC Rate Decision",
-        date=today,
-        description="Bank of Canada interest rate announcement",
-        relevance_products="Wealth Management",
-    )
-
-    asyncio.run(scheduler.daily_market_check())
-    scheduler._bot.send_message.assert_called_once()
-    call_args = scheduler._bot.send_message.call_args
-    text = call_args.kwargs.get("text", "")
-    assert "MARKET ALERT" in text
-    assert "BoC" in text
-
-
-def test_daily_market_check_no_bot():
-    import scheduler
-
-    scheduler._bot = None
-    asyncio.run(scheduler.daily_market_check())
-
-
 def test_scheduler_has_content_jobs():
-    """Verify the new jobs are registered in start_scheduler."""
+    """Verify the content plan job is registered in start_scheduler."""
     import scheduler
     import inspect
 
     source = inspect.getsource(scheduler.start_scheduler)
     assert "weekly_content_plan" in source
-    assert "daily_market_check" in source
+    assert "daily_market_check" not in source

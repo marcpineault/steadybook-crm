@@ -594,44 +594,6 @@ async def eod_wrapup():
         logger.error(f"EOD wrap-up failed: {e}")
 
 
-# ── Follow-up Due Today Reminder ──
-
-async def followup_reminder():
-    """Send a reminder about follow-ups due today at 9:30 AM ET."""
-    if not _bot or not CHAT_ID:
-        return
-
-    try:
-        today = date.today()
-        prospects = _read_prospects()
-        active = [p for p in prospects if p["stage"] not in ("Closed-Won", "Closed-Lost", "")]
-
-        due_today = []
-        for p in active:
-            fu = p["_next_followup_date"]
-            if fu and fu == today:
-                due_today.append(p)
-
-        if not due_today:
-            return  # No reminder needed
-
-        lines = [f"FOLLOW-UPS DUE TODAY ({len(due_today)})", "━━━━━━━━━━━━━━━━", ""]
-        for p in due_today:
-            priority = p.get("priority", "")
-            product = p.get("product", "")
-            phone = p.get("phone", "")
-            detail = f" ({priority})" if priority else ""
-            detail += f" — {product}" if product else ""
-            lines.append(f"  {p['name']}{detail}")
-            if phone:
-                lines.append(f"    {phone}")
-
-        await _bot.send_message(chat_id=CHAT_ID, text="\n".join(lines))
-        logger.info(f"Follow-up reminder sent for {len(due_today)} prospects.")
-    except Exception as e:
-        logger.error(f"Follow-up reminder failed: {e}")
-
-
 # ── Task Reminders ──
 
 async def check_task_reminders():
@@ -649,7 +611,7 @@ async def check_task_reminders():
             all_with_reminders = db.get_tasks(status="pending")
             reminders = [(t["id"], t["title"], t["remind_at"]) for t in all_with_reminders if t.get("remind_at")]
             if reminders:
-                logger.info(f"Task reminders: now={now_str}, no matches. Pending reminders: {reminders}")
+                logger.debug(f"Task reminders: now={now_str}, no matches. Pending reminders: {reminders}")
 
         for t in tasks:
             due_str = f" (due {t['due_date']})" if t.get("due_date") else ""
@@ -730,11 +692,20 @@ async def send_meeting_prep_docs():
         return
 
     try:
+        import json as _json
         import meeting_prep
 
         now = datetime.now(ET)
         today = now.strftime("%Y-%m-%d")
         meetings = meeting_prep.get_meetings_needing_prep(today)
+
+        state_file = os.path.join(os.environ.get("DATA_DIR", "."), "meeting_prep_state.json")
+        try:
+            with open(state_file) as f:
+                _state = _json.load(f)
+        except (FileNotFoundError, ValueError):
+            _state = {}
+        sent_preps = set(_state.get("sent_preps", []))
 
         for m in meetings:
             meeting_time = m.get("time", "")
@@ -752,18 +723,18 @@ async def send_meeting_prep_docs():
                 if 0.5 <= delta <= 2.0:
                     # Check if we already sent prep for this meeting (avoid duplicates)
                     meeting_id = m.get("id", "")
-                    if hasattr(send_meeting_prep_docs, "_sent_preps"):
-                        if meeting_id in send_meeting_prep_docs._sent_preps:
-                            continue
-                    else:
-                        send_meeting_prep_docs._sent_preps = set()
+                    if meeting_id in sent_preps:
+                        continue
 
                     doc = meeting_prep.generate_prep_doc(prospect_name, m.get("type", "Meeting"), meeting_time)
                     if doc:
                         if len(doc) > 4096:
                             doc = doc[:4076] + "\n...(truncated)"
                         await _bot.send_message(chat_id=CHAT_ID, text=doc)
-                        send_meeting_prep_docs._sent_preps.add(meeting_id)
+                        sent_preps.add(meeting_id)
+                        _state["sent_preps"] = list(sent_preps)[-50:]
+                        with open(state_file, "w") as f:
+                            _json.dump(_state, f)
                         logger.info("Meeting prep sent for %s at %s", prospect_name, meeting_time)
             except (ValueError, IndexError):
                 logger.warning("Could not parse meeting time '%s'", meeting_time)
@@ -813,32 +784,6 @@ async def weekly_content_plan():
 
     except Exception:
         logger.exception("Weekly content plan generation failed")
-
-
-# ── Daily Market Check ──
-
-async def daily_market_check():
-    """Check for market events today and include in context."""
-    if not _bot or not CHAT_ID:
-        return
-
-    try:
-        import market_intel
-        events = market_intel.get_upcoming_events(days_ahead=1)
-        if not events:
-            return
-
-        lines = ["MARKET ALERT — Today's Events:"]
-        for e in events:
-            lines.append(f"  - {e['title']}: {e['description'][:150]}")
-            if e.get("relevance_products"):
-                lines.append(f"    Relevant for: {e['relevance_products']}")
-
-        await _bot.send_message(chat_id=CHAT_ID, text="\n".join(lines))
-        logger.info("Sent market alert for %d events", len(events))
-
-    except Exception:
-        logger.exception("Daily market check failed")
 
 
 # ── Nurture Sequence Check ──
@@ -908,32 +853,22 @@ def start_scheduler(telegram_app, event_loop=None):
         kwargs["event_loop"] = event_loop
     scheduler = AsyncIOScheduler(**kwargs)
 
-    # Morning briefing at 8:00 AM ET every day
+    # Morning briefing at 8:00 AM ET weekdays only
     scheduler.add_job(
         morning_briefing,
         "cron",
+        day_of_week="mon-fri",
         hour=8,
         minute=0,
         id="morning_briefing",
         name="Daily Morning Briefing",
     )
 
-    # Follow-up due today reminder at 9:30 AM ET weekdays
-    scheduler.add_job(
-        followup_reminder,
-        "cron",
-        day_of_week="mon-fri",
-        hour=9,
-        minute=30,
-        id="followup_reminder",
-        name="Follow-Up Due Today",
-    )
-
-    # Auto-nag every 2 hours from 9 AM to 5 PM ET
+    # Auto-nag at 9 AM and 2 PM ET weekdays
     scheduler.add_job(
         auto_nag,
         "cron",
-        hour="9,11,13,15,17",
+        hour="9,14",
         minute=0,
         id="auto_nag",
         name="Auto-Nag Check",
@@ -981,12 +916,12 @@ def start_scheduler(telegram_app, event_loop=None):
         name="Task Reminder Check",
     )
 
-    # Nudge for stale drafts every 2 hours during business hours
+    # Nudge for stale drafts once daily at 2:30 PM ET
     scheduler.add_job(
         nudge_stale_drafts,
         "cron",
         day_of_week="mon-fri",
-        hour="10,12,14,16",
+        hour="14",
         minute=30,
         id="nudge_stale_drafts",
         name="Nudge Stale Drafts",
@@ -1014,17 +949,6 @@ def start_scheduler(telegram_app, event_loop=None):
         name="Weekly Content Plan",
     )
 
-    # Daily market intelligence check — 7:30 AM ET weekdays
-    scheduler.add_job(
-        daily_market_check,
-        "cron",
-        day_of_week="mon-fri",
-        hour=7,
-        minute=30,
-        id="daily_market_check",
-        name="Daily Market Check",
-    )
-
     # Daily nurture check — 9:15AM ET weekdays (offset from 9AM auto_nag)
     scheduler.add_job(
         check_nurture_sequences,
@@ -1037,4 +961,4 @@ def start_scheduler(telegram_app, event_loop=None):
     )
 
     scheduler.start()
-    logger.info("Scheduler started — briefing 8AM, follow-ups 9:30AM, nag 9-5, midday 12:30PM, EOD 5:30PM, weekly Sun 7PM, content plan Sun 6PM, market check 7:30AM, task reminders every 60s, meeting prep hourly ET.")
+    logger.info("Scheduler started — briefing 8AM (weekdays), nag 9AM+2PM, midday 12:30PM, EOD 5:30PM, weekly Sun 6:30PM, content plan Sun 6PM, task reminders every 60s, meeting prep hourly ET.")
