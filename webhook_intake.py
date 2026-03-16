@@ -109,8 +109,8 @@ def email_inbound():
     if not CLOUDMAILIN_SECRET:
         logger.warning("CLOUDMAILIN_SECRET not set — rejecting email-inbound request")
         return jsonify({"error": "Unauthorized"}), 401
-    # Only accept secret from headers — never from query params (avoids secret leaking in URLs/logs)
-    token = request.headers.get("X-CloudMailin-Secret", "")
+    # Accept secret from header or query param (CloudMailin uses query param by default)
+    token = request.headers.get("X-CloudMailin-Secret", "") or request.args.get("secret", "")
     if not hmac.compare_digest(token, CLOUDMAILIN_SECRET):
         return jsonify({"error": "Unauthorized"}), 401
 
