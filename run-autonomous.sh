@@ -47,10 +47,10 @@ if [ -d "$WEBSITE_DIR" ]; then
 fi
 
 # Run Claude Code with autonomous prompt (1 hour timeout, $5 budget cap)
-gtimeout 3600 claude --print \
+gtimeout 3600 claude -p \
     --dangerously-skip-permissions \
     --max-budget-usd 5 \
-    --prompt "Today is ${DAY_OF_WEEK}, ${DATE}. $(cat "$PROMPT_FILE")" \
+    "Today is ${DAY_OF_WEEK}, ${DATE}. $(cat "$PROMPT_FILE")" \
     2>>"$ERROR_LOG"
 
 # Verify tests pass before pushing

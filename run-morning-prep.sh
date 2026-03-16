@@ -36,10 +36,10 @@ git pull --rebase origin master 2>>"$ERROR_LOG" || {
 }
 
 # Run Claude Code — shorter timeout and lower budget for morning prep
-gtimeout 900 claude --print \
+gtimeout 900 claude -p \
     --dangerously-skip-permissions \
     --max-budget-usd 2 \
-    --prompt "Today is ${DAY_OF_WEEK}, ${DATE}. $(cat "$PROMPT_FILE")" \
+    "Today is ${DAY_OF_WEEK}, ${DATE}. $(cat "$PROMPT_FILE")" \
     2>>"$ERROR_LOG"
 
 # Push any commits
