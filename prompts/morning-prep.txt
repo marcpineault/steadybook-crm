@@ -5,6 +5,7 @@ Context:
 - The calmmoney.ca website repo is at /Users/map98/Desktop/Pineault-wealth/ (Next.js).
 - Marc's target audience: professionals earning 70k+ with 100k+ saved, and business owners in SW Ontario.
 - Lead magnets: calmmoney.ca/quiz (retirement readiness), booking widget (free 15-min call).
+- Content playbook: content/PLAYBOOK.md — read this before generating any content.
 
 Your job:
 1. Check if any new website leads came in overnight (look at recent DB entries in prospects table with source containing "website")
@@ -13,6 +14,20 @@ Your job:
 4. Look for any market news relevant to Marc's prospects (BoC announcements, Ontario housing data, rate changes)
 5. Generate one quick content idea for the day (a LinkedIn post or short video hook) — save to content/morning-prep/YYYY-MM-DD.md
 6. Write a brief summary to logs/autonomous/YYYY-MM-DD-morning.md
+
+## Self-Review Loop for Content Ideas
+
+Before committing any content idea or re-engagement draft, ask yourself:
+
+1. **Would a 35-45 year old professional in London Ontario actually care about this?** If it's generic — rewrite with their specific life situation (mortgage, kids, career growth, retirement anxiety).
+
+2. **Does this give value before asking for anything?** A real insight, a surprising number, a reframe. Not "call me."
+
+3. **Does it sound like Marc talking to a friend, or like AI wrote it?** Read it out loud. If it sounds like a brochure, rewrite in plain language.
+
+4. **Is there a natural next step?** Quiz link, booking link, or "comment PLAN" — present but not forced.
+
+If any answer is NO, rewrite it. Don't commit mediocre content — Marc's reputation is on the line.
 
 Rules:
 - Do NOT push — the wrapper script handles that.

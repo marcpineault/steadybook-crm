@@ -5,6 +5,7 @@ Context:
 - The calmmoney.ca website repo is at /Users/map98/Desktop/Pineault-wealth/ (Next.js).
 - Marc's target audience: professionals earning 70k+ with 100k+ saved, and business owners in SW Ontario.
 - Lead magnets: calmmoney.ca/quiz (retirement readiness), booking widget (free 15-min call), /resources, /tools.
+- Content playbook: content/PLAYBOOK.md — read this before generating any content.
 
 Rules:
 - For each change: write tests first, make the change, verify tests pass, commit with a clear message.
@@ -21,3 +22,39 @@ Rules:
 - If tests fail and you can't fix them within 3 attempts, revert your changes and log the issue.
 - When working on the Pineault-wealth website, commit changes there directly (the wrapper pushes both repos).
 - SEO blog drafts go in content/seo/drafts/ — write in Marc's voice (warm, plain language, London Ontario rooted).
+
+## Self-Review Loop (CRITICAL — apply to ALL creative output)
+
+Every piece of content, every code improvement, every SEO recommendation MUST go through this loop before committing:
+
+### For Content (scripts, blog posts, social posts, emails):
+
+GENERATE the draft, then REVIEW it by asking yourself these 5 questions:
+
+1. **TARGET MARKET FIT** — Would a 35-45 year old professional in London Ontario making 70k+ actually stop scrolling for this? Is it about THEIR life, not generic financial advice? If it could apply to anyone anywhere, it's too generic — rewrite with local, specific, relatable details.
+
+2. **VALUE FIRST** — Does this give something useful BEFORE asking for anything? A real insight, a number they didn't know, a reframe of their situation? If the value is "call me for more info" — that's not value. Rewrite.
+
+3. **LEAD GENERATION** — Is there a clear, natural path from this content to calmmoney.ca/quiz or the booking widget? Not forced, not salesy — but present. If someone watches this and thinks "that was helpful" but has no idea what to do next, the CTA is missing or weak.
+
+4. **MARC'S VOICE** — Does this sound like a real person talking to a friend at a barbecue, or does it sound like AI-generated financial content? Read it out loud in your head. If it has jargon, formal phrasing, or sounds like a brochure — rewrite in plain language.
+
+5. **WOULD I SHARE THIS?** — If you were in the target audience, would you send this to your spouse or friend? If not, it's not good enough. What would make it shareable? Add that.
+
+If ANY answer is NO — rewrite and review again. Loop up to 3 times. If it still fails after 3 iterations, save it with a "NEEDS_REVIEW" tag in the filename and note what's wrong in the log.
+
+### For Code Improvements:
+
+1. **NECESSITY** — Does this change make the system measurably better? Faster, more reliable, more secure, easier to maintain? If it's just cosmetic or "nice to have" — skip it.
+
+2. **RISK** — Could this break something? What's the blast radius? If the change touches the approval queue, follow-up drafts, or anything client-facing — be extra careful. Run tests twice.
+
+3. **SIMPLICITY** — Is this the simplest way to achieve the goal? Over-engineering is worse than no change. If you're adding abstractions, helpers, or config for something that happens once — stop.
+
+### For SEO Recommendations:
+
+1. **SEARCH INTENT** — Would someone searching this keyword actually want to hire a financial advisor? "What is an RRSP" is informational — useful for blog traffic but low conversion. "Financial advisor London Ontario RRSP" is transactional — high conversion. Prioritize accordingly.
+
+2. **COMPETITIVE REALITY** — Can calmmoney.ca actually rank for this? A solo advisor's blog won't outrank the big banks for "RRSP contribution limits 2026." Focus on long-tail, local, and situation-specific keywords where a personal, local voice wins.
+
+3. **CONTENT-LEAD FIT** — Does this keyword connect to a service Marc actually offers? Don't write about crypto investing if Marc sells insurance and retirement planning.
