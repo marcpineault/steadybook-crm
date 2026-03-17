@@ -1165,9 +1165,20 @@ def dashboard():
             </td>
         </tr>"""
 
-    # Won deals rows
+    # Won deals / Client Book rows
     won_rows = ""
+    won_rows_full = ""
+    total_client_aum = 0
+    total_client_premium = 0
+    client_products = {}
     for p in won:
+        p_aum = parse_money(p["aum"])
+        p_rev = parse_money(p["revenue"])
+        total_client_aum += p_aum
+        total_client_premium += p_rev
+        prod = p.get("product") or "Other"
+        client_products[prod] = client_products.get(prod, 0) + 1
+        p_name_attr = _esc_json_attr(p["name"])
         won_rows += f"""<tr>
             <td class="name-cell">{_esc(p["name"])}</td>
             <td>{_esc(p["product"])}</td>
@@ -1175,6 +1186,54 @@ def dashboard():
             <td class="money">{fmt_money_full(p["revenue"])}</td>
             <td>{_esc(p["source"])}</td>
         </tr>"""
+        # Cross-sell suggestions
+        try:
+            from scoring import get_cross_sell_suggestions
+            cross_sell = get_cross_sell_suggestions(prod)
+            cross_html = ", ".join(_esc(s) for s in cross_sell[:2]) if cross_sell else '<span style="color:#95a5a6">—</span>'
+        except Exception:
+            cross_html = '<span style="color:#95a5a6">—</span>'
+        fc = p.get("first_contact") or ""
+        fc_display = fc.split(" ")[0] if fc and fc != "None" else "—"
+        won_rows_full += f"""<tr data-name="{p_name_attr}" onclick="openProspectDetail(this.dataset.name)" style="cursor:pointer">
+            <td class="name-cell">{_esc(p["name"])}</td>
+            <td>{_esc(p.get("phone") or "")}</td>
+            <td>{_esc(p.get("email") or "")}</td>
+            <td>{_esc(p["product"])}</td>
+            <td class="money">{fmt_money_full(p["aum"])}</td>
+            <td class="money">{fmt_money_full(p["revenue"])}</td>
+            <td>{_esc(fc_display)}</td>
+            <td>{cross_html}</td>
+            <td class="notes">{_esc((p.get("notes") or "")[:50])}{'...' if len(p.get("notes") or "") > 50 else ''}</td>
+        </tr>"""
+
+    # Client Book breakdown (pre-computed for f-string)
+    _client_breakdown_html = ""
+    if won:
+        _prod_pills = "".join(
+            f'<div style="padding:10px 16px;background:#f0f2f5;border-radius:8px;text-align:center">'
+            f'<div style="font-size:22px;font-weight:700;color:#0f1b2d">{count}</div>'
+            f'<div style="font-size:11px;color:#7f8c8d;text-transform:uppercase">{_esc(product)}</div></div>'
+            for product, count in sorted(client_products.items(), key=lambda x: -x[1])
+        )
+        _src_counts = {}
+        for p in won:
+            s = p.get("source") or "Unknown"
+            _src_counts[s] = _src_counts.get(s, 0) + 1
+        _src_pills = "".join(
+            f'<div style="padding:10px 16px;background:#f0f2f5;border-radius:8px;text-align:center">'
+            f'<div style="font-size:22px;font-weight:700;color:#0f1b2d">{count}</div>'
+            f'<div style="font-size:11px;color:#7f8c8d;text-transform:uppercase">{_esc(src)}</div></div>'
+            for src, count in sorted(_src_counts.items(), key=lambda x: -x[1])
+        )
+        _client_breakdown_html = (
+            '<div class="two-col">'
+            '<div class="section"><h2>Products Breakdown</h2>'
+            f'<div style="display:flex;flex-wrap:wrap;gap:10px">{_prod_pills}</div></div>'
+            '<div class="section"><h2>Client Sources</h2>'
+            f'<div style="display:flex;flex-wrap:wrap;gap:10px">{_src_pills}</div></div>'
+            '</div>'
+        )
 
     # Activity rows (last 10)
     activity_rows = ""
@@ -2081,6 +2140,7 @@ tr:hover {{ background: #f8f9fa; }}
         <button class="tab-btn" data-tab="funnel" onclick="showTab('funnel')">Conversion Funnel</button>
         <button class="tab-btn" data-tab="scoreboard" onclick="showTab('scoreboard')">Activity Score</button>
         <button class="tab-btn" data-tab="tasks" onclick="showTab('tasks')">Tasks{'<span style="display:inline-block;background:#e74c3c;color:#fff;border-radius:10px;font-size:10px;font-weight:700;padding:1px 7px;margin-left:6px;vertical-align:middle">' + str(len(overdue_tasks)) + '</span>' if overdue_tasks else ''}</button>
+        <button class="tab-btn" data-tab="clients" onclick="showTab('clients')">Clients{'<span style="display:inline-block;background:#27ae60;color:#fff;border-radius:10px;font-size:10px;font-weight:700;padding:1px 7px;margin-left:6px;vertical-align:middle">' + str(len(won)) + '</span>' if won else ''}</button>
     </div>
 
     <!-- ═══ TAB 1: PIPELINE (existing) ═══ -->
@@ -2403,6 +2463,37 @@ tr:hover {{ background: #f8f9fa; }}
         {'<div class="section"><h2>Recently Completed <span class="count">(' + str(len(completed_tasks_recent)) + ')</span></h2><table><tr><th style="width:40px"></th><th>Task</th><th>Prospect</th><th>Completed</th></tr>' + completed_rows + '</table></div>' if completed_rows else ''}
 
     </div><!-- end tab-tasks -->
+
+    <!-- ═══ TAB 6: CLIENT BOOK ═══ -->
+    <div class="tab-content" id="tab-clients" style="margin-top:24px">
+
+        <div class="kpi-grid" style="grid-template-columns: repeat(4, 1fr)">
+            <div class="kpi-card green">
+                <div class="kpi-label">Total Clients</div>
+                <div class="kpi-value">{len(won)}</div>
+            </div>
+            <div class="kpi-card blue">
+                <div class="kpi-label">Client AUM</div>
+                <div class="kpi-value">{fmt_money(total_client_aum)}</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Client Premium</div>
+                <div class="kpi-value">{fmt_money(total_client_premium)}</div>
+            </div>
+            <div class="kpi-card gold">
+                <div class="kpi-label">Avg AUM/Client</div>
+                <div class="kpi-value">{fmt_money(total_client_aum / len(won)) if won else '$0'}</div>
+            </div>
+        </div>
+
+        {_client_breakdown_html}
+
+        <div class="section">
+            <h2>Client Book <span class="count">({len(won)} clients)</span></h2>
+            {'<table><tr><th>Client</th><th>Phone</th><th>Email</th><th>Product</th><th>AUM</th><th>Premium</th><th>Since</th><th>Cross-Sell</th><th>Notes</th></tr>' + won_rows_full + '</table>' if won else '<div class="empty-state"><p>No clients yet. Close your first deal!</p></div>'}
+        </div>
+
+    </div><!-- end tab-clients -->
 
 </div>
 
