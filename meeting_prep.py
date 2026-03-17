@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 openai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
 
-PREP_DOC_SYSTEM_PROMPT = """You are preparing Marc Pereira for a meeting with a client/prospect. Marc is a financial advisor at Co-operators in London, Ontario.
+PREP_DOC_SYSTEM_PROMPT = """You are preparing Marc Pineault for a meeting with a client/prospect. Marc is a financial advisor at Co-operators in London, Ontario.
 
 Generate a concise meeting prep document. Write in plain text, no markdown. Be specific and actionable.
 

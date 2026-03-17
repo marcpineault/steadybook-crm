@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 openai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
 
-INSIGHTS_SYSTEM_PROMPT = """You are analyzing Marc Pereira's outreach and content performance for the past week. Marc is a financial advisor at Co-operators in London, Ontario.
+INSIGHTS_SYSTEM_PROMPT = """You are analyzing Marc Pineault's outreach and content performance for the past week. Marc is a financial advisor at Co-operators in London, Ontario.
 
 Generate a concise weekly insights digest covering:
 1. WHAT WORKED: Top-performing actions, best response rates, successful conversions
@@ -155,7 +155,7 @@ def generate_insights(reference_date=None):
 
     try:
         prospects = db.read_pipeline()
-        active = [p for p in prospects if p.get("stage") not in ("Closed Won", "Closed Lost", "")]
+        active = [p for p in prospects if p.get("stage") not in ("Closed-Won", "Closed-Lost", "")]
         pipeline_text = f"{len(active)} active prospects in pipeline."
     except Exception:
         pipeline_text = "Pipeline data unavailable."

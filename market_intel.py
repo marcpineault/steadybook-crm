@@ -145,7 +145,7 @@ def format_for_briefing(days_ahead=7):
     # Cross-reference events with prospect pipeline for relevance
     try:
         prospects = db.read_pipeline()
-        active_prospects = [p for p in prospects if p.get("stage") not in ("Closed Won", "Closed Lost", "")]
+        active_prospects = [p for p in prospects if p.get("stage") not in ("Closed-Won", "Closed-Lost", "")]
     except Exception:
         active_prospects = []
 

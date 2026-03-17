@@ -1,7 +1,7 @@
 Read AUTONOMOUS.md in this repo. Work through every applicable task.
 
 Context:
-- This is calm-money-bot, a CRM/Telegram bot for Marc Pereira, a financial advisor in London, Ontario.
+- This is calm-money-bot, a CRM/Telegram bot for Marc Pineault, a financial advisor in London, Ontario.
 - The calmmoney.ca website repo is at /Users/map98/Desktop/Pineault-wealth/ (Next.js).
 - Marc's target audience: professionals earning 70k+ with 100k+ saved, and business owners in SW Ontario.
 - Lead magnets: calmmoney.ca/quiz (retirement readiness), booking widget (free 15-min call), /resources, /tools.

@@ -32,7 +32,7 @@ TOUCH_TYPES = {
 
 TOUCH_SPACING_DAYS = [3, 5, 7, 10]  # Days between touches 1→2, 2→3, 3→4, 4→end
 
-NURTURE_SYSTEM_PROMPT = """You are writing a nurture message for Marc Pereira, a financial advisor at Co-operators in London, Ontario.
+NURTURE_SYSTEM_PROMPT = """You are writing a nurture message for Marc Pineault, a financial advisor at Co-operators in London, Ontario.
 
 GUIDELINES:
 1. Sound like Marc — warm, approachable, not salesy

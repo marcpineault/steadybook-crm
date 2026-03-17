@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Generate lead-driving content for Marc Pereira's financial planning practice at Co-operators in London, Ontario. Every piece of content exists to move the right people from scrolling to reaching out.
+Generate lead-driving content for Marc Pineault's financial planning practice at Co-operators in London, Ontario. Every piece of content exists to move the right people from scrolling to reaching out.
 
 ## Target Audience
 

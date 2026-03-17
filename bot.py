@@ -785,12 +785,12 @@ def get_pipeline_summary():
     total_rev = 0
     for p in active:
         try:
-            total_aum += float(p["aum"].replace("$", "").replace(",", "")) if p["aum"] else 0
-        except ValueError:
+            total_aum += float(str(p["aum"]).replace("$", "").replace(",", "")) if p["aum"] else 0
+        except (ValueError, TypeError):
             pass
         try:
-            total_rev += float(p["revenue"].replace("$", "").replace(",", "")) if p["revenue"] else 0
-        except ValueError:
+            total_rev += float(str(p["revenue"]).replace("$", "").replace(",", "")) if p["revenue"] else 0
+        except (ValueError, TypeError):
             pass
 
     hot = len([p for p in active if (p.get("priority") or "").lower() == "hot"])
@@ -1479,7 +1479,7 @@ async def _llm_respond(update, messages, tools=None):
                 stage = tool_input.get("stage", "")
                 if stage in ("New Lead", "Contacted", "Nurture"):
                     prospect_name = tool_input.get("name", "")
-                    if prospect_name and _bot and CHAT_ID:
+                    if prospect_name and ADMIN_CHAT_ID:
                         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
                         keyboard = InlineKeyboardMarkup([[
                             InlineKeyboardButton(
@@ -1489,8 +1489,8 @@ async def _llm_respond(update, messages, tools=None):
                             InlineKeyboardButton("Skip", callback_data="nurture_offer_skip"),
                         ]])
                         try:
-                            await _bot.send_message(
-                                chat_id=CHAT_ID,
+                            await update.get_bot().send_message(
+                                chat_id=ADMIN_CHAT_ID,
                                 text=f"New prospect {prospect_name} added as {stage}. Start a nurture sequence?",
                                 reply_markup=keyboard,
                             )
@@ -2272,7 +2272,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await _require_admin(update):
         return
     doc = update.message.document
-    fname = doc.file_name.lower()
+    fname = (doc.file_name or "").lower()
 
     # CSV = insurance book
     if fname.endswith('.csv'):

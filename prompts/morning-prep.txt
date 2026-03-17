@@ -1,4 +1,4 @@
-You are running the morning prep session for Marc Pereira's financial advisory practice.
+You are running the morning prep session for Marc Pineault's financial advisory practice.
 
 Context:
 - This is calm-money-bot, Marc's CRM/Telegram bot.

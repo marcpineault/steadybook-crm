@@ -24,7 +24,7 @@ openai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
 
 FOLLOW_UP_NUDGE_HOURS = int(os.environ.get("FOLLOW_UP_NUDGE_HOURS", "4"))
 
-FOLLOW_UP_SYSTEM_PROMPT = """You are drafting a follow-up email for Marc Pereira, a financial advisor at Co-operators in London, Ontario.
+FOLLOW_UP_SYSTEM_PROMPT = """You are drafting a follow-up email for Marc Pineault, a financial advisor at Co-operators in London, Ontario.
 
 Write a professional but warm follow-up email based on the activity below. The email should:
 1. Reference specific details from the conversation (shows Marc was listening)

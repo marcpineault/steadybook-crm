@@ -188,7 +188,7 @@ def api_update_prospect(name):
     if not data:
         return jsonify({"error": "No data"}), 400
     result = db.update_prospect(name, data)
-    if "not found" in result.lower():
+    if "not found" in result.lower() or "could not find" in result.lower():
         return jsonify({"error": result}), 404
     return jsonify({"ok": True, "message": result})
 
@@ -197,7 +197,7 @@ def api_update_prospect(name):
 @_require_auth
 def api_delete_prospect(name):
     result = db.delete_prospect(name)
-    if "not found" in result.lower():
+    if "not found" in result.lower() or "could not find" in result.lower():
         return jsonify({"error": result}), 404
     return jsonify({"ok": True, "message": result})
 
@@ -209,7 +209,7 @@ def api_merge_prospects():
     if not data or not data.get("keep") or not data.get("merge"):
         return jsonify({"error": "Need 'keep' and 'merge' fields"}), 400
     result = db.merge_prospects(data["keep"], data["merge"])
-    if "not found" in result.lower() or "Cannot" in result:
+    if "not found" in result.lower() or "could not find" in result.lower() or "Cannot" in result:
         return jsonify({"error": result}), 400
     return jsonify({"ok": True, "message": result})
 
@@ -221,7 +221,7 @@ def api_update_prospect_by_name():
     if not data or not data.get("name") or not data.get("updates"):
         return jsonify({"error": "Name and updates required"}), 400
     result = db.update_prospect(data["name"], data["updates"])
-    if "not found" in result.lower():
+    if "not found" in result.lower() or "could not find" in result.lower():
         return jsonify({"error": result}), 404
     return jsonify({"ok": True, "message": result})
 
@@ -250,7 +250,7 @@ def api_update_task(task_id):
     if not data:
         return jsonify({"error": "No data provided"}), 400
     result = db.update_task(task_id, data, is_admin=True)
-    if "not found" in result.lower():
+    if "not found" in result.lower() or "could not find" in result.lower():
         return jsonify({"error": result}), 404
     return jsonify({"ok": True, "message": result})
 
@@ -313,7 +313,7 @@ def api_complete_task(task_id):
 @_require_auth
 def api_delete_task(task_id):
     result = db.delete_task(task_id, "", is_admin=True)
-    if "not found" in result.lower():
+    if "not found" in result.lower() or "could not find" in result.lower():
         return jsonify({"error": result}), 404
     return jsonify({"ok": True, "message": result})
 
@@ -419,9 +419,14 @@ def _build_rec_html(rec):
     icons = {"critical": "&#9888;", "warning": "&#9888;", "action": "&#10148;", "suggestion": "&#128161;"}
     color = colors.get(level, "#7f8c8d")
     icon = icons.get(level, "")
-    esc_name = json.dumps(prospect_name)[1:-1] if prospect_name else ""
-    click = f' onclick="openProspectDetail(\'{esc_name}\')" style="cursor:pointer"' if prospect_name else ""
-    return f'<div style="padding:10px 12px;margin-bottom:8px;border-left:3px solid {color};background:#fafafa;border-radius:0 6px 6px 0;font-size:13px"{click}>{icon} {_html.escape(text)}</div>'
+    if prospect_name:
+        esc_name_attr = _esc_json_attr(prospect_name)
+        click = f' data-prospect="{esc_name_attr}" onclick="openProspectDetail(this.dataset.prospect)"'
+        cursor = ";cursor:pointer"
+    else:
+        click = ""
+        cursor = ""
+    return f'<div style="padding:10px 12px;margin-bottom:8px;border-left:3px solid {color};background:#fafafa;border-radius:0 6px 6px 0;font-size:13px{cursor}"{click}>{icon} {_html.escape(text)}</div>'
 
 
 STAGE_ORDER = ["New Lead", "Contacted", "Discovery Call", "Needs Analysis",
@@ -1142,22 +1147,21 @@ def dashboard():
         hbadge = _health_badge(hscore)
 
         p_json_escaped = _esc_json_attr(json.dumps(p))
-        esc_detail_name = json.dumps(p["name"])[1:-1]
-        esc_action_name = json.dumps(p["name"])[1:-1]
-        prospect_rows += f"""<tr class="editable-row" data-prospect="{p_json_escaped}" onclick="openProspectDetail('{esc_detail_name}')" style="cursor:pointer">
+        esc_name_attr = _esc_json_attr(p["name"])
+        prospect_rows += f"""<tr class="editable-row" data-prospect="{p_json_escaped}" data-name="{esc_name_attr}" onclick="openProspectDetail(this.dataset.name)" style="cursor:pointer">
             <td class="name-cell"><span style="color:#2c3e50;font-weight:600;text-decoration:none;border-bottom:2px solid #1abc9c">{_esc(p["name"])}</span></td>
             <td style="text-align:center">{hbadge}</td>
             <td><span class="badge" style="background:{pri_bg}">{_esc(p["priority"])}</span></td>
-            <td><span class="badge" style="background:{_stage_bg(p["stage"])};color:{_stage_fg(p["stage"])};cursor:pointer" onclick="changeStage(event, '{esc_detail_name}')" title="Click to change stage">{_esc(p["stage"])}</span></td>
+            <td><span class="badge" style="background:{_stage_bg(p["stage"])};color:{_stage_fg(p["stage"])};cursor:pointer" onclick="changeStage(event, this.closest('tr').dataset.name)" title="Click to change stage">{_esc(p["stage"])}</span></td>
             <td>{_esc(p["product"])}</td>
             <td class="money">{fmt_money_full(p["aum"])}</td>
             <td class="money">{fmt_money_full(p["revenue"])}</td>
             <td class="{fu_class}">{_esc(fu_display)}</td>
             <td style="text-align:center">{idle_display}</td>
-            <td class="notes">{_esc(p["notes"][:60])}{'...' if len(p["notes"]) > 60 else ''}</td>
+            <td class="notes">{_esc((p["notes"] or "")[:60])}{'...' if len(p["notes"] or "") > 60 else ''}</td>
             <td style="text-align:center;white-space:nowrap" onclick="event.stopPropagation()">
-                <button onclick="quickLogActivity('Call','{esc_action_name}')" title="Log Call" style="background:none;border:none;cursor:pointer;font-size:16px;padding:2px 4px">&#128222;</button>
-                <button onclick="quickLogActivity('Email','{esc_action_name}')" title="Log Email" style="background:none;border:none;cursor:pointer;font-size:16px;padding:2px 4px">&#9993;</button>
+                <button onclick="quickLogActivity('Call',this.closest('tr').dataset.name)" title="Log Call" style="background:none;border:none;cursor:pointer;font-size:16px;padding:2px 4px">&#128222;</button>
+                <button onclick="quickLogActivity('Email',this.closest('tr').dataset.name)" title="Log Email" style="background:none;border:none;cursor:pointer;font-size:16px;padding:2px 4px">&#9993;</button>
             </td>
         </tr>"""
 
@@ -1176,7 +1180,7 @@ def dashboard():
     activity_rows = ""
     for a in activities[:10]:
         activity_rows += f"""<tr>
-            <td>{_esc(a["date"].split(" ")[0])}</td>
+            <td>{_esc((a["date"] or "").split(" ")[0])}</td>
             <td>{_esc(a["prospect"])}</td>
             <td>{_esc(a["action"])}</td>
             <td>{_esc(a["outcome"])}</td>
@@ -1191,16 +1195,16 @@ def dashboard():
             days_late = (today - datetime.strptime(fu, "%Y-%m-%d").date()).days
         except (ValueError, IndexError):
             days_late = "?"
-        esc_name = json.dumps(p["name"])[1:-1]
-        overdue_rows += f"""<tr>
+        esc_name_attr = _esc_json_attr(p["name"])
+        overdue_rows += f"""<tr data-name="{esc_name_attr}">
             <td class="name-cell">{_esc(p["name"])}</td>
             <td>{_esc(fu)}</td>
             <td class="overdue">{days_late} days late</td>
             <td>{_esc(p["phone"])}</td>
             <td style="white-space:nowrap">
-                <button onclick="event.stopPropagation();quickReschedule('{esc_name}', 0)" style="background:#27AE60;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px" title="Reschedule to today">Today</button>
-                <button onclick="event.stopPropagation();quickReschedule('{esc_name}', 1)" style="background:#3498DB;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px" title="Reschedule to tomorrow">+1d</button>
-                <button onclick="event.stopPropagation();quickReschedule('{esc_name}', 7)" style="background:#8E44AD;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px" title="Reschedule to next week">+1w</button>
+                <button onclick="event.stopPropagation();quickReschedule(this.closest('tr').dataset.name, 0)" style="background:#27AE60;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px" title="Reschedule to today">Today</button>
+                <button onclick="event.stopPropagation();quickReschedule(this.closest('tr').dataset.name, 1)" style="background:#3498DB;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px" title="Reschedule to tomorrow">+1d</button>
+                <button onclick="event.stopPropagation();quickReschedule(this.closest('tr').dataset.name, 7)" style="background:#8E44AD;color:#fff;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px" title="Reschedule to next week">+1w</button>
             </td>
         </tr>"""
 
@@ -1233,14 +1237,15 @@ def dashboard():
                 due_display = '<span style="color:#F39C12;font-weight:600">Today</span>'
             else:
                 due_display = _esc(due)
-        task_prospect_esc = json.dumps(t.get("prospect", ""))[1:-1]
-        prospect_display = f'<a style="color:#3498DB" href="javascript:void(0)" onclick="event.stopPropagation();openProspectDetail(\'{task_prospect_esc}\')">{_esc(t["prospect"])}</a>' if t.get("prospect") else ""
+        task_prospect_attr = _esc_json_attr(t.get("prospect") or "")
+        prospect_display = f'<a style="color:#3498DB" href="javascript:void(0)" data-prospect="{task_prospect_attr}" onclick="event.stopPropagation();openProspectDetail(this.dataset.prospect)">{_esc(t["prospect"])}</a>' if t.get("prospect") else ""
         remind_icon = ' <span title="Reminder set" style="color:#F39C12">&#9200;</span>' if t.get("remind_at") else ""
         due_cell = f"<td>{due_display}</td>" if show_due else ""
-        remind_val = _esc(t.get("remind_at") or "").replace(" ", "T")
+        remind_val = (t.get("remind_at") or "").replace(" ", "T")
+        _task_json = _esc_json_attr(json.dumps({"id": t["id"], "title": t["title"], "prospect": t.get("prospect") or "", "due": due, "remind": remind_val, "notes": t.get("notes") or ""}))
         return f"""<tr class="{row_class}">
             <td style="text-align:center"><input type="checkbox" onchange="completeTask({t['id']}, this)" style="width:18px;height:18px;cursor:pointer"></td>
-            <td><a href="javascript:void(0)" onclick="openEditTask({t['id']}, '{_esc_json_attr(_esc(t['title']))}', '{_esc(t.get('prospect') or '')}', '{_esc(due)}', '{remind_val}', '{_esc(t.get('notes') or '')}')" style="color:inherit;text-decoration:none;border-bottom:1px dashed #bdc3c7">{_esc(t['title'])}</a>{remind_icon}</td>
+            <td><a href="javascript:void(0)" data-task="{_task_json}" onclick="var d=JSON.parse(this.dataset.task);openEditTask(d.id,d.title,d.prospect,d.due,d.remind,d.notes)" style="color:inherit;text-decoration:none;border-bottom:1px dashed #bdc3c7">{_esc(t['title'])}</a>{remind_icon}</td>
             <td>{prospect_display}</td>
             {due_cell}
             <td style="text-align:center"><button onclick="deleteTask({t['id']})" style="background:none;border:none;color:#E74C3C;cursor:pointer;font-size:16px">&#10005;</button></td>
@@ -1273,7 +1278,7 @@ def dashboard():
         is_today_meeting = (m.get("date", "") == today_str)
         row_style = 'style="background:#fffbec"' if is_today_meeting else ""
         status_bg = "#27ae60" if m["status"] == "Completed" else "#e74c3c" if m["status"] == "Cancelled" else "#3498db"
-        meeting_rows += f'<tr {row_style}><td>{_esc(m["date"])}</td><td>{_esc(m["time"])}</td><td class="name-cell">{_esc(m["prospect"])}</td><td>{_esc(m["type"])}</td><td><span class="badge" style="background:{status_bg}">{_esc(m["status"])}</span></td><td class="notes">{_esc(m["prep_notes"][:50])}{"..." if len(m["prep_notes"]) > 50 else ""}</td></tr>'
+        meeting_rows += f'<tr {row_style}><td>{_esc(m["date"])}</td><td>{_esc(m["time"])}</td><td class="name-cell">{_esc(m["prospect"])}</td><td>{_esc(m["type"])}</td><td><span class="badge" style="background:{status_bg}">{_esc(m["status"])}</span></td><td class="notes">{_esc((m["prep_notes"] or "")[:50])}{"..." if len(m["prep_notes"] or "") > 50 else ""}</td></tr>'
 
     # Pending approvals count + drafts
     try:
@@ -1330,20 +1335,20 @@ def dashboard():
     _kanban_cols_html = ""
     for _kstage, _kprospects in kanban_cols:
         _kcol_color = _stage_bg(_kstage)
-        _kstage_js = json.dumps(_kstage)[1:-1]
+        _kstage_attr = _esc_json_attr(_kstage)
         _kcards_html = ""
         for _kp in _kprospects:
             _kname_esc = _esc(_kp["name"])
-            _kname_js = json.dumps(_kp["name"])[1:-1]
+            _kname_attr = _esc_json_attr(_kp["name"])
             _kproduct_esc = _esc(_kp.get("product") or "")
             _kpri = _kp.get("priority") or ""
             _kpri_color = PRIORITY_COLORS.get(_kpri, "#BDC3C7")
             _kpri_esc = _esc(_kpri)
             _klast = last_activity_map.get(_kp["name"].strip().lower())
             _krel = _relative_time(_klast.strftime("%Y-%m-%d") if _klast else "", today)
-            aum_val = _kp.get("aum", "")
-            aum_html = f'<div style="font-size:11px;color:#27ae60;font-weight:600">{fmt_money_full(aum_val)}</div>' if aum_val and aum_val != "0" and aum_val != "$0" else ""
-            _kname_jsattr = json.dumps(_kp["name"]).replace("&", "&amp;").replace('"', "&quot;")  # JSON string safe inside HTML attributes
+            aum_val = _kp.get("aum") or 0
+            aum_html = f'<div style="font-size:11px;color:#27ae60;font-weight:600">{fmt_money_full(aum_val)}</div>' if aum_val and float(str(aum_val).replace("$","").replace(",","") or 0) > 0 else ""
+            _kname_jsattr = json.dumps(_kp["name"]).replace("&", "&amp;").replace('"', "&quot;")
             _kcards_html += f"""<div class="kanban-card" draggable="true" ondragstart="onDragStart(event, {_kname_jsattr})" ondragend="onDragEnd(event)" onclick="onCardClick(event, {_kname_jsattr})" style="border-left:3px solid {_kpri_color}">
                 <div class="kanban-card-name">{_kname_esc}</div>
                 <div class="kanban-card-product">{_kproduct_esc}</div>
@@ -1356,7 +1361,7 @@ def dashboard():
         col_aum = sum(parse_money(p.get("aum", "0")) for p in _kprospects)
         col_aum_html = f'<span style="font-size:10px;opacity:0.85;margin-left:6px">{fmt_money_full(col_aum)}</span>' if col_aum > 0 else ""
         _empty_html = '<div style="padding:16px 12px;text-align:center;color:#bdc3c7;font-size:12px;font-style:italic">No prospects</div>' if not _kprospects else ""
-        _kanban_cols_html += f"""<div class="kanban-col" ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event, '{_kstage_js}')">
+        _kanban_cols_html += f"""<div class="kanban-col" data-stage="{_kstage_attr}" ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event, this.dataset.stage)">
             <div class="kanban-col-header" style="background:{_kcol_color}">
                 {_esc(_kstage)} <span class="kanban-count">{len(_kprospects)}</span>{col_aum_html}
             </div>
@@ -2175,7 +2180,7 @@ tr:hover {{ background: #f8f9fa; }}
         </div>
         <div class="section">
             <h2>Insurance Book <span class="count">({len(book_entries)} contacts)</span></h2>
-            {'<div style="display:flex;gap:24px;margin-bottom:16px"><div class="kpi-card" style="flex:1;padding:12px 16px"><div class="kpi-label">Called</div><div class="kpi-value" style="font-size:24px">' + str(len([b for b in book_entries if b["status"].lower() not in ("not called","")])) + '</div></div><div class="kpi-card green" style="flex:1;padding:12px 16px"><div class="kpi-label">Booked</div><div class="kpi-value" style="font-size:24px">' + str(len([b for b in book_entries if b["status"].lower()=="booked meeting"])) + '</div></div><div class="kpi-card blue" style="flex:1;padding:12px 16px"><div class="kpi-label">Remaining</div><div class="kpi-value" style="font-size:24px">' + str(len([b for b in book_entries if b["status"].lower() in ("not called","")])) + '</div></div></div><table><tr><th>Name</th><th>Phone</th><th>Status</th><th>Last Called</th><th>Notes</th></tr>' + ''.join(f'<tr><td class="name-cell">{_esc(b["name"])}</td><td>{_esc(b["phone"])}</td><td><span class="badge" style="background:{"#27ae60" if b["status"].lower()=="booked meeting" else "#e74c3c" if b["status"].lower()=="not interested" else "#f39c12" if b["status"].lower() in ("callback","no answer") else "#3498db"}">{_esc(b["status"])}</span></td><td>{_esc(b["last_called"].split(" ")[0] if b["last_called"] and b["last_called"]!="None" else "")}</td><td class="notes">{_esc(b["notes"][:40])}{"..." if len(b["notes"])>40 else ""}</td></tr>' for b in book_entries[:20]) + '</table>' if book_entries else '<div class="empty-state"><p>No insurance book uploaded. Send a CSV via Telegram.</p></div>'}
+            {'<div style="display:flex;gap:24px;margin-bottom:16px"><div class="kpi-card" style="flex:1;padding:12px 16px"><div class="kpi-label">Called</div><div class="kpi-value" style="font-size:24px">' + str(len([b for b in book_entries if (b["status"] or "").lower() not in ("not called","")])) + '</div></div><div class="kpi-card green" style="flex:1;padding:12px 16px"><div class="kpi-label">Booked</div><div class="kpi-value" style="font-size:24px">' + str(len([b for b in book_entries if (b["status"] or "").lower()=="booked meeting"])) + '</div></div><div class="kpi-card blue" style="flex:1;padding:12px 16px"><div class="kpi-label">Remaining</div><div class="kpi-value" style="font-size:24px">' + str(len([b for b in book_entries if (b["status"] or "").lower() in ("not called","")])) + '</div></div></div><table><tr><th>Name</th><th>Phone</th><th>Status</th><th>Last Called</th><th>Notes</th></tr>' + ''.join(f'<tr><td class="name-cell">{_esc(b["name"])}</td><td>{_esc(b["phone"])}</td><td><span class="badge" style="background:{"#27ae60" if (b["status"] or "").lower()=="booked meeting" else "#e74c3c" if (b["status"] or "").lower()=="not interested" else "#f39c12" if (b["status"] or "").lower() in ("callback","no answer") else "#3498db"}">{_esc(b["status"])}</span></td><td>{_esc(b["last_called"].split(" ")[0] if b["last_called"] and b["last_called"]!="None" else "")}</td><td class="notes">{_esc((b["notes"] or "")[:40])}{"..." if len(b["notes"] or "")>40 else ""}</td></tr>' for b in book_entries[:20]) + '</table>' if book_entries else '<div class="empty-state"><p>No insurance book uploaded. Send a CSV via Telegram.</p></div>'}
         </div>
     </div>
 
@@ -2358,7 +2363,7 @@ tr:hover {{ background: #f8f9fa; }}
             </div>
             <div class="section">
                 <h2>Insurance Book Progress</h2>
-                {'<div style="text-align:center;padding:20px"><div class="score-big" style="font-size:48px">' + str(len([b for b in book_entries if b["status"].lower() not in ("not called","")])) + '<span style="font-size:20px;color:#7f8c8d">/' + str(len(book_entries)) + '</span></div><div style="color:#7f8c8d;margin-top:4px">Contacts Called</div><div class="progress-bar-container" style="margin-top:12px"><div class="progress-bar-fill teal" style="width:' + str(min(len([b for b in book_entries if b["status"].lower() not in ("not called","")]) / max(1, len(book_entries)) * 100, 100)) + '%">' + str(int(len([b for b in book_entries if b["status"].lower() not in ("not called","")]) / max(1, len(book_entries)) * 100)) + '%</div></div><div class="target-meta" style="margin-top:8px"><span>Booked: ' + str(len([b for b in book_entries if b["status"].lower()=="booked meeting"])) + '</span><span>Not Interested: ' + str(len([b for b in book_entries if b["status"].lower()=="not interested"])) + '</span><span>Callbacks: ' + str(len([b for b in book_entries if b["status"].lower()=="callback"])) + '</span></div></div>' if book_entries else '<div class="empty-state"><p>Upload an insurance book CSV to track progress.</p></div>'}
+                {'<div style="text-align:center;padding:20px"><div class="score-big" style="font-size:48px">' + str(len([b for b in book_entries if (b["status"] or "").lower() not in ("not called","")])) + '<span style="font-size:20px;color:#7f8c8d">/' + str(len(book_entries)) + '</span></div><div style="color:#7f8c8d;margin-top:4px">Contacts Called</div><div class="progress-bar-container" style="margin-top:12px"><div class="progress-bar-fill teal" style="width:' + str(min(len([b for b in book_entries if (b["status"] or "").lower() not in ("not called","")]) / max(1, len(book_entries)) * 100, 100)) + '%">' + str(int(len([b for b in book_entries if (b["status"] or "").lower() not in ("not called","")]) / max(1, len(book_entries)) * 100)) + '%</div></div><div class="target-meta" style="margin-top:8px"><span>Booked: ' + str(len([b for b in book_entries if (b["status"] or "").lower()=="booked meeting"])) + '</span><span>Not Interested: ' + str(len([b for b in book_entries if (b["status"] or "").lower()=="not interested"])) + '</span><span>Callbacks: ' + str(len([b for b in book_entries if (b["status"] or "").lower()=="callback"])) + '</span></div></div>' if book_entries else '<div class="empty-state"><p>Upload an insurance book CSV to track progress.</p></div>'}
             </div>
         </div>
 
@@ -2762,7 +2767,8 @@ function showTab(name) {{
     document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.getElementById('tab-' + name).classList.add('active');
-    event.target.classList.add('active');
+    const tabBtn = document.querySelector('.tab-btn[data-tab="' + name + '"]');
+    if (tabBtn) tabBtn.classList.add('active');
     localStorage.setItem('activeTab', name);
     // Initialize charts when their tab is shown
     if (name === 'forecast' && !window._forecastInit) initForecastCharts();
@@ -3039,14 +3045,14 @@ async function openProspectDetail(name) {{
         html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;margin-bottom:20px;padding:12px;background:#f8f9fa;border-radius:8px">';
         html += '<div><strong>Phone:</strong> ' + _e(p.phone || '—') + '</div>';
         html += '<div><strong>Email:</strong> ' + _e(p.email || '—') + '</div>';
-        html += '<div><strong>Stage:</strong> <span style="cursor:pointer;text-decoration:underline dotted" onclick="changeStage(event, \'' + _e(p.name).replace(/'/g, "\\'") + '\')" title="Click to change">' + _e(p.stage || '—') + '</span></div>';
-        html += '<div><strong>Priority:</strong> <span style="cursor:pointer;text-decoration:underline dotted" onclick="changePriority(event, \'' + _e(p.name).replace(/'/g, "\\'") + '\')" title="Click to change">' + _e(p.priority || '—') + '</span></div>';
+        html += '<div><strong>Stage:</strong> <span style="cursor:pointer;text-decoration:underline dotted" onclick="changeStage(event, _detailProspect)" title="Click to change">' + _e(p.stage || '—') + '</span></div>';
+        html += '<div><strong>Priority:</strong> <span style="cursor:pointer;text-decoration:underline dotted" onclick="changePriority(event, _detailProspect)" title="Click to change">' + _e(p.priority || '—') + '</span></div>';
         html += '<div><strong>Product:</strong> ' + _e(p.product || '—') + '</div>';
         html += '<div><strong>Follow-up:</strong> ' + _e(p.next_followup || '—');
         html += ' <span style="font-size:11px;margin-left:8px">';
-        html += '<a href="#" onclick="event.preventDefault();quickRescheduleFromDetail(\'' + _e(p.name).replace(/'/g, "\\'") + '\', 0)" style="color:#27ae60;text-decoration:none" title="Set to today">today</a>';
-        html += ' · <a href="#" onclick="event.preventDefault();quickRescheduleFromDetail(\'' + _e(p.name).replace(/'/g, "\\'") + '\', 1)" style="color:#3498db;text-decoration:none" title="Tomorrow">+1d</a>';
-        html += ' · <a href="#" onclick="event.preventDefault();quickRescheduleFromDetail(\'' + _e(p.name).replace(/'/g, "\\'") + '\', 7)" style="color:#9b59b6;text-decoration:none" title="Next week">+1w</a>';
+        html += '<a href="#" onclick="event.preventDefault();quickRescheduleFromDetail(_detailProspect, 0)" style="color:#27ae60;text-decoration:none" title="Set to today">today</a>';
+        html += ' · <a href="#" onclick="event.preventDefault();quickRescheduleFromDetail(_detailProspect, 1)" style="color:#3498db;text-decoration:none" title="Tomorrow">+1d</a>';
+        html += ' · <a href="#" onclick="event.preventDefault();quickRescheduleFromDetail(_detailProspect, 7)" style="color:#9b59b6;text-decoration:none" title="Next week">+1w</a>';
         html += '</span></div>';
         html += '<div><strong>AUM:</strong> ' + _e(p.aum || '—') + '</div>';
         html += '<div><strong>Revenue:</strong> ' + _e(p.revenue || '—') + '</div>';
@@ -3058,7 +3064,7 @@ async function openProspectDetail(name) {{
 
         // Quick note input
         html += '<div style="margin-top:12px;display:flex;gap:8px">';
-        html += '<input type="text" id="quickNoteInput" placeholder="Add a quick note..." style="flex:1;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:13px" onkeydown="if(event.key===\'Enter\')addQuickNote()">';
+        html += '<input type="text" id="quickNoteInput" placeholder="Add a quick note..." style="flex:1;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:13px">';
         html += '<button onclick="addQuickNote()" style="background:#3498DB;color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:13px">Add</button>';
         html += '</div>';
 
@@ -3104,6 +3110,9 @@ async function openProspectDetail(name) {{
         }}
 
         document.getElementById('detailContent').innerHTML = html;
+        // Attach Enter key handler after DOM is set (avoids inline event escaping issues)
+        const _qni = document.getElementById('quickNoteInput');
+        if (_qni) _qni.addEventListener('keydown', function(ev) {{ if (ev.key === 'Enter') addQuickNote(); }});
     }} catch(e) {{ document.getElementById('detailContent').innerHTML = '<p>Error loading: ' + _e(e.message) + '</p>'; }}
 }}
 
@@ -3117,7 +3126,7 @@ async function addQuickNote() {{
     const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     const prefix = '[' + months[now.getMonth()] + ' ' + now.getDate() + '] ';
     const existing = window._detailCurrentNotes || '';
-    const updated = existing ? existing + '\n' + prefix + noteText : prefix + noteText;
+    const updated = existing ? existing + '\\n' + prefix + noteText : prefix + noteText;
     try {{
         const res = await fetch('/api/prospect/update', {{
             method: 'PUT',
@@ -3137,8 +3146,8 @@ async function addQuickNote() {{
 function closeDetail() {{ document.getElementById('detailModal').classList.remove('active'); document.getElementById('mergeSection').style.display='none'; }}
 document.getElementById('detailModal').addEventListener('click', function(e) {{ if (e.target === this) closeDetail(); }});
 
-function openEditFromDetail() {{
-    // Find the prospect data from the table and open the edit modal
+async function openEditFromDetail() {{
+    // Try to find the prospect data from the table first
     const rows = document.querySelectorAll('.editable-row');
     let found = null;
     rows.forEach(r => {{
@@ -3150,8 +3159,20 @@ function openEditFromDetail() {{
     if (found) {{
         closeDetail();
         openEdit(found);
-    }} else {{
-        alert('Could not find prospect data to edit. Please refresh the page.');
+        return;
+    }}
+    // If not in table (e.g. closed deals or kanban view), fetch from API
+    try {{
+        const res = await fetch('/api/prospect/' + encodeURIComponent(_detailProspect) + '/detail', {{ headers: {{'X-CSRF-Token': _csrfToken}} }});
+        const data = await res.json();
+        if (data.prospect) {{
+            closeDetail();
+            openEdit(data.prospect);
+        }} else {{
+            alert('Could not find prospect data to edit.');
+        }}
+    }} catch(e) {{
+        alert('Error loading prospect: ' + e.message);
     }}
 }}
 
