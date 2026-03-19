@@ -3393,6 +3393,36 @@ def process_webhook_update(update_data: dict):
     asyncio.run_coroutine_threadsafe(_process(), bot_event_loop)
 
 
+async def _process_dashboard_message_async(user_msg: str) -> str:
+    """Core async handler for dashboard chat — same logic as Telegram admin flow."""
+    chat_id = "dashboard"
+    history = _get_history(chat_id)
+    messages = [{"role": "system", "content": _build_prompt(PROMPT_GENERAL)}]
+    messages.extend(history)
+    messages.append({"role": "user", "content": user_msg})
+
+    # Use a lightweight wrapper so tool calls that send Telegram notifications
+    # (nurture offer, follow-up drafts) fail silently without a real Update object.
+    class _NullUpdate:
+        def get_bot(self):
+            return None
+
+    reply = await _llm_respond(_NullUpdate(), messages)
+    _save_history(chat_id, user_msg, reply)
+    return reply
+
+
+def process_dashboard_message(user_msg: str) -> str:
+    """Blocking call from Flask — submits to bot event loop and waits for reply."""
+    if bot_event_loop is None:
+        # Fallback: run in a fresh event loop (e.g. during tests or before init)
+        return asyncio.run(_process_dashboard_message_async(user_msg))
+    future = asyncio.run_coroutine_threadsafe(
+        _process_dashboard_message_async(user_msg), bot_event_loop
+    )
+    return future.result(timeout=60)
+
+
 def main():
     """Start the bot + dashboard (webhook mode)."""
     from dashboard import app as flask_app, register_webhook

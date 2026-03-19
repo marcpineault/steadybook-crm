@@ -352,6 +352,25 @@ def api_conversation_thread(phone):
     return jsonify([dict(r) for r in rows])
 
 
+@app.route("/api/chat", methods=["POST"])
+@_require_auth
+def api_chat():
+    """Send a message to the bot and return its reply."""
+    data = request.get_json(silent=True) or {}
+    user_msg = (data.get("message") or "").strip()
+    if not user_msg:
+        return jsonify({"error": "message required"}), 400
+    if len(user_msg) > 4000:
+        return jsonify({"error": "message too long"}), 400
+    try:
+        import bot as _bot_module
+        reply = _bot_module.process_dashboard_message(user_msg)
+        return jsonify({"reply": reply})
+    except Exception as e:
+        logger.exception("Dashboard chat error")
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/conversations/<path:phone>/send", methods=["POST"])
 @_require_auth
 def api_send_sms(phone):
@@ -2601,6 +2620,32 @@ tr:hover {{ background: #f8f9fa; }}
 
 </div>
 
+<!-- ══════════ FLOATING CHAT WIDGET ══════════ -->
+<div id="chatBubble" onclick="toggleChat()"
+    style="position:fixed;bottom:24px;right:24px;width:52px;height:52px;border-radius:50%;background:#8e44ad;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 16px rgba(142,68,173,0.4);z-index:9000;font-size:22px;user-select:none">
+    &#x1F916;
+</div>
+
+<div id="chatPanel"
+    style="position:fixed;bottom:88px;right:24px;width:380px;max-height:520px;background:#fff;border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,0.18);display:none;flex-direction:column;z-index:9000;overflow:hidden">
+    <div style="padding:14px 18px;background:#8e44ad;color:#fff;display:flex;justify-content:space-between;align-items:center;border-radius:16px 16px 0 0">
+        <span style="font-weight:700;font-size:15px">CRM Assistant</span>
+        <span onclick="toggleChat()" style="cursor:pointer;font-size:18px;opacity:0.8">&#10005;</span>
+    </div>
+    <div id="chatMessages" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px;min-height:200px;max-height:360px">
+        <div id="chatWelcome" style="background:#f5edfb;border-radius:10px;padding:12px 14px;font-size:13px;color:#6c3483">
+            Hey Marc! Ask me anything — add prospects, log calls, check pipeline, draft follow-ups.
+        </div>
+    </div>
+    <div style="padding:10px 12px;border-top:1px solid #eee;display:flex;gap:8px">
+        <textarea id="chatInput" rows="2" placeholder="Ask the bot..."
+            style="flex:1;padding:9px 11px;border:1px solid #ddd;border-radius:8px;font-size:14px;resize:none;font-family:inherit"
+            onkeydown="if(event.key==='Enter'&&!event.shiftKey){{event.preventDefault();sendChatMessage()}}"></textarea>
+        <button onclick="sendChatMessage()"
+            style="background:#8e44ad;color:#fff;border:none;border-radius:8px;padding:9px 14px;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap;align-self:flex-end">Send</button>
+    </div>
+</div>
+
 <!-- Edit Modal -->
 <div class="modal-overlay" id="editModal">
 <div class="modal">
@@ -3744,6 +3789,50 @@ function refreshCurrentThread() {{
     _convLoaded = false;
     loadConversations();
     loadThread(_activePhone);
+}}
+
+// ══════════════════════════════════════
+// FLOATING CHAT WIDGET
+// ══════════════════════════════════════
+function toggleChat() {{
+    const panel = document.getElementById('chatPanel');
+    const open = panel.style.display !== 'none';
+    panel.style.display = open ? 'none' : 'flex';
+    if (!open) document.getElementById('chatInput').focus();
+}}
+
+function sendChatMessage() {{
+    const input = document.getElementById('chatInput');
+    const msg = input.value.trim();
+    if (!msg) return;
+    input.value = '';
+    _chatAppend('user', msg);
+    const thinking = _chatAppend('bot', '...');
+    const btn = document.querySelector('#chatPanel button');
+    btn.disabled = true;
+    fetch('/api/chat', {{
+        method: 'POST',
+        headers: {{ 'Content-Type': 'application/json', 'X-CSRF-Token': window._csrfToken }},
+        body: JSON.stringify({{ message: msg }})
+    }})
+    .then(r => r.json())
+    .then(function(data) {{
+        thinking.textContent = data.reply || data.error || 'Something went wrong.';
+    }})
+    .catch(function() {{ thinking.textContent = 'Network error.'; }})
+    .finally(function() {{ btn.disabled = false; }});
+}}
+
+function _chatAppend(role, text) {{
+    const container = document.getElementById('chatMessages');
+    const bubble = _mk('div', 'padding:10px 13px;border-radius:10px;font-size:13px;line-height:1.5;max-width:90%;word-break:break-word;' +
+        (role === 'user'
+            ? 'background:#8e44ad;color:#fff;align-self:flex-end;'
+            : 'background:#f5f5f5;color:#2c3e50;align-self:flex-start;white-space:pre-wrap;'));
+    bubble.textContent = text;
+    container.appendChild(bubble);
+    container.scrollTop = container.scrollHeight;
+    return bubble;
 }}
 
 function sendConvMessage() {{
