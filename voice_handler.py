@@ -51,9 +51,9 @@ Return a JSON object with this exact structure:
 
 Field rules for new financial fields:
 - "aum": dollar amount of investments Marc manages for this client (e.g. "she has $400K in investments" → 400000). null if not mentioned.
-- "insurance_premium": dollar amount the client pays monthly for their policy (e.g. "premium is $180/month" → 180). null if not mentioned.
+- "insurance_premium": the client's monthly premium amount. Always normalize to monthly: "$180/month" → 180, "$2,160/year" → 180 (divide annual by 12). null if not mentioned.
 - "insurance_commission": dollar amount Marc earns on this policy (e.g. "I'll earn $2,400 on this" → 2400). null if not mentioned.
-- Extract all amounts as plain numbers. Convert spoken amounts: "four hundred K" → 400000, "$1,200/year" → 1200.
+- Extract all amounts as plain numbers. Convert spoken amounts: "four hundred K" → 400000, "two thousand" → 2000.
 
 Rules:
 - Extract ALL people mentioned, including referrals ("his brother", "her friend", etc.)
