@@ -75,3 +75,88 @@ def test_voice_extraction_prompt_contains_financial_terms():
     assert '"aum"' in prompt
     assert '"insurance_premium"' in prompt
     assert '"insurance_commission"' in prompt
+
+
+def test_parse_extraction_response_with_financial_fields():
+    from voice_handler import parse_extraction_response
+    import json
+    raw = json.dumps({
+        "prospects": [{
+            "name": "John Smith",
+            "product": "Life Insurance",
+            "notes": "Has large investment portfolio",
+            "action_items": "Send illustration",
+            "source": "voice_note",
+            "aum": 450000,
+            "insurance_premium": 180,
+            "insurance_commission": 2400,
+        }]
+    })
+    result = parse_extraction_response(raw)
+    assert len(result) == 1
+    assert result[0]["aum"] == 450000
+    assert result[0]["insurance_premium"] == 180
+    assert result[0]["insurance_commission"] == 2400
+
+
+def test_parse_extraction_response_null_financial_fields():
+    from voice_handler import parse_extraction_response
+    import json
+    raw = json.dumps({
+        "prospects": [{
+            "name": "Jane Doe",
+            "product": "Auto Insurance",
+            "notes": "Wants quote",
+            "action_items": "",
+            "source": "voice_note",
+            "aum": None,
+            "insurance_premium": None,
+            "insurance_commission": None,
+        }]
+    })
+    result = parse_extraction_response(raw)
+    assert result[0].get("aum") is None
+    assert result[0].get("insurance_premium") is None
+    assert result[0].get("insurance_commission") is None
+
+
+def test_extract_and_update_writes_aum_and_revenue():
+    from unittest.mock import patch, MagicMock
+    import json
+    import asyncio
+    import db
+
+    ai_response = json.dumps({
+        "prospects": [{
+            "name": "Sarah Chen",
+            "product": "Wealth Management",
+            "notes": "Has $450K AUM with RBC, wants to transfer",
+            "action_items": "Follow up next week",
+            "source": "voice_note",
+            "priority": "Hot",
+            "stage": "Discovery Call",
+            "phone": "",
+            "email": "",
+            "aum": 450000,
+            "insurance_premium": None,
+            "insurance_commission": 2400,
+        }]
+    })
+
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = ai_response
+
+    with patch("voice_handler.client") as mock_client, \
+         patch("intake._score_and_schedule"), \
+         patch("memory_engine.extract_facts_from_interaction"), \
+         patch("follow_up.generate_follow_up_draft", return_value=None):
+        mock_client.chat.completions.create.return_value = mock_response
+        result = asyncio.run(
+            __import__("voice_handler").extract_and_update("Sarah has $450K in investments and I'll earn $2,400")
+        )
+
+    prospect = db.get_prospect_by_name("Sarah Chen")
+    assert prospect is not None
+    assert prospect["aum"] == 450000
+    assert prospect["revenue"] == 2400

@@ -178,12 +178,18 @@ async def extract_and_update(transcript: str, bot=None, source: str = "voice_not
             combined = f"{old_notes} | {tag} {new_notes}"
             if action_items:
                 combined += f" | Action: {action_items}"
+            if p.get("insurance_premium") is not None:
+                combined += f" | Premium: ${p['insurance_premium']}/month"
 
             updates = {"notes": combined.strip(" |")}
             if p.get("stage") and p["stage"] != "New Lead":
                 updates["stage"] = p["stage"]
             if p.get("priority"):
                 updates["priority"] = p["priority"]
+            if p.get("aum") is not None:
+                updates["aum"] = p["aum"]
+            if p.get("insurance_commission") is not None:
+                updates["revenue"] = p["insurance_commission"]
 
             db.update_prospect(name, updates)
             results.append(f"Updated {existing['name']} — added {source_label} details")
@@ -192,6 +198,8 @@ async def extract_and_update(transcript: str, bot=None, source: str = "voice_not
             notes = p.get("notes", "")
             if coworker:
                 notes = f"{notes} | Added by {coworker}" if notes else f"Added by {coworker}"
+            if p.get("insurance_premium") is not None:
+                notes = f"{notes} | Premium: ${p['insurance_premium']}/month" if notes else f"Premium: ${p['insurance_premium']}/month"
             db.add_prospect({
                 "name": name,
                 "phone": p.get("phone", ""),
@@ -201,6 +209,8 @@ async def extract_and_update(transcript: str, bot=None, source: str = "voice_not
                 "stage": p.get("stage", "New Lead"),
                 "product": p.get("product", ""),
                 "notes": notes,
+                "aum": p.get("aum"),
+                "revenue": p.get("insurance_commission"),
             })
             # Score and schedule follow-up for new prospects
             from intake import _score_and_schedule
