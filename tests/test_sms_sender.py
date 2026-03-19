@@ -1,100 +1,93 @@
-"""Tests for Sendblue SMS sender module."""
+"""Tests for Twilio SMS sender module."""
+import importlib
 import os
 import sys
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 
 def test_send_sms_success():
-    """send_sms() should POST to Sendblue API with correct headers and return message_handle."""
-    import importlib
+    """send_sms() should call Twilio and return the message SID."""
     import sms_sender
 
     with patch.dict(os.environ, {
-        "SENDBLUE_API_KEY": "sb_test_key",
-        "SENDBLUE_API_SECRET": "sb_test_secret",
+        "TWILIO_ACCOUNT_SID": "ACtest123",
+        "TWILIO_AUTH_TOKEN": "authtoken123",
+        "TWILIO_FROM_NUMBER": "+15190001111",
     }):
         importlib.reload(sms_sender)
 
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"message_handle": "msg_abc123"}
+        mock_message = MagicMock()
+        mock_message.sid = "SM_test_sid_abc123"
 
-        with patch("sms_sender.requests") as mock_requests:
-            mock_requests.post.return_value = mock_response
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = mock_message
 
-            result = sms_sender.send_sms(
-                to="5198001234",
-                body="Hi, just following up on our conversation.",
-            )
+        with patch("sms_sender.Client", return_value=mock_client):
+            result = sms_sender.send_sms(to="5198001234", body="Hey John, looking forward to our call!")
 
-    assert result == "msg_abc123"
-    mock_requests.post.assert_called_once()
-    call_kwargs = mock_requests.post.call_args
-    headers = call_kwargs[1]["headers"] if call_kwargs[1] else call_kwargs[0][1]
-    assert headers["sb-api-key-id"] == "sb_test_key"
-    assert headers["sb-api-secret-key"] == "sb_test_secret"
-    payload = call_kwargs[1]["json"] if call_kwargs[1] else call_kwargs[0][2]
-    assert payload["number"] == "+15198001234"
+    assert result == "SM_test_sid_abc123"
+    mock_client.messages.create.assert_called_once()
+    call_kwargs = mock_client.messages.create.call_args[1]
+    assert call_kwargs["to"] == "+15198001234"
+    assert call_kwargs["from_"] == "+15190001111"
+    assert "John" in call_kwargs["body"]
 
 
 def test_send_sms_api_failure():
-    """send_sms() should return None on API error."""
-    import importlib
+    """send_sms() should return None on Twilio error."""
     import sms_sender
 
     with patch.dict(os.environ, {
-        "SENDBLUE_API_KEY": "sb_test_key",
-        "SENDBLUE_API_SECRET": "sb_test_secret",
+        "TWILIO_ACCOUNT_SID": "ACtest123",
+        "TWILIO_AUTH_TOKEN": "authtoken123",
+        "TWILIO_FROM_NUMBER": "+15190001111",
     }):
         importlib.reload(sms_sender)
 
-        with patch("sms_sender.requests") as mock_requests:
-            mock_requests.post.side_effect = Exception("Network error")
+        mock_client = MagicMock()
+        mock_client.messages.create.side_effect = Exception("Twilio error")
 
-            result = sms_sender.send_sms(
-                to="5198001234",
-                body="Test body",
-            )
+        with patch("sms_sender.Client", return_value=mock_client):
+            result = sms_sender.send_sms(to="5198001234", body="Test")
+
     assert result is None
 
 
-@patch.dict(os.environ, {"SENDBLUE_API_KEY": ""})
 def test_send_sms_no_credentials():
-    """send_sms() should return None if SENDBLUE_API_KEY is not set."""
-    import importlib
+    """send_sms() should return None without making a call if credentials are missing."""
     import sms_sender
-    importlib.reload(sms_sender)
 
-    with patch("sms_sender.requests") as mock_requests:
-        result = sms_sender.send_sms(
-            to="5198001234",
-            body="Test body",
-        )
+    with patch.dict(os.environ, {
+        "TWILIO_ACCOUNT_SID": "",
+        "TWILIO_AUTH_TOKEN": "",
+        "TWILIO_FROM_NUMBER": "",
+    }):
+        importlib.reload(sms_sender)
+
+        with patch("sms_sender.Client") as mock_client_class:
+            result = sms_sender.send_sms(to="5198001234", body="Test")
+            mock_client_class.assert_not_called()
+
     assert result is None
-    mock_requests.post.assert_not_called()
 
 
 def test_normalize_phone_10_digit():
-    """10-digit number should get +1 prefix."""
     from sms_sender import _normalize_phone
     assert _normalize_phone("5198001234") == "+15198001234"
 
 
 def test_normalize_phone_11_digit():
-    """11-digit number starting with 1 should get + prefix."""
     from sms_sender import _normalize_phone
     assert _normalize_phone("15198001234") == "+15198001234"
 
 
 def test_normalize_phone_already_e164():
-    """+1XXXXXXXXXX should remain unchanged."""
     from sms_sender import _normalize_phone
     assert _normalize_phone("+15198001234") == "+15198001234"
 
 
 def test_normalize_phone_formatted():
-    """Formatted number like (519) 800-1234 should normalize to +15198001234."""
     from sms_sender import _normalize_phone
     assert _normalize_phone("(519) 800-1234") == "+15198001234"
