@@ -61,3 +61,17 @@ def test_parse_extraction_response_invalid_json():
     from voice_handler import parse_extraction_response
     result = parse_extraction_response("this is not json at all")
     assert result == []
+
+
+def test_voice_extraction_prompt_contains_financial_terms():
+    from voice_handler import VOICE_EXTRACTION_SYSTEM_PROMPT
+    prompt = VOICE_EXTRACTION_SYSTEM_PROMPT
+    # Domain glossary
+    assert "AUM" in prompt
+    assert "Assets Under Management" in prompt
+    assert "insurance premium" in prompt.lower()
+    assert "insurance commission" in prompt.lower()
+    # New JSON fields
+    assert '"aum"' in prompt
+    assert '"insurance_premium"' in prompt
+    assert '"insurance_commission"' in prompt

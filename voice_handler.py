@@ -22,6 +22,11 @@ CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
 VOICE_EXTRACTION_SYSTEM_PROMPT = """You are a sales assistant for Marc, a financial advisor at Co-operators in London, Ontario.
 
+DOMAIN GLOSSARY (Co-operators context):
+- AUM (Assets Under Management): the total dollar value of investments/wealth Marc manages for this client
+- Insurance premium: what the client pays monthly or annually for their insurance policy
+- Insurance commission: what Marc earns on this policy (his revenue from the sale)
+
 Analyze the voice note transcript provided by the user and extract ALL prospects mentioned (including referrals).
 
 Return a JSON object with this exact structure:
@@ -36,10 +41,19 @@ Return a JSON object with this exact structure:
       "phone": "",
       "email": "",
       "priority": "Hot / Warm / Cold (based on interest level)",
-      "stage": "New Lead / Contacted / Discovery Call / Needs Analysis (based on context)"
+      "stage": "New Lead / Contacted / Discovery Call / Needs Analysis (based on context)",
+      "aum": null,
+      "insurance_premium": null,
+      "insurance_commission": null
     }
   ]
 }
+
+Field rules for new financial fields:
+- "aum": dollar amount of investments Marc manages for this client (e.g. "she has $400K in investments" → 400000). null if not mentioned.
+- "insurance_premium": dollar amount the client pays monthly for their policy (e.g. "premium is $180/month" → 180). null if not mentioned.
+- "insurance_commission": dollar amount Marc earns on this policy (e.g. "I'll earn $2,400 on this" → 2400). null if not mentioned.
+- Extract all amounts as plain numbers. Convert spoken amounts: "four hundred K" → 400000, "$1,200/year" → 1200.
 
 Rules:
 - Extract ALL people mentioned, including referrals ("his brother", "her friend", etc.)
