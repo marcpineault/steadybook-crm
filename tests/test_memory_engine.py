@@ -195,3 +195,12 @@ def test_backfill_from_existing_data(mock_client):
     mock_client.chat.completions.create.return_value = mock_response
     count = memory_engine.backfill_prospect(pid, "Sarah Chen")
     assert count > 0
+
+
+def test_memory_extraction_prompt_covers_financial_terms():
+    prompt = memory_engine.EXTRACTION_SYSTEM_PROMPT
+    assert "AUM" in prompt
+    assert "insurance premium" in prompt.lower()
+    assert "insurance commission" in prompt.lower()
+    # Still covers the existing financial_context category
+    assert "financial_context" in prompt

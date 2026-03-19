@@ -123,7 +123,7 @@ EXTRACTION_SYSTEM_PROMPT = """Extract factual information about the client from 
 
 CATEGORIES (use exactly these):
 - life_context: family, kids, career, hobbies, living situation, life events
-- financial_context: risk tolerance, income bracket, assets, debts, retirement timeline, coverage gaps
+- financial_context: risk tolerance, income bracket, AUM (total investments Marc manages for this client), insurance premium (what the client pays for their policy), insurance commission (what Marc earns on this policy), assets, debts, retirement timeline, coverage gaps
 - communication_prefs: preferred contact method, best times, response patterns, tone preferences
 - relationship_signals: how they found us, referral source, warmth level, trust indicators
 - conversation_history: key things said, objections raised, questions asked, promises made
