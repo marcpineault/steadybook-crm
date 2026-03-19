@@ -62,13 +62,13 @@ def _rows_to_dicts(rows):
 # ── Numeric parsing ──
 
 def _parse_numeric(val):
-    """Parse a numeric value, stripping $ and commas. Returns float (0 if empty/invalid)."""
+    """Parse a numeric value, stripping $ and commas. Returns float, or None if empty/invalid."""
     if val is None or val == "":
-        return 0.0
+        return None
     try:
         return float(str(val).replace("$", "").replace(",", ""))
     except (ValueError, TypeError):
-        return 0.0
+        return None
 
 
 def _parse_date_val(val):
