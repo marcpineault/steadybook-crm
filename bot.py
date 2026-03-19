@@ -2583,6 +2583,37 @@ async def handle_draft_callback(update, context):
                     )
             else:
                 await query.edit_message_text(f"✅ APPROVED (no phone on file) — #{queue_id}\n\n{content}")
+        elif draft.get("channel") == "sms_reply_draft":
+            import sms_sender, sms_conversations
+            _ctx = draft.get("context", "")
+            _phone = ""
+            if "phone:" in _ctx:
+                try:
+                    _phone = _ctx.split("phone:")[1].split()[0].strip()
+                except (IndexError, AttributeError):
+                    _phone = ""
+            if _phone:
+                sid = sms_sender.send_sms(to=_phone, body=content)
+                if sid:
+                    sms_conversations.log_message(
+                        phone=_phone,
+                        body=content,
+                        direction="outbound",
+                        twilio_sid=sid,
+                        prospect_id=draft.get("prospect_id"),
+                    )
+                    await query.edit_message_text(
+                        f"✅ Reply sent — #{queue_id}\nSID: {sid}"
+                    )
+                else:
+                    await query.edit_message_text(
+                        f"❌ SMS send failed — #{queue_id}\n\n"
+                        f"Send manually:\n{_phone}\n\n{content}"
+                    )
+            else:
+                await query.edit_message_text(
+                    f"✅ APPROVED (no phone in context) — #{queue_id}\n\n{content}"
+                )
         else:
             copy_target = "Publer" if draft.get("type") == "content_post" else "Outlook"
             await query.edit_message_text(

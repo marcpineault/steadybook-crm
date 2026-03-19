@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Calm Money AI — System Architecture</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0a0f;
+  --surface: #12121a;
+  --surface2: #1a1a26;
+  --border: #2a2a3a;
+  --text: #e8e6f0;
+  --text-dim: #8888a0;
+  --accent: #00e5a0;
+  --accent2: #00c4ff;
+  --accent3: #ff6b9d;
+  --accent4: #ffd166;
+  --glow: rgba(0, 229, 160, 0.15);
+  --glow2: rgba(0, 196, 255, 0.15);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'DM Sans', sans-serif;
+  overflow-x: hidden;
+  line-height: 1.6;
+}
+
+/* Noise overlay */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 9999;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 2rem;
+}
+
+/* ─── HERO ─── */
+.hero {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  position: relative;
+  padding: 4rem 2rem;
+}
+
+.hero-badge {
+  font-family: 'Syne', sans-serif;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: var(--glow);
+  border: 1px solid rgba(0, 229, 160, 0.2);
+  padding: 0.5rem 1.5rem;
+  border-radius: 100px;
+  margin-bottom: 2rem;
+  animation: fadeDown 0.8s ease both;
+}
+
+.hero h1 {
+  font-family: 'Syne', sans-serif;
+  font-size: clamp(3rem, 8vw, 6rem);
+  font-weight: 800;
+  line-height: 1.05;
+  margin-bottom: 1.5rem;
+  animation: fadeDown 0.8s ease 0.1s both;
+}
+
+.hero h1 .gradient {
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.hero p {
+  font-size: 1.15rem;
+  color: var(--text-dim);
+  max-width: 600px;
+  animation: fadeDown 0.8s ease 0.2s both;
+  font-weight: 300;
+}
+
+.hero-stats {
+  display: flex;
+  gap: 3rem;
+  margin-top: 3rem;
+  animation: fadeDown 0.8s ease 0.3s both;
+}
+
+.hero-stat {
+  text-align: center;
+}
+
+.hero-stat .num {
+  font-family: 'Syne', sans-serif;
+  font-size: 2.5rem;
+  font-weight: 800;
+  color: var(--accent);
+}
+
+.hero-stat .label {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-top: 0.25rem;
+}
+
+/* Floating orbs */
+.orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.4;
+  animation: float 8s ease-in-out infinite;
+}
+
+.orb-1 {
+  width: 400px;
+  height: 400px;
+  background: var(--accent);
+  top: 10%;
+  left: -10%;
+  opacity: 0.08;
+}
+
+.orb-2 {
+  width: 300px;
+  height: 300px;
+  background: var(--accent2);
+  bottom: 10%;
+  right: -5%;
+  opacity: 0.06;
+  animation-delay: -4s;
+}
+
+/* ─── SECTION HEADERS ─── */
+.section {
+  padding: 6rem 0;
+  position: relative;
+}
+
+.section-label {
+  font-family: 'Syne', sans-serif;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 0.75rem;
+}
+
+.section h2 {
+  font-family: 'Syne', sans-serif;
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 700;
+  margin-bottom: 1rem;
+  line-height: 1.15;
+}
+
+.section .subtitle {
+  color: var(--text-dim);
+  font-size: 1.05rem;
+  max-width: 550px;
+  font-weight: 300;
+}
+
+/* ─── FLOW DIAGRAM ─── */
+.flow {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  margin-top: 3rem;
+  position: relative;
+}
+
+.flow::before {
+  content: '';
+  position: absolute;
+  left: 2rem;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: linear-gradient(to bottom, var(--accent), var(--accent2), var(--accent3));
+  opacity: 0.3;
+}
+
+.flow-step {
+  display: flex;
+  gap: 1.5rem;
+  align-items: flex-start;
+  padding-left: 0.5rem;
+  opacity: 0;
+  animation: slideIn 0.6s ease both;
+}
+
+.flow-step:nth-child(1) { animation-delay: 0.1s; }
+.flow-step:nth-child(2) { animation-delay: 0.2s; }
+.flow-step:nth-child(3) { animation-delay: 0.3s; }
+.flow-step:nth-child(4) { animation-delay: 0.4s; }
+.flow-step:nth-child(5) { animation-delay: 0.5s; }
+.flow-step:nth-child(6) { animation-delay: 0.6s; }
+.flow-step:nth-child(7) { animation-delay: 0.7s; }
+
+.flow-dot {
+  width: 3rem;
+  height: 3rem;
+  min-width: 3rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  position: relative;
+  z-index: 1;
+}
+
+.flow-dot.green { background: rgba(0, 229, 160, 0.15); border: 2px solid var(--accent); }
+.flow-dot.blue { background: rgba(0, 196, 255, 0.15); border: 2px solid var(--accent2); }
+.flow-dot.pink { background: rgba(255, 107, 157, 0.15); border: 2px solid var(--accent3); }
+.flow-dot.gold { background: rgba(255, 209, 102, 0.15); border: 2px solid var(--accent4); }
+
+.flow-content {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem;
+  flex: 1;
+  transition: border-color 0.3s, transform 0.3s;
+}
+
+.flow-content:hover {
+  border-color: var(--accent);
+  transform: translateX(4px);
+}
+
+.flow-content h3 {
+  font-family: 'Syne', sans-serif;
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+}
+
+.flow-content p {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  font-weight: 300;
+}
+
+/* ─── ARCHITECTURE GRID ─── */
+.arch-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.25rem;
+  margin-top: 3rem;
+}
+
+.arch-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 2rem;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.4s ease;
+}
+
+.arch-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  border-radius: 16px 16px 0 0;
+}
+
+.arch-card.green::before { background: linear-gradient(90deg, var(--accent), transparent); }
+.arch-card.blue::before { background: linear-gradient(90deg, var(--accent2), transparent); }
+.arch-card.pink::before { background: linear-gradient(90deg, var(--accent3), transparent); }
+.arch-card.gold::before { background: linear-gradient(90deg, var(--accent4), transparent); }
+
+.arch-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-4px);
+  box-shadow: 0 20px 60px rgba(0, 229, 160, 0.08);
+}
+
+.arch-card .icon {
+  font-size: 2rem;
+  margin-bottom: 1rem;
+}
+
+.arch-card h3 {
+  font-family: 'Syne', sans-serif;
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.arch-card p {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  font-weight: 300;
+  line-height: 1.6;
+}
+
+.arch-card .tag {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  padding: 0.25rem 0.75rem;
+  border-radius: 100px;
+  margin-top: 1rem;
+}
+
+.tag.green { background: rgba(0, 229, 160, 0.1); color: var(--accent); border: 1px solid rgba(0, 229, 160, 0.2); }
+.tag.blue { background: rgba(0, 196, 255, 0.1); color: var(--accent2); border: 1px solid rgba(0, 196, 255, 0.2); }
+.tag.pink { background: rgba(255, 107, 157, 0.1); color: var(--accent3); border: 1px solid rgba(255, 107, 157, 0.2); }
+.tag.gold { background: rgba(255, 209, 102, 0.1); color: var(--accent4); border: 1px solid rgba(255, 209, 102, 0.2); }
+
+/* ─── SCHEDULE TIMELINE ─── */
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-top: 3rem;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.time-block {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.3s;
+}
+
+.time-block:last-child { border-bottom: none; }
+
+.time-block:hover { background: var(--surface); }
+
+.time-label {
+  font-family: 'Syne', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid var(--border);
+  position: relative;
+}
+
+.time-label .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  position: absolute;
+  right: -5px;
+}
+
+.time-info {
+  padding: 1.25rem 1.5rem;
+}
+
+.time-info h4 {
+  font-family: 'Syne', sans-serif;
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.time-info p {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  font-weight: 300;
+}
+
+/* ─── BIG NUMBERS ─── */
+.numbers {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1.25rem;
+  margin-top: 3rem;
+}
+
+.number-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 2rem;
+  text-align: center;
+  transition: all 0.3s;
+}
+
+.number-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--accent);
+}
+
+.number-card .big {
+  font-family: 'Syne', sans-serif;
+  font-size: 2.5rem;
+  font-weight: 800;
+  line-height: 1;
+  margin-bottom: 0.5rem;
+}
+
+.number-card .big.green { color: var(--accent); }
+.number-card .big.blue { color: var(--accent2); }
+.number-card .big.pink { color: var(--accent3); }
+.number-card .big.gold { color: var(--accent4); }
+
+.number-card .desc {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* ─── CONNECTION DIAGRAM ─── */
+.connections {
+  margin-top: 3rem;
+  position: relative;
+}
+
+.conn-row {
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.conn-node {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem 1.5rem;
+  text-align: center;
+  min-width: 140px;
+  transition: all 0.3s;
+  position: relative;
+}
+
+.conn-node:hover {
+  border-color: var(--accent);
+  transform: scale(1.05);
+}
+
+.conn-node.primary {
+  background: linear-gradient(135deg, rgba(0, 229, 160, 0.1), rgba(0, 196, 255, 0.1));
+  border-color: var(--accent);
+  padding: 1.5rem 2.5rem;
+}
+
+.conn-node .emoji { font-size: 1.5rem; margin-bottom: 0.5rem; }
+.conn-node .name {
+  font-family: 'Syne', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.conn-node .detail {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  margin-top: 0.2rem;
+}
+
+.conn-arrow {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 1.5rem;
+  margin: 0.5rem 0;
+  opacity: 0.4;
+}
+
+/* ─── FOOTER ─── */
+.footer {
+  padding: 4rem 0;
+  text-align: center;
+  border-top: 1px solid var(--border);
+  margin-top: 4rem;
+}
+
+.footer p {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  font-weight: 300;
+}
+
+.footer .brand {
+  font-family: 'Syne', sans-serif;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+/* ─── ANIMATIONS ─── */
+@keyframes fadeDown {
+  from { opacity: 0; transform: translateY(-20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes float {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(20px, -20px); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+.pulse { animation: pulse 2s ease-in-out infinite; }
+
+/* ─── RESPONSIVE ─── */
+@media (max-width: 768px) {
+  .hero-stats { flex-direction: column; gap: 1.5rem; }
+  .numbers { grid-template-columns: repeat(2, 1fr); }
+  .time-block { grid-template-columns: 90px 1fr; }
+  .conn-row { flex-direction: column; align-items: center; }
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════ HERO ═══════════ -->
+<section class="hero">
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="hero-badge">Autonomous AI System</div>
+  <h1>Calm Money <span class="gradient">AI</span></h1>
+  <p>An intelligent business partner that works 24/7 — managing leads, optimizing content, improving itself, and growing Marc's financial planning practice while he sleeps.</p>
+  <div class="hero-stats">
+    <div class="hero-stat">
+      <div class="num">258</div>
+      <div class="label">Tests Passing</div>
+    </div>
+    <div class="hero-stat">
+      <div class="num">24/7</div>
+      <div class="label">Autonomous</div>
+    </div>
+    <div class="hero-stat">
+      <div class="num">15+</div>
+      <div class="label">Modules</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ HOW A LEAD BECOMES A CLIENT ═══════════ -->
+<section class="section">
+  <div class="container">
+    <div class="section-label">The Journey</div>
+    <h2>How a Lead Becomes a Client</h2>
+    <p class="subtitle">From first touch to signed deal — every step is AI-assisted with human approval gates.</p>
+
+    <div class="flow">
+      <div class="flow-step">
+        <div class="flow-dot green">🌐</div>
+        <div class="flow-content">
+          <h3>Lead Arrives</h3>
+          <p>Website form, quiz, referral email, or Outlook booking. Automatically captured, scored, and entered into the pipeline.</p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-dot blue">🧠</div>
+        <div class="flow-content">
+          <h3>AI Analyzes & Scores</h3>
+          <p>GPT extracts facts into the Memory Engine. Lead scoring ranks by deal size, urgency, stage probability, and historical win rates.</p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-dot green">✉️</div>
+        <div class="flow-content">
+          <h3>Auto-Draft Follow-Up</h3>
+          <p>AI generates a personalized follow-up email using client memory, conversation history, and learning from past performance.</p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-dot gold">👆</div>
+        <div class="flow-content">
+          <h3>Marc Approves via Telegram</h3>
+          <p>One tap: Approve, Skip, or Snooze. Every action feeds the learning loop. Approved emails auto-send via Resend for website leads.</p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-dot blue">📊</div>
+        <div class="flow-content">
+          <h3>Engagement Tracked</h3>
+          <p>Email opens, clicks, bounces tracked via Resend webhooks. Response outcomes logged. The system learns what works.</p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-dot pink">📋</div>
+        <div class="flow-content">
+          <h3>Meeting Prep Auto-Generated</h3>
+          <p>1 hour before any meeting, Marc gets a prep doc: client snapshot, interaction history, recommended agenda, objection prep, personal touch.</p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-dot green">🎉</div>
+        <div class="flow-content">
+          <h3>Deal Closed → Referral Loop</h3>
+          <p>Win/loss logged. At 2-4 weeks and 3-4 months post-close, the morning briefing surfaces referral opportunities automatically.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ SYSTEM MODULES ═══════════ -->
+<section class="section">
+  <div class="container">
+    <div class="section-label">The Brain</div>
+    <h2>What Powers It All</h2>
+    <p class="subtitle">15+ specialized modules working together — each with a single job, all orchestrated through Telegram.</p>
+
+    <div class="arch-grid">
+      <div class="arch-card green">
+        <div class="icon">🧠</div>
+        <h3>Memory Engine</h3>
+        <p>Extracts relationship facts from every interaction. Knows birthdays, kids' names, financial goals, communication preferences.</p>
+        <span class="tag green">memory_engine.py</span>
+      </div>
+      <div class="arch-card blue">
+        <div class="icon">📈</div>
+        <h3>Lead Scoring</h3>
+        <p>Ranks every prospect by deal size, urgency, stage probability, and actual win rates from historical data. Adapts over time.</p>
+        <span class="tag blue">scoring.py</span>
+      </div>
+      <div class="arch-card pink">
+        <div class="icon">🛡️</div>
+        <h3>Compliance Filter</h3>
+        <p>Every outgoing message passes through GPT compliance check. No return promises, no misleading claims. Fail-safe: blocked if check fails.</p>
+        <span class="tag pink">compliance.py</span>
+      </div>
+      <div class="arch-card gold">
+        <div class="icon">✉️</div>
+        <h3>Follow-Up Drafts</h3>
+        <p>Auto-generates personalized follow-ups after every call or meeting. Uses memory context and learns from Marc's edit patterns.</p>
+        <span class="tag gold">follow_up.py</span>
+      </div>
+      <div class="arch-card green">
+        <div class="icon">📅</div>
+        <h3>Meeting Prep</h3>
+        <p>Client snapshot, interaction history, recommended agenda, objection prep, cross-sell opportunities — delivered 1 hour before the meeting.</p>
+        <span class="tag green">meeting_prep.py</span>
+      </div>
+      <div class="arch-card blue">
+        <div class="icon">🌱</div>
+        <h3>Nurture Sequences</h3>
+        <p>Multi-touch drip campaigns for cold leads. 4 touches over 25 days: educational → insight → soft ask → value add. Auto-offered for new prospects.</p>
+        <span class="tag blue">nurture.py</span>
+      </div>
+      <div class="arch-card pink">
+        <div class="icon">📊</div>
+        <h3>Analytics & Learning</h3>
+        <p>Tracks outcomes, response rates, approval patterns. Generates weekly insights and feeds learning context into every AI prompt.</p>
+        <span class="tag pink">analytics.py</span>
+      </div>
+      <div class="arch-card gold">
+        <div class="icon">🌐</div>
+        <h3>Website Integration</h3>
+        <p>calmmoney.ca forms → webhook → CRM pipeline. Quiz results, contact forms, and tool captures auto-create scored prospects.</p>
+        <span class="tag gold">webhook_intake.py</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ AUTONOMOUS SCHEDULE ═══════════ -->
+<section class="section">
+  <div class="container">
+    <div class="section-label">The Schedule</div>
+    <h2>What Happens While Marc Sleeps</h2>
+    <p class="subtitle">Two autonomous Claude Code sessions run daily — a deep nightly optimization and a morning intelligence brief.</p>
+
+    <div class="timeline">
+      <div class="time-block">
+        <div class="time-label" style="color: var(--accent2);">
+          12:00 AM
+          <div class="dot" style="background: var(--accent2);"></div>
+        </div>
+        <div class="time-info">
+          <h4>🔧 Deep Nightly Run</h4>
+          <p>Code improvement, test fixes, dependency security, SEO audit on calmmoney.ca, technical fixes, learning optimization, weekly blog drafts and keyword research</p>
+        </div>
+      </div>
+      <div class="time-block">
+        <div class="time-label" style="color: var(--accent);">
+          6:00 AM
+          <div class="dot" style="background: var(--accent);"></div>
+        </div>
+        <div class="time-info">
+          <h4>☀️ Morning Prep</h4>
+          <p>Overnight lead check, meeting context prep, re-engagement drafts for cold prospects, market scan, daily content idea</p>
+        </div>
+      </div>
+      <div class="time-block">
+        <div class="time-label" style="color: var(--accent4);">
+          8:00 AM
+          <div class="dot" style="background: var(--accent4);"></div>
+        </div>
+        <div class="time-info">
+          <h4>📋 Morning Briefing (Bot)</h4>
+          <p>Pipeline health score, priority moves, call list with talking points, referral opportunities, market events mapped to prospects</p>
+        </div>
+      </div>
+      <div class="time-block">
+        <div class="time-label" style="color: var(--accent3);">
+          9:00 AM
+          <div class="dot" style="background: var(--accent3);"></div>
+        </div>
+        <div class="time-info">
+          <h4>🔔 Smart Nag</h4>
+          <p>Overdue follow-ups, hot prospects going cold, stale deals — with 24hr dedup so the same prospect isn't flagged twice</p>
+        </div>
+      </div>
+      <div class="time-block">
+        <div class="time-label" style="color: var(--accent2);">
+          2:00 PM
+          <div class="dot" style="background: var(--accent2);"></div>
+        </div>
+        <div class="time-info">
+          <h4>📝 Afternoon Check</h4>
+          <p>Second nag pass + stale draft nudge. Any unreviewed drafts from the morning get surfaced one more time.</p>
+        </div>
+      </div>
+      <div class="time-block">
+        <div class="time-label" style="color: var(--accent);">
+          Sunday
+          <div class="dot" style="background: var(--accent);"></div>
+        </div>
+        <div class="time-info">
+          <h4>📊 Weekly Deep Dive</h4>
+          <p>SEO keyword research, competitor analysis, blog post generation, self-tuning report, prompt optimization, weekly insights digest</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ CONNECTIONS ═══════════ -->
+<section class="section">
+  <div class="container">
+    <div class="section-label">The Ecosystem</div>
+    <h2>Everything Connected</h2>
+    <p class="subtitle">The bot sits at the center, connecting Marc's tools, leads, and content into one intelligent system.</p>
+
+    <div class="connections">
+      <div class="conn-row">
+        <div class="conn-node">
+          <div class="emoji">🌐</div>
+          <div class="name">calmmoney.ca</div>
+          <div class="detail">Website + Quiz + Blog</div>
+        </div>
+        <div class="conn-node">
+          <div class="emoji">📧</div>
+          <div class="name">Outlook</div>
+          <div class="detail">Email + Bookings</div>
+        </div>
+        <div class="conn-node">
+          <div class="emoji">📱</div>
+          <div class="name">Telegram</div>
+          <div class="detail">Marc's Command Center</div>
+        </div>
+      </div>
+
+      <div class="conn-arrow">↕</div>
+
+      <div class="conn-row">
+        <div class="conn-node primary">
+          <div class="emoji">🦞</div>
+          <div class="name" style="font-size: 1.1rem;">Calm Money AI</div>
+          <div class="detail">CRM + Intelligence + Automation</div>
+        </div>
+      </div>
+
+      <div class="conn-arrow">↕</div>
+
+      <div class="conn-row">
+        <div class="conn-node">
+          <div class="emoji">🤖</div>
+          <div class="name">GPT-4.1</div>
+          <div class="detail">Drafts + Analysis</div>
+        </div>
+        <div class="conn-node">
+          <div class="emoji">📬</div>
+          <div class="name">Resend</div>
+          <div class="detail">Email Delivery + Tracking</div>
+        </div>
+        <div class="conn-node">
+          <div class="emoji">🗄️</div>
+          <div class="name">SQLite</div>
+          <div class="detail">Pipeline + Memory</div>
+        </div>
+        <div class="conn-node">
+          <div class="emoji">🚂</div>
+          <div class="name">Railway</div>
+          <div class="detail">Cloud Hosting</div>
+        </div>
+      </div>
+
+      <div class="conn-arrow">↕</div>
+
+      <div class="conn-row">
+        <div class="conn-node">
+          <div class="emoji">💻</div>
+          <div class="name">Spare Desktop</div>
+          <div class="detail">Autonomous Claude Code</div>
+        </div>
+        <div class="conn-node">
+          <div class="emoji">🔍</div>
+          <div class="name">SEO Engine</div>
+          <div class="detail">Keywords + Blog Drafts</div>
+        </div>
+        <div class="conn-node">
+          <div class="emoji">📈</div>
+          <div class="name">Self-Learning</div>
+          <div class="detail">Adapts from Outcomes</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ KEY NUMBERS ═══════════ -->
+<section class="section">
+  <div class="container">
+    <div class="section-label">The Impact</div>
+    <h2>By the Numbers</h2>
+
+    <div class="numbers">
+      <div class="number-card">
+        <div class="big green">4-6</div>
+        <div class="desc">Daily notifications<br>(down from 15-20)</div>
+      </div>
+      <div class="number-card">
+        <div class="big blue">258</div>
+        <div class="desc">Automated tests<br>passing</div>
+      </div>
+      <div class="number-card">
+        <div class="big pink">24/7</div>
+        <div class="desc">Autonomous<br>improvement</div>
+      </div>
+      <div class="number-card">
+        <div class="big gold">$0</div>
+        <div class="desc">Manual work<br>for admin tasks</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ FOOTER ═══════════ -->
+<footer class="footer">
+  <p>Built with <span class="brand">Claude Code</span> for Marc Pereira's financial planning practice at Co-operators, London, Ontario.</p>
+  <p style="margin-top: 0.5rem; font-size: 0.75rem; color: var(--text-dim);">calmmoney.ca — Retirement Planning, Insurance, Tax Optimization, Estate Planning</p>
+</footer>
+
+</body>
+</html>

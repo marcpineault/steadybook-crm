@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Calm Money AI — Integration Mind Map</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Inter', -apple-system, sans-serif;
+    background: #0f172a;
+    color: #e2e8f0;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* SVG canvas for lines */
+  .lines-svg {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .lines-svg line {
+    stroke-width: 2;
+    stroke-linecap: round;
+  }
+
+  .container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 40px 20px;
+    position: relative;
+  }
+
+  .header {
+    text-align: center;
+    margin-bottom: 60px;
+  }
+  .header h1 {
+    font-size: 2.2rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, #38bdf8, #818cf8, #c084fc);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 6px;
+  }
+  .header p {
+    color: #64748b;
+    font-size: 1rem;
+    font-weight: 300;
+  }
+
+  /* ── Mind Map Layout ── */
+  .mindmap {
+    position: relative;
+    min-height: 2000px;
+  }
+
+  /* Center hub */
+  .hub {
+    position: absolute;
+    left: 50%;
+    top: 80px;
+    transform: translateX(-50%);
+    width: 220px;
+    text-align: center;
+    z-index: 10;
+  }
+  .hub-circle {
+    width: 160px;
+    height: 160px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #1e293b, #334155);
+    border: 3px solid rgba(99, 102, 241, 0.5);
+    box-shadow: 0 0 40px rgba(99, 102, 241, 0.15), 0 0 80px rgba(99, 102, 241, 0.05);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 12px;
+  }
+  .hub-icon { font-size: 2.4rem; margin-bottom: 4px; }
+  .hub-title { font-size: 0.85rem; font-weight: 700; color: #a5b4fc; }
+  .hub-sub { font-size: 0.65rem; color: #64748b; margin-top: 2px; }
+  .hub-label {
+    font-size: 0.7rem;
+    color: #475569;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    font-weight: 600;
+  }
+
+  /* Section = a branch of the mind map */
+  .section {
+    margin-bottom: 24px;
+  }
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .section-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.4rem;
+    flex-shrink: 0;
+  }
+  .section-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+  }
+  .section-subtitle {
+    font-size: 0.75rem;
+    color: #64748b;
+  }
+
+  /* Cards grid */
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+  }
+  .card {
+    border-radius: 14px;
+    padding: 18px 20px;
+    position: relative;
+    transition: transform 0.15s;
+  }
+  .card:hover { transform: translateY(-2px); }
+  .card-name {
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card-name .badge {
+    font-size: 0.6rem;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .card-desc {
+    font-size: 0.78rem;
+    color: #94a3b8;
+    line-height: 1.5;
+    margin-bottom: 8px;
+  }
+  .card-flow {
+    font-size: 0.72rem;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    color: #64748b;
+    background: rgba(0,0,0,0.2);
+    padding: 8px 12px;
+    border-radius: 8px;
+    line-height: 1.6;
+  }
+  .card-flow .arrow { color: #475569; }
+
+  /* Color themes */
+  .theme-blue .section-icon { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
+  .theme-blue .section-title { color: #93c5fd; }
+  .theme-blue .card { background: rgba(59, 130, 246, 0.06); border: 1px solid rgba(59, 130, 246, 0.15); }
+  .theme-blue .card-name { color: #bfdbfe; }
+  .theme-blue .badge { background: rgba(59, 130, 246, 0.2); color: #93c5fd; }
+
+  .theme-teal .section-icon { background: rgba(20, 184, 166, 0.15); color: #2dd4bf; }
+  .theme-teal .section-title { color: #5eead4; }
+  .theme-teal .card { background: rgba(20, 184, 166, 0.06); border: 1px solid rgba(20, 184, 166, 0.15); }
+  .theme-teal .card-name { color: #99f6e4; }
+  .theme-teal .badge { background: rgba(20, 184, 166, 0.2); color: #5eead4; }
+
+  .theme-purple .section-icon { background: rgba(139, 92, 246, 0.15); color: #a78bfa; }
+  .theme-purple .section-title { color: #c4b5fd; }
+  .theme-purple .card { background: rgba(139, 92, 246, 0.06); border: 1px solid rgba(139, 92, 246, 0.15); }
+  .theme-purple .card-name { color: #ddd6fe; }
+  .theme-purple .badge { background: rgba(139, 92, 246, 0.2); color: #c4b5fd; }
+
+  .theme-orange .section-icon { background: rgba(249, 115, 22, 0.15); color: #fb923c; }
+  .theme-orange .section-title { color: #fdba74; }
+  .theme-orange .card { background: rgba(249, 115, 22, 0.06); border: 1px solid rgba(249, 115, 22, 0.15); }
+  .theme-orange .card-name { color: #fed7aa; }
+  .theme-orange .badge { background: rgba(249, 115, 22, 0.2); color: #fdba74; }
+
+  .theme-green .section-icon { background: rgba(34, 197, 94, 0.15); color: #4ade80; }
+  .theme-green .section-title { color: #86efac; }
+  .theme-green .card { background: rgba(34, 197, 94, 0.06); border: 1px solid rgba(34, 197, 94, 0.15); }
+  .theme-green .card-name { color: #bbf7d0; }
+  .theme-green .badge { background: rgba(34, 197, 94, 0.2); color: #86efac; }
+
+  .theme-pink .section-icon { background: rgba(236, 72, 153, 0.15); color: #f472b6; }
+  .theme-pink .section-title { color: #f9a8d4; }
+  .theme-pink .card { background: rgba(236, 72, 153, 0.06); border: 1px solid rgba(236, 72, 153, 0.15); }
+  .theme-pink .card-name { color: #fbcfe8; }
+  .theme-pink .badge { background: rgba(236, 72, 153, 0.2); color: #f9a8d4; }
+
+  .theme-yellow .section-icon { background: rgba(234, 179, 8, 0.15); color: #facc15; }
+  .theme-yellow .section-title { color: #fde047; }
+  .theme-yellow .card { background: rgba(234, 179, 8, 0.06); border: 1px solid rgba(234, 179, 8, 0.15); }
+  .theme-yellow .card-name { color: #fef08a; }
+  .theme-yellow .badge { background: rgba(234, 179, 8, 0.2); color: #fde047; }
+
+  /* Divider */
+  .divider {
+    height: 1px;
+    background: linear-gradient(to right, transparent, rgba(71, 85, 105, 0.4), transparent);
+    margin: 40px 0;
+  }
+
+  /* Legend */
+  .legend {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    margin-bottom: 40px;
+    flex-wrap: wrap;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.75rem;
+    color: #64748b;
+  }
+  .legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+  }
+
+  /* Flow summary at bottom */
+  .flow-summary {
+    margin-top: 48px;
+    background: rgba(30, 41, 59, 0.6);
+    border: 1px solid rgba(51, 65, 85, 0.5);
+    border-radius: 16px;
+    padding: 28px;
+  }
+  .flow-summary h2 {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #cbd5e1;
+    margin-bottom: 20px;
+    text-align: center;
+  }
+  .flow-lanes {
+    display: flex;
+    gap: 2px;
+    overflow-x: auto;
+  }
+  .flow-lane {
+    flex: 1;
+    min-width: 140px;
+    text-align: center;
+  }
+  .flow-lane-header {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #475569;
+    font-weight: 600;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(71, 85, 105, 0.3);
+  }
+  .flow-lane-items {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .flow-lane-item {
+    font-size: 0.72rem;
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: rgba(99, 102, 241, 0.06);
+    border: 1px solid rgba(99, 102, 241, 0.12);
+    color: #c7d2fe;
+  }
+  .flow-lane-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #334155;
+    font-size: 1.2rem;
+    min-width: 20px;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <div class="header">
+    <h1>CALM MONEY AI &mdash; How Everything Connects</h1>
+    <p>Every integration, service, and data flow in one view</p>
+  </div>
+
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#60a5fa;"></div> Data Sources (In)</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#2dd4bf;"></div> AI Processing</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#a78bfa;"></div> Core System</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#fb923c;"></div> Outputs (Out)</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#4ade80;"></div> Hosting & Infra</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#f472b6;"></div> Scheduled Automation</div>
+  </div>
+
+  <!-- ═══════════════════════════════════════ -->
+  <!-- DATA SOURCES — What feeds INTO the bot -->
+  <!-- ═══════════════════════════════════════ -->
+  <div class="section theme-blue">
+    <div class="section-header">
+      <div class="section-icon">&#x1f4e5;</div>
+      <div>
+        <div class="section-title">Data Sources &mdash; What Feeds In</div>
+        <div class="section-subtitle">Every way information enters the system</div>
+      </div>
+    </div>
+    <div class="cards">
+
+      <div class="card">
+        <div class="card-name">Telegram <span class="badge">Primary UI</span></div>
+        <div class="card-desc">Your main interface. Commands, voice notes, documents, free-form messages. Everything you type or speak goes through here.</div>
+        <div class="card-flow">
+          You <span class="arrow">&rarr;</span> Telegram <span class="arrow">&rarr;</span> bot.py <span class="arrow">&rarr;</span> SQLite
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-name">Otter.ai <span class="badge">Via Zapier</span></div>
+        <div class="card-desc">Records and transcribes your calls. Zapier watches for new Otter transcripts, sends them to your Telegram chat. The bot auto-detects "this is an Otter transcript" and processes it.</div>
+        <div class="card-flow">
+          Phone call <span class="arrow">&rarr;</span> Otter records <span class="arrow">&rarr;</span> Zapier <span class="arrow">&rarr;</span> Telegram msg <span class="arrow">&rarr;</span> bot detects Otter <span class="arrow">&rarr;</span> extract &amp; log
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-name">Outlook Bookings <span class="badge">Power Automate</span></div>
+        <div class="card-desc">When a prospect books a meeting through your Outlook booking page, Power Automate fires a webhook with their name, email, phone, service, and time.</div>
+        <div class="card-flow">
+          Prospect books <span class="arrow">&rarr;</span> Outlook <span class="arrow">&rarr;</span> Power Automate <span class="arrow">&rarr;</span> /api/intake <span class="arrow">&rarr;</span> new prospect + meeting
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-name">Outlook Calendar <span class="badge">Power Automate</span></div>
+        <div class="card-desc">Calendar events with attendees trigger a webhook. Each attendee is added as a prospect. Meeting type auto-classified from the subject line.</div>
+        <div class="card-flow">
+          Calendar event <span class="arrow">&rarr;</span> Power Automate <span class="arrow">&rarr;</span> /api/intake <span class="arrow">&rarr;</span> prospects + meeting + prep doc
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-name">CloudMailin <span class="badge">Email Forwarding</span></div>
+        <div class="card-desc">Inbound emails forwarded to a CloudMailin address. Parsed and sent to your bot's /api/email-inbound webhook. GPT extracts the lead from the email body.</div>
+        <div class="card-flow">
+          Email received <span class="arrow">&rarr;</span> forward to CloudMailin <span class="arrow">&rarr;</span> /api/email-inbound <span class="arrow">&rarr;</span> GPT extraction <span class="arrow">&rarr;</span> new prospect
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-name">Zapier Email Leads <span class="badge">Zapier</span></div>
+        <div class="card-desc">Zapier catches specific emails (referrals, web form submissions) and POSTs them to /api/intake as an email_lead type. GPT extracts prospect data.</div>
+        <div class="card-flow">
+          Gmail/Outlook trigger <span class="arrow">&rarr;</span> Zapier <span class="arrow">&rarr;</span> /api/intake (email_lead) <span class="arrow">&rarr;</span> GPT extract <span class="arrow">&rarr;</span> prospect
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-name">Voice Notes <span class="badge">Whisper</span></div>
+        <div class="card-desc">Send a voice note in Telegram after a call or meeting. Whisper transcribes it, GPT extracts prospects, facts, and action items. Follow-up auto-drafted.</div>
+        <div class="card-flow">
+          Voice .ogg <span class="arrow">&rarr;</span> Whisper API <span class="arrow">&rarr;</span> transcript <span class="arrow">&rarr;</span> GPT extract <span class="arrow">&rarr;</span> prospect + memory + follow-up draft
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-name">Web Dashboard <span class="badge">Streamlit/Flask</span></div>
+        <div class="card-desc">Browser-based dashboard for visual pipeline management. Can add prospects, log activities, manage tasks via the web UI and REST API.</div>
+        <div class="card-flow">
+          Browser <span class="arrow">&rarr;</span> dashboard.py (Flask) <span class="arrow">&rarr;</span> /api/* endpoints <span class="arrow">&rarr;</span> SQLite
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ═══════════════════════════════════════ -->
+  <!-- AI PROCESSING — The brains -->
+  <!-- ═══════════════════════════════════════ -->
+  <div class="section theme-teal">
+    <div class="section-header">
+      <div class="section-icon">&#x1f9e0;</div>
+      <div>
+        <div class="section-title">AI Processing &mdash; The Brains</div>
+        <div class="section-subtitle">OpenAI models that power every intelligent feature</div>
+      </div>
+    </div>
+    <div class="cards">
+
+      <div class="card">
+        <div class="card-name">GPT-4.1 <span class="badge">Strategic</span></div>
+        <div class="card-desc">Heavy lifting: follow-up drafts, content generation, briefings, campaign messages, nurture touches, meeting prep, analytics insights. Warm, Marc-sounding output.</div>
+      </div>
+
+      <div class="card">
+        <div class="card-name">GPT-4.1 Mini <span class="badge">Fast</span></div>
+        <div class="card-desc">Lightweight tasks: compliance checking, email extraction, lead data parsing, audience segmentation, task creation from natural language. Speed over depth.</div>
+      </div>
+
+      <div class="card">
+        <div class="card-name">GPT-5 <span class="badge">Chat</span></div>
+        <div class="card-desc">Powers the free-form chat in Telegram. When you ask a question or have a conversation that isn't a command, this model responds.</div>
+      </div>
+
+      <div class="card">
+        <div class="card-name">Whisper <span class="badge">Transcription</span></div>
+        <div class="card-desc">Converts voice notes (.ogg files from Telegram) into text. Feeds into the extraction pipeline for prospect creation and memory building.</div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ═══════════════════════════════════════ -->
+  <!-- CORE SYSTEM — The 5 phases -->
+  <!-- ═══════════════════════════════════════ -->
+  <div class="section theme-purple">
+    <div class="section-header">
+      <div class="section-icon">&#x2699;&#xfe0f;</div>
+      <div>
+        <div class="section-title">Core System &mdash; The 5 Phases</div>
+        <div class="section-subtitle">15 Python modules working together</div>
+      </div>
+    </div>
+    <div class="cards">
+
+      <div class="card">
+        <div class="card-name">Phase 1: The Memory</div>
+        <div class="card-desc">memory_engine.py + voice_handler.py &mdash; Extracts and stores facts about every client across 6 categories. Powers all personalization downstream.</div>
+      </div>
+
+      <div class="card">
+        <div class="card-name">Phase 2: The Communicator</div>
+        <div class="card-desc">follow_up.py + compliance.py + approval_queue.py + briefing.py &mdash; Auto-drafts, compliance-checks, and queues every outgoing message for your approval.</div>
+      </div>
+
+      <div class="card">
+        <div class="card-name">Phase 3: The Marketer</div>
+        <div class="card-desc">content_engine.py + market_intel.py + meeting_prep.py &mdash; Social content in your voice, market calendar awareness, pre-meeting prep docs.</div>
+      </div>
+
+      <div class="card">
+        <div class="card-name">Phase 4: The Outreach Rep</div>
+        <div class="card-desc">campaigns.py + nurture.py + intake.py &mdash; Batch campaigns, 4-touch nurture sequences, multi-source lead intake with auto-scoring.</div>
+      </div>
+
+      <div class="card">
+        <div class="card-name">Phase 5: The Analyst</div>
+        <div class="card-desc">analytics.py + scoring.py + dashboard.py &mdash; Outcome tracking, response rates, conversion rates, AI insights that feed back into strategy.</div>
+      </div>
+
+      <div class="card">
+        <div class="card-name">Database: SQLite + WAL</div>
+        <div class="card-desc">15 tables: prospects, activities, meetings, tasks, client_memory, approval_queue, audit_log, outcomes, campaigns, nurture_sequences, brand_voice, market_calendar, trust_config, insurance_book, win_loss_log.</div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ═══════════════════════════════════════ -->
+  <!-- OUTPUTS — Where things go OUT -->
+  <!-- ═══════════════════════════════════════ -->
+  <div class="section theme-orange">
+    <div class="section-header">
+      <div class="section-icon">&#x1f4e4;</div>
+      <div>
+        <div class="section-title">Outputs &mdash; Where Things Go</div>
+        <div class="section-subtitle">Every way information leaves the system</div>
+      </div>
+    </div>
+    <div class="cards">
+
+      <div class="card">
+        <div class="card-name">Telegram Notifications <span class="badge">Auto</span></div>
+        <div class="card-desc">Morning briefing, draft approvals, auto-nag reminders, task alerts, meeting prep docs, weekly reports, nurture touches, new lead alerts. All land in your chat.</div>
+      </div>
+
+      <div class="card">
+        <div class="card-name">Email Drafts <span class="badge">Copy-Paste</span></div>
+        <div class="card-desc">Follow-ups, campaign messages, nurture touches. Approved in Telegram, then you copy-paste into Outlook. (Co-operators locks down email API.)</div>
+      </div>
+
+      <div class="card">
+        <div class="card-name">Social Posts <span class="badge">Via Publer</span></div>
+        <div class="card-desc">LinkedIn, Facebook, Instagram content. Generated and approved in Telegram, then copy-pasted to Publer for scheduling. Brand voice improves with every approved post.</div>
+      </div>
+
+      <div class="card">
+        <div class="card-name">Web Dashboard <span class="badge">Browser</span></div>
+        <div class="card-desc">Visual pipeline view, charts, prospect details, task management. Accessible from any browser on your Railway deployment URL.</div>
+      </div>
+
+      <div class="card">
+        <div class="card-name">Insurance Quotes <span class="badge">term4sale.ca</span></div>
+        <div class="card-desc">Real-time Co-operators term life rates via Compulife API. /quote command pulls rates for specific age/coverage/term combinations. Also has Edge Benefits disability rates.</div>
+      </div>
+
+      <div class="card">
+        <div class="card-name">Excel Export <span class="badge">Manual</span></div>
+        <div class="card-desc">/export command generates a pipeline spreadsheet. Useful for reporting to Co-operators or syncing with their Salesforce when needed.</div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ═══════════════════════════════════════ -->
+  <!-- SCHEDULED AUTOMATION -->
+  <!-- ═══════════════════════════════════════ -->
+  <div class="section theme-pink">
+    <div class="section-header">
+      <div class="section-icon">&#x23f0;</div>
+      <div>
+        <div class="section-title">Scheduled Automation &mdash; Runs Without You</div>
+        <div class="section-subtitle">APScheduler jobs running on Eastern Time</div>
+      </div>
+    </div>
+    <div class="cards">
+
+      <div class="card">
+        <div class="card-name">7:30 AM <span class="badge">Daily</span></div>
+        <div class="card-desc">Market check &mdash; alerts you if BoC, tax deadlines, or seasonal events are coming up this week</div>
+      </div>
+
+      <div class="card">
+        <div class="card-name">8:00 AM <span class="badge">Daily</span></div>
+        <div class="card-desc">Morning briefing &mdash; pipeline health, ranked call list, pending approvals, market intel, learning insights</div>
+      </div>
+
+      <div class="card">
+        <div class="card-name">9:15 AM <span class="badge">Weekdays</span></div>
+        <div class="card-desc">Nurture check &mdash; fires due touches for active nurture sequences, queues for approval</div>
+      </div>
+
+      <div class="card">
+        <div class="card-name">9:30 AM <span class="badge">Weekdays</span></div>
+        <div class="card-desc">Follow-up reminder &mdash; prospects with follow-ups due today</div>
+      </div>
+
+      <div class="card">
+        <div class="card-name">Every 2 hrs <span class="badge">9AM&ndash;5PM</span></div>
+        <div class="card-desc">Auto-nag &mdash; stale leads (7+ days), overdue follow-ups, hot leads stuck, meeting prep reminders</div>
+      </div>
+
+      <div class="card">
+        <div class="card-name">Hourly <span class="badge">7AM&ndash;4PM</span></div>
+        <div class="card-desc">Meeting prep docs &mdash; generates prep 1-2 hours before any scheduled meeting</div>
+      </div>
+
+      <div class="card">
+        <div class="card-name">Every 60s <span class="badge">Always</span></div>
+        <div class="card-desc">Task reminders &mdash; checks for tasks with remind_at times that have passed, sends alert</div>
+      </div>
+
+      <div class="card">
+        <div class="card-name">4x daily <span class="badge">Weekdays</span></div>
+        <div class="card-desc">Stale draft nudge &mdash; re-surfaces pending approval drafts older than 4 hours</div>
+      </div>
+
+      <div class="card">
+        <div class="card-name">12:30 PM <span class="badge">Weekdays</span></div>
+        <div class="card-desc">Midday check-in &mdash; activity progress for the day so far</div>
+      </div>
+
+      <div class="card">
+        <div class="card-name">5:30 PM <span class="badge">Weekdays</span></div>
+        <div class="card-desc">End-of-day wrap-up &mdash; what you accomplished, what's pending, tomorrow preview</div>
+      </div>
+
+      <div class="card">
+        <div class="card-name">Sun 6:00 PM <span class="badge">Weekly</span></div>
+        <div class="card-desc">Content plan &mdash; 5 social posts for the week across LinkedIn, Facebook, Instagram</div>
+      </div>
+
+      <div class="card">
+        <div class="card-name">Sun 6:30 PM <span class="badge">Weekly</span></div>
+        <div class="card-desc">Weekly report &mdash; calls, emails, closes, pipeline metrics, AI insights, Monday priorities</div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ═══════════════════════════════════════ -->
+  <!-- HOSTING & INFRASTRUCTURE -->
+  <!-- ═══════════════════════════════════════ -->
+  <div class="section theme-green">
+    <div class="section-header">
+      <div class="section-icon">&#x1f5a5;&#xfe0f;</div>
+      <div>
+        <div class="section-title">Hosting &amp; Infrastructure</div>
+        <div class="section-subtitle">Where it all runs</div>
+      </div>
+    </div>
+    <div class="cards">
+
+      <div class="card">
+        <div class="card-name">Railway <span class="badge">Hosting</span></div>
+        <div class="card-desc">Docker container running Python 3.13. Flask serves the dashboard + webhook endpoints. Telegram bot runs in the background with APScheduler. Persistent volume for SQLite.</div>
+      </div>
+
+      <div class="card">
+        <div class="card-name">SQLite + WAL <span class="badge">Database</span></div>
+        <div class="card-desc">15 tables, file-based, concurrent-safe with Write-Ahead Logging. Lives on Railway persistent volume. No external database needed.</div>
+      </div>
+
+      <div class="card">
+        <div class="card-name">Webhook Mode <span class="badge">Production</span></div>
+        <div class="card-desc">Telegram uses webhook (not polling) in production. Railway domain registered as webhook URL. Flask route /webhook handles incoming updates.</div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ═══════════════════════════════════════ -->
+  <!-- SECURITY & COMPLIANCE -->
+  <!-- ═══════════════════════════════════════ -->
+  <div class="section theme-yellow">
+    <div class="section-header">
+      <div class="section-icon">&#x1f512;</div>
+      <div>
+        <div class="section-title">Security &amp; Compliance</div>
+        <div class="section-subtitle">How everything stays safe and auditable</div>
+      </div>
+    </div>
+    <div class="cards">
+
+      <div class="card">
+        <div class="card-name">Webhook Auth <span class="badge">HMAC</span></div>
+        <div class="card-desc">Every webhook endpoint requires a secret header (INTAKE_WEBHOOK_SECRET, CLOUDMAILIN_SECRET). Rejects unauthorized requests.</div>
+      </div>
+
+      <div class="card">
+        <div class="card-name">AI Compliance Gate <span class="badge">Every Message</span></div>
+        <div class="card-desc">GPT-4.1 Mini scans every client-facing message for: false return promises, misleading claims, missing disclaimers, tone violations. Logged to audit_log.</div>
+      </div>
+
+      <div class="card">
+        <div class="card-name">Human Approval <span class="badge">Required</span></div>
+        <div class="card-desc">No AI-generated message reaches a client without Marc tapping Approve in Telegram. Full audit trail of every draft, approval, and dismissal.</div>
+      </div>
+
+      <div class="card">
+        <div class="card-name">Dashboard Security <span class="badge">CSRF + CSP</span></div>
+        <div class="card-desc">CSRF tokens (1-hour TTL), Content Security Policy headers, API key auth for programmatic access, 1MB payload limits.</div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ═══════════════════════════════════════ -->
+  <!-- END-TO-END FLOW -->
+  <!-- ═══════════════════════════════════════ -->
+  <div class="flow-summary">
+    <h2>End-to-End: How a Lead Becomes a Client</h2>
+    <div class="flow-lanes">
+      <div class="flow-lane">
+        <div class="flow-lane-header">Lead Enters</div>
+        <div class="flow-lane-items">
+          <div class="flow-lane-item">Voice note</div>
+          <div class="flow-lane-item">Outlook booking</div>
+          <div class="flow-lane-item">CloudMailin email</div>
+          <div class="flow-lane-item">Zapier trigger</div>
+          <div class="flow-lane-item">Otter transcript</div>
+          <div class="flow-lane-item">/add command</div>
+        </div>
+      </div>
+      <div class="flow-lane-arrow">&rarr;</div>
+      <div class="flow-lane">
+        <div class="flow-lane-header">AI Processes</div>
+        <div class="flow-lane-items">
+          <div class="flow-lane-item">Whisper transcribes</div>
+          <div class="flow-lane-item">GPT extracts data</div>
+          <div class="flow-lane-item">Auto-score prospect</div>
+          <div class="flow-lane-item">Build memory profile</div>
+        </div>
+      </div>
+      <div class="flow-lane-arrow">&rarr;</div>
+      <div class="flow-lane">
+        <div class="flow-lane-header">System Acts</div>
+        <div class="flow-lane-items">
+          <div class="flow-lane-item">Draft follow-up</div>
+          <div class="flow-lane-item">Start nurture seq</div>
+          <div class="flow-lane-item">Schedule meeting</div>
+          <div class="flow-lane-item">Generate prep doc</div>
+        </div>
+      </div>
+      <div class="flow-lane-arrow">&rarr;</div>
+      <div class="flow-lane">
+        <div class="flow-lane-header">Compliance</div>
+        <div class="flow-lane-items">
+          <div class="flow-lane-item">GPT compliance scan</div>
+          <div class="flow-lane-item">Audit log entry</div>
+          <div class="flow-lane-item">Flag if issues</div>
+        </div>
+      </div>
+      <div class="flow-lane-arrow">&rarr;</div>
+      <div class="flow-lane">
+        <div class="flow-lane-header">Marc Decides</div>
+        <div class="flow-lane-items">
+          <div class="flow-lane-item">Approve</div>
+          <div class="flow-lane-item">Edit</div>
+          <div class="flow-lane-item">Dismiss</div>
+          <div class="flow-lane-item">Snooze</div>
+        </div>
+      </div>
+      <div class="flow-lane-arrow">&rarr;</div>
+      <div class="flow-lane">
+        <div class="flow-lane-header">Deliver</div>
+        <div class="flow-lane-items">
+          <div class="flow-lane-item">Copy to Outlook</div>
+          <div class="flow-lane-item">Copy to Publer</div>
+          <div class="flow-lane-item">Track outcome</div>
+        </div>
+      </div>
+      <div class="flow-lane-arrow">&rarr;</div>
+      <div class="flow-lane">
+        <div class="flow-lane-header">Learn</div>
+        <div class="flow-lane-items">
+          <div class="flow-lane-item">Got response?</div>
+          <div class="flow-lane-item">Booked meeting?</div>
+          <div class="flow-lane-item">Converted?</div>
+          <div class="flow-lane-item">Weekly insights</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

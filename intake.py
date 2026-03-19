@@ -282,10 +282,10 @@ def process_email_lead(data: dict) -> str:
     if not body and not subject:
         return "Empty email payload — nothing to process."
 
-    from pii import redact_text, sanitize_for_prompt
+    from pii import sanitize_for_prompt
 
     email_text = f"Subject: {subject}\nFrom: {sender}\n\n{body}"
-    safe_email = redact_text(sanitize_for_prompt(email_text[:3000]))
+    safe_email = sanitize_for_prompt(email_text[:3000])
 
     system_prompt = """You are a sales assistant for Marc, a financial advisor at Co-operators in London, Ontario.
 

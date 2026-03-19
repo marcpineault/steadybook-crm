@@ -231,6 +231,60 @@ def _strip_html(html: str) -> str:
     return text.strip()
 
 
+def _find_prospect_by_phone(phone: str):
+    """Look up a prospect by phone, matching last 10 digits. Returns dict or None."""
+    import re as _re
+    import db as _db
+    digits = _re.sub(r"\D", "", phone)[-10:]
+    if not digits:
+        return None
+    with _db.get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM prospects WHERE REPLACE(REPLACE(REPLACE(REPLACE(phone, '-', ''), ' ', ''), '+', ''), '1', '') LIKE ? OR phone LIKE ? LIMIT 1",
+            (f"%{digits}%", f"%{digits}%"),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+@intake_bp.route("/api/sms-reply", methods=["POST"])
+def sms_reply():
+    """Receive inbound SMS replies from Twilio.
+    Twilio POST fields: From, Body, MessageSid, To.
+    Always returns 204 so Twilio does not retry on errors.
+    """
+    from_number = request.form.get("From", "").strip()
+    body = request.form.get("Body", "").strip()
+    message_sid = request.form.get("MessageSid", "").strip()
+
+    if not from_number or not body:
+        logger.warning("SMS reply webhook: missing From or Body")
+        return "", 400
+
+    try:
+        import sms_conversations
+        prospect = _find_prospect_by_phone(from_number)
+        prospect_id = prospect["id"] if prospect else None
+        prospect_name = prospect["name"] if prospect else ""
+
+        sms_conversations.log_message(
+            phone=from_number,
+            body=body,
+            direction="inbound",
+            prospect_id=prospect_id,
+            prospect_name=prospect_name,
+            twilio_sid=message_sid,
+        )
+        sms_conversations.generate_reply(
+            phone=from_number,
+            inbound_body=body,
+            prospect=prospect,
+        )
+    except Exception:
+        logger.exception("SMS reply processing failed")
+
+    return "", 204
+
+
 def _notify_telegram(message: str):
     """Send a notification to the Telegram bot chat. Best-effort, non-blocking."""
     try:

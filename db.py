@@ -313,6 +313,7 @@ def init_db():
 
     _migrate_phase6()
     _migrate_booking_nurture()
+    _migrate_sms_conversations()
     cleanup_old_data()
     logger.info(f"Database initialized at {DB_PATH}")
 
@@ -362,6 +363,31 @@ def _migrate_booking_nurture():
         conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_booking_nurture_prospect
                 ON booking_nurture_sequences(prospect_id, status)
+        """)
+
+
+def _migrate_sms_conversations():
+    """Create sms_conversations table and indexes (safe to run repeatedly)."""
+    with get_db() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS sms_conversations (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                prospect_id   INTEGER,
+                prospect_name TEXT NOT NULL DEFAULT '',
+                phone         TEXT NOT NULL,
+                direction     TEXT NOT NULL,
+                body          TEXT NOT NULL,
+                twilio_sid    TEXT DEFAULT '',
+                created_at    TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_sms_conv_phone
+                ON sms_conversations(phone, created_at)
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_sms_conv_prospect
+                ON sms_conversations(prospect_id, created_at)
         """)
 
 
