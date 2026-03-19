@@ -821,6 +821,36 @@ async def check_nurture_sequences():
         logger.exception("Nurture sequence check failed")
 
 
+# ── Booking Nurture Touch Check ──
+
+async def check_booking_nurture_touches():
+    """Check for due pre-call nurture touches, generate SMS drafts, queue to Telegram."""
+    if not _bot or not CHAT_ID:
+        return
+    try:
+        import booking_nurture
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        due = booking_nurture.get_due_touches()
+        for touch_row in due:
+            try:
+                result = booking_nurture.generate_touch(touch_row)
+                if not result:
+                    continue
+                text = booking_nurture.format_touch_for_telegram(touch_row, result["content"])
+                keyboard = InlineKeyboardMarkup([[
+                    InlineKeyboardButton("Approve", callback_data=f"draft_approve_{result['queue_id']}"),
+                    InlineKeyboardButton("Skip", callback_data=f"draft_dismiss_{result['queue_id']}"),
+                    InlineKeyboardButton("Snooze 1h", callback_data=f"draft_snooze_{result['queue_id']}"),
+                ]])
+                msg = await _bot.send_message(chat_id=CHAT_ID, text=text, reply_markup=keyboard)
+                import approval_queue as aq
+                aq.set_telegram_message_id(result["queue_id"], str(msg.message_id))
+            except Exception:
+                logger.exception("Booking nurture touch failed seq #%s", touch_row["id"])
+    except Exception:
+        logger.exception("check_booking_nurture_touches failed")
+
+
 # ── Database Backup ──
 
 async def backup_database():
@@ -1052,6 +1082,15 @@ def start_scheduler(telegram_app, event_loop=None):
         name="Nurture Sequence Check",
     )
 
+    # Pre-call text nurture — check every 15 minutes
+    scheduler.add_job(
+        check_booking_nurture_touches,
+        "interval",
+        minutes=15,
+        id="check_booking_nurture_touches",
+        name="Pre-Call Text Nurture Check",
+    )
+
     # Daily database backup at 11 PM ET
     scheduler.add_job(
         backup_database,
@@ -1083,4 +1122,4 @@ def start_scheduler(telegram_app, event_loop=None):
     )
 
     scheduler.start()
-    logger.info("Scheduler started — briefing 8AM (weekdays), nag 9AM+2PM, midday 12:30PM, EOD 5:30PM, weekly Sun 6:30PM, task reminders every 60s, meeting prep hourly, backup 11PM, watchdog 8:45AM, webhook check every 6h ET.")
+    logger.info("Scheduler started — briefing 8AM (weekdays), nag 9AM+2PM, midday 12:30PM, EOD 5:30PM, weekly Sun 6:30PM, task reminders every 60s, meeting prep hourly, backup 11PM, watchdog 8:45AM, webhook check every 6h, booking nurture every 15min ET.")

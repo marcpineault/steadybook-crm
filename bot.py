@@ -2561,6 +2561,28 @@ async def handle_draft_callback(update, context):
                     f"{content}\n\n"
                     f"Copy-paste the above and send manually to {prospect_email}."
                 )
+        elif draft.get("channel") == "sms_draft":
+            import sms_sender
+            _phone = ""
+            if draft.get("prospect_id"):
+                with db.get_db() as _conn:
+                    _prow = _conn.execute(
+                        "SELECT phone FROM prospects WHERE id = ?", (draft["prospect_id"],)
+                    ).fetchone()
+                    if _prow:
+                        _phone = _prow["phone"]
+            if _phone:
+                handle = sms_sender.send_sms(to=_phone, body=content)
+                if handle:
+                    await query.edit_message_text(
+                        f"✅ SENT via iMessage — booking_nurture #{queue_id}\nHandle: {handle}"
+                    )
+                else:
+                    await query.edit_message_text(
+                        f"❌ SMS failed — #{queue_id}\n\nSend manually:\n{_phone}\n\n{content}"
+                    )
+            else:
+                await query.edit_message_text(f"✅ APPROVED (no phone on file) — #{queue_id}\n\n{content}")
         else:
             copy_target = "Publer" if draft.get("type") == "content_post" else "Outlook"
             await query.edit_message_text(

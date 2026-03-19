@@ -312,6 +312,7 @@ def init_db():
         )
 
     _migrate_phase6()
+    _migrate_booking_nurture()
     cleanup_old_data()
     logger.info(f"Database initialized at {DB_PATH}")
 
@@ -331,6 +332,37 @@ def cleanup_old_data():
         if deleted_interactions or deleted_audit:
             logger.info(f"Cleanup: removed {deleted_interactions} old interactions, {deleted_audit} old audit entries (before {cutoff})")
             conn.execute("VACUUM")  # Reclaim disk space
+
+
+def _migrate_booking_nurture():
+    """Create booking_nurture_sequences table and indexes (safe to run repeatedly)."""
+    with get_db() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS booking_nurture_sequences (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                prospect_id      INTEGER REFERENCES prospects(id),
+                prospect_name    TEXT NOT NULL,
+                phone            TEXT NOT NULL,
+                touch_number     INTEGER NOT NULL,
+                scheduled_for    TEXT NOT NULL,
+                meeting_datetime TEXT NOT NULL,
+                meeting_date     TEXT NOT NULL,
+                meeting_time     TEXT NOT NULL,
+                meeting_type     TEXT DEFAULT '',
+                product          TEXT DEFAULT '',
+                status           TEXT DEFAULT 'queued',
+                queue_id         INTEGER,
+                created_at       TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_booking_nurture_status_sched
+                ON booking_nurture_sequences(status, scheduled_for)
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_booking_nurture_prospect
+                ON booking_nurture_sequences(prospect_id, status)
+        """)
 
 
 def _migrate_phase6():
