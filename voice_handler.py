@@ -179,7 +179,11 @@ async def extract_and_update(transcript: str, bot=None, source: str = "voice_not
             if action_items:
                 combined += f" | Action: {action_items}"
             if p.get("insurance_premium") is not None:
-                combined += f" | Premium: ${p['insurance_premium']}/month"
+                premium = p["insurance_premium"]
+                if premium <= 5000:
+                    combined += f" | Premium: ${premium}/month"
+                else:
+                    logger.warning("Implausible insurance_premium value %s for %s — skipping", premium, name)
 
             updates = {"notes": combined.strip(" |")}
             if p.get("stage") and p["stage"] != "New Lead":
@@ -199,7 +203,11 @@ async def extract_and_update(transcript: str, bot=None, source: str = "voice_not
             if coworker:
                 notes = f"{notes} | Added by {coworker}" if notes else f"Added by {coworker}"
             if p.get("insurance_premium") is not None:
-                notes = f"{notes} | Premium: ${p['insurance_premium']}/month" if notes else f"Premium: ${p['insurance_premium']}/month"
+                premium = p["insurance_premium"]
+                if premium <= 5000:
+                    notes = f"{notes} | Premium: ${premium}/month" if notes else f"Premium: ${premium}/month"
+                else:
+                    logger.warning("Implausible insurance_premium value %s for %s — skipping", premium, name)
             db.add_prospect({
                 "name": name,
                 "phone": p.get("phone", ""),

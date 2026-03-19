@@ -160,3 +160,47 @@ def test_extract_and_update_writes_aum_and_revenue():
     assert prospect is not None
     assert prospect["aum"] == 450000
     assert prospect["revenue"] == 2400
+
+
+def test_extract_and_update_updates_existing_prospect_financial_fields():
+    from unittest.mock import patch, MagicMock
+    import json
+    import asyncio
+    import db
+
+    # Pre-insert an existing prospect
+    db.add_prospect({"name": "Jane Doe", "product": "Life Insurance", "stage": "Discovery Call", "notes": "Initial contact"})
+
+    ai_response = json.dumps({
+        "prospects": [{
+            "name": "Jane Doe",
+            "product": "Life Insurance",
+            "notes": "Discussed policy details",
+            "action_items": "",
+            "source": "voice_note",
+            "priority": "Hot",
+            "stage": "Needs Analysis",
+            "phone": "",
+            "email": "",
+            "aum": 300000,
+            "insurance_premium": 150,
+            "insurance_commission": 1800,
+        }]
+    })
+
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = ai_response
+
+    with patch("voice_handler.client") as mock_client, \
+         patch("memory_engine.extract_facts_from_interaction"), \
+         patch("follow_up.generate_follow_up_draft", return_value=None):
+        mock_client.chat.completions.create.return_value = mock_response
+        asyncio.run(
+            __import__("voice_handler").extract_and_update("Jane has $300K AUM, premium $150/month, commission $1,800")
+        )
+
+    updated = db.get_prospect_by_name("Jane Doe")
+    assert updated["aum"] == 300000
+    assert updated["revenue"] == 1800
+    assert "Premium: $150/month" in updated["notes"]
