@@ -318,6 +318,69 @@ def api_delete_task(task_id):
     return jsonify({"ok": True, "message": result})
 
 
+@app.route("/api/conversations")
+@_require_auth
+def api_conversations():
+    """Return list of distinct phone numbers with their latest message."""
+    with db.get_db() as conn:
+        rows = conn.execute("""
+            SELECT sc.phone, sc.prospect_name, sc.body, sc.direction, sc.created_at,
+                   p.name as matched_name
+            FROM sms_conversations sc
+            LEFT JOIN prospects p ON sc.prospect_id = p.id
+            WHERE sc.id IN (
+                SELECT MAX(id) FROM sms_conversations GROUP BY phone
+            )
+            ORDER BY sc.created_at DESC
+            LIMIT 100
+        """).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/conversations/<path:phone>")
+@_require_auth
+def api_conversation_thread(phone):
+    """Return full thread for a phone number, oldest first."""
+    with db.get_db() as conn:
+        rows = conn.execute("""
+            SELECT id, direction, body, created_at, prospect_name, twilio_sid
+            FROM sms_conversations
+            WHERE phone = ?
+            ORDER BY created_at ASC, id ASC
+            LIMIT 200
+        """, (phone,)).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/conversations/<path:phone>/send", methods=["POST"])
+@_require_auth
+def api_send_sms(phone):
+    """Send an outbound SMS directly from the dashboard."""
+    data = request.get_json(silent=True) or {}
+    body = (data.get("body") or "").strip()
+    if not body:
+        return jsonify({"error": "body required"}), 400
+    if len(body) > 1600:
+        return jsonify({"error": "message too long"}), 400
+
+    import sms_sender
+    sid = sms_sender.send_sms(to=phone, body=body)
+    if sid is None:
+        return jsonify({"error": "SMS send failed — check Twilio credentials"}), 502
+
+    # Log to sms_conversations
+    import sms_conversations as sms_conv
+    from webhook_intake import _find_prospect_by_phone
+    prospect = _find_prospect_by_phone(phone) or {}
+    sms_conv.log_message(
+        phone=phone, body=body, direction="outbound",
+        prospect_id=prospect.get("id"), prospect_name=prospect.get("name", ""),
+        twilio_sid=sid
+    )
+
+    return jsonify({"ok": True, "sid": sid})
+
+
 def calc_fyc(premium, product):
     """Calculate First Year Commission from premium and product term.
     Term 20/25/30: Premium * 11.11 * 0.5
@@ -2141,6 +2204,7 @@ tr:hover {{ background: #f8f9fa; }}
         <button class="tab-btn" data-tab="scoreboard" onclick="showTab('scoreboard')">Activity Score</button>
         <button class="tab-btn" data-tab="tasks" onclick="showTab('tasks')">Tasks{'<span style="display:inline-block;background:#e74c3c;color:#fff;border-radius:10px;font-size:10px;font-weight:700;padding:1px 7px;margin-left:6px;vertical-align:middle">' + str(len(overdue_tasks)) + '</span>' if overdue_tasks else ''}</button>
         <button class="tab-btn" data-tab="clients" onclick="showTab('clients')">Clients{'<span style="display:inline-block;background:#27ae60;color:#fff;border-radius:10px;font-size:10px;font-weight:700;padding:1px 7px;margin-left:6px;vertical-align:middle">' + str(len(won)) + '</span>' if won else ''}</button>
+        <button class="tab-btn" data-tab="conversations" onclick="showTab('conversations');loadConversations()">Conversations</button>
     </div>
 
     <!-- ═══ TAB 1: PIPELINE (existing) ═══ -->
@@ -2494,6 +2558,46 @@ tr:hover {{ background: #f8f9fa; }}
         </div>
 
     </div><!-- end tab-clients -->
+
+    <!-- ═══ TAB 7: CONVERSATIONS ═══ -->
+    <div class="tab-content" id="tab-conversations" style="margin-top:24px">
+        <div style="display:flex;gap:20px;height:600px">
+
+            <!-- Left: contact list -->
+            <div style="width:260px;flex-shrink:0;background:white;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.08);overflow:hidden;display:flex;flex-direction:column">
+                <div style="padding:14px 16px;border-bottom:1px solid #eee">
+                    <input type="text" id="convSearch" placeholder="Search contacts..." oninput="filterConvList(this.value)"
+                        style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box">
+                </div>
+                <div id="convContactList" style="overflow-y:auto;flex:1">
+                    <div style="padding:20px;text-align:center;color:#aaa;font-size:13px">Loading...</div>
+                </div>
+            </div>
+
+            <!-- Right: message thread + send box -->
+            <div style="flex:1;background:white;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.08);display:flex;flex-direction:column;overflow:hidden">
+                <div id="convHeader" style="padding:14px 20px;border-bottom:1px solid #eee;display:flex;align-items:center;justify-content:space-between">
+                    <div>
+                        <div id="convHeaderName" style="font-weight:700;font-size:15px;color:#2c3e50">Select a conversation</div>
+                        <div id="convHeaderPhone" style="font-size:12px;color:#7f8c8d;margin-top:2px"></div>
+                    </div>
+                    <button onclick="refreshCurrentThread()" style="background:none;border:1px solid #ddd;border-radius:6px;padding:5px 10px;font-size:12px;color:#7f8c8d;cursor:pointer">&#8635; Refresh</button>
+                </div>
+                <div id="convThread" style="flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:10px">
+                    <div style="text-align:center;color:#aaa;font-size:13px;margin-top:40px">Select a conversation to view messages</div>
+                </div>
+                <div id="convSendArea" style="padding:12px 16px;border-top:1px solid #eee;display:none">
+                    <div style="display:flex;gap:8px;align-items:flex-end">
+                        <textarea id="convMsgInput" placeholder="Type a message..." rows="2"
+                            style="flex:1;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;resize:none;font-family:inherit"
+                            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendConvMessage()}"></textarea>
+                        <button onclick="sendConvMessage()" style="background:#1abc9c;color:#fff;border:none;border-radius:8px;padding:10px 18px;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap">Send</button>
+                    </div>
+                    <div style="font-size:11px;color:#aaa;margin-top:6px">Sends via Twilio SMS. Enter to send, Shift+Enter for newline.</div>
+                </div>
+            </div>
+        </div>
+    </div><!-- end tab-conversations -->
 
 </div>
 
@@ -3522,6 +3626,154 @@ function initFunnelCharts() {{
             scales: {{ x: {{ beginAtZero: true, title: {{ display: true, text: 'Days' }} }} }},
             plugins: {{ legend: {{ display: false }} }}
         }}
+    }});
+}}
+
+// ══════════════════════════════════════
+// CONVERSATIONS TAB  (DOM-only, no innerHTML for user data)
+// ══════════════════════════════════════
+let _convContacts = [];
+let _activePhone = null;
+let _convLoaded = false;
+
+function _mk(tag, css) {{
+    const el = document.createElement(tag);
+    if (css) el.style.cssText = css;
+    return el;
+}}
+function _txt(tag, css, text) {{
+    const el = _mk(tag, css);
+    el.textContent = text || '';
+    return el;
+}}
+
+function loadConversations() {{
+    if (_convLoaded) return;
+    _convLoaded = true;
+    fetch('/api/conversations', {{ headers: {{ 'X-CSRF-Token': window._csrfToken }} }})
+        .then(r => r.json())
+        .then(data => {{ _convContacts = data; renderConvList(data); }})
+        .catch(() => {{
+            const el = document.getElementById('convContactList');
+            el.textContent = 'Failed to load conversations';
+        }});
+}}
+
+function renderConvList(contacts) {{
+    const el = document.getElementById('convContactList');
+    el.textContent = '';
+    if (!contacts.length) {{
+        el.appendChild(_txt('div', 'padding:20px;text-align:center;color:#aaa;font-size:13px', 'No SMS conversations yet'));
+        return;
+    }}
+    contacts.forEach(c => {{
+        const name = c.matched_name || c.prospect_name || c.phone || '';
+        const row = _mk('div', 'padding:12px 16px;cursor:pointer;border-bottom:1px solid #f5f5f5;border-left:3px solid transparent;');
+        row.dataset.phone = c.phone;
+        row.dataset.name = name;
+        if (c.phone === _activePhone) {{
+            row.style.background = '#f0faf8';
+            row.style.borderLeft = '3px solid #1abc9c';
+        }}
+        row.appendChild(_txt('div', 'font-weight:600;font-size:13px;color:#2c3e50', name));
+        const snippet = (c.direction === 'outbound' ? '→ ' : '') + (c.body || '').slice(0, 50);
+        row.appendChild(_txt('div', 'font-size:11px;color:#7f8c8d;margin-top:2px', snippet));
+        const ts = (c.created_at || '').slice(0, 16).replace('T', ' ');
+        row.appendChild(_txt('div', 'font-size:10px;color:#bbb;margin-top:3px', ts));
+        row.addEventListener('click', function() {{ openThread(c.phone, name); }});
+        el.appendChild(row);
+    }});
+}}
+
+function filterConvList(q) {{
+    const lower = q.toLowerCase();
+    renderConvList(_convContacts.filter(c =>
+        (c.matched_name || c.prospect_name || c.phone || '').toLowerCase().includes(lower) ||
+        (c.phone || '').includes(q)
+    ));
+}}
+
+function openThread(phone, name) {{
+    _activePhone = phone;
+    document.getElementById('convHeaderName').textContent = name;
+    document.getElementById('convHeaderPhone').textContent = phone;
+    document.getElementById('convSendArea').style.display = '';
+    document.querySelectorAll('#convContactList [data-phone]').forEach(function(row) {{
+        const active = row.dataset.phone === phone;
+        row.style.background = active ? '#f0faf8' : '';
+        row.style.borderLeft = active ? '3px solid #1abc9c' : '3px solid transparent';
+    }});
+    loadThread(phone);
+}}
+
+function loadThread(phone) {{
+    const threadEl = document.getElementById('convThread');
+    threadEl.textContent = '';
+    threadEl.appendChild(_txt('div', 'text-align:center;color:#aaa;font-size:13px;margin-top:40px', 'Loading...'));
+    fetch('/api/conversations/' + encodeURIComponent(phone), {{ headers: {{ 'X-CSRF-Token': window._csrfToken }} }})
+        .then(r => r.json())
+        .then(msgs => renderThread(msgs))
+        .catch(() => {{
+            threadEl.textContent = '';
+            threadEl.appendChild(_txt('div', 'text-align:center;color:#e74c3c;font-size:13px;margin-top:40px', 'Failed to load thread'));
+        }});
+}}
+
+function renderThread(msgs) {{
+    const threadEl = document.getElementById('convThread');
+    threadEl.textContent = '';
+    if (!msgs.length) {{
+        threadEl.appendChild(_txt('div', 'text-align:center;color:#aaa;font-size:13px;margin-top:40px', 'No messages yet'));
+        return;
+    }}
+    msgs.forEach(function(m) {{
+        const out = m.direction === 'outbound';
+        const wrapper = _mk('div', 'display:flex;flex-direction:column;align-items:' + (out ? 'flex-end' : 'flex-start'));
+        const ts = (m.created_at || '').slice(0, 16).replace('T', ' ');
+        const label = out ? 'Marc' : (m.prospect_name || 'Client');
+        wrapper.appendChild(_txt('div', 'font-size:10px;color:#aaa;margin-bottom:3px', label + ' · ' + ts));
+        const bubble = _txt('div', 'background:' + (out ? '#1abc9c' : '#f1f1f1') + ';color:' + (out ? '#fff' : '#2c3e50') + ';padding:10px 14px;border-radius:12px;max-width:70%;font-size:14px;line-height:1.5;word-break:break-word', m.body || '');
+        wrapper.appendChild(bubble);
+        threadEl.appendChild(wrapper);
+    }});
+    threadEl.scrollTop = threadEl.scrollHeight;
+}}
+
+function refreshCurrentThread() {{
+    if (!_activePhone) return;
+    _convLoaded = false;
+    loadConversations();
+    loadThread(_activePhone);
+}}
+
+function sendConvMessage() {{
+    if (!_activePhone) return;
+    const input = document.getElementById('convMsgInput');
+    const body = input.value.trim();
+    if (!body) return;
+    const btn = document.querySelector('#convSendArea button');
+    btn.disabled = true;
+    btn.textContent = 'Sending...';
+    fetch('/api/conversations/' + encodeURIComponent(_activePhone) + '/send', {{
+        method: 'POST',
+        headers: {{ 'Content-Type': 'application/json', 'X-CSRF-Token': window._csrfToken }},
+        body: JSON.stringify({{ body: body }})
+    }})
+    .then(r => r.json())
+    .then(function(data) {{
+        if (data.error) {{
+            alert('Send failed: ' + data.error);
+        }} else {{
+            input.value = '';
+            _convLoaded = false;
+            loadConversations();
+            loadThread(_activePhone);
+        }}
+    }})
+    .catch(function() {{ alert('Network error sending message'); }})
+    .finally(function() {{
+        btn.disabled = false;
+        btn.textContent = 'Send';
     }});
 }}
 </script>

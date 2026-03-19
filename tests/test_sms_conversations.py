@@ -13,9 +13,8 @@ import sms_conversations
 
 
 def setup_function():
-    db_path = os.path.join(os.environ["DATA_DIR"], "pipeline.db")
-    if os.path.exists(db_path):
-        os.remove(db_path)
+    if os.path.exists(db.DB_PATH):
+        os.remove(db.DB_PATH)
     db.init_db()
 
 
