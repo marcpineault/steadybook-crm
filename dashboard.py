@@ -2590,7 +2590,7 @@ tr:hover {{ background: #f8f9fa; }}
                     <div style="display:flex;gap:8px;align-items:flex-end">
                         <textarea id="convMsgInput" placeholder="Type a message..." rows="2"
                             style="flex:1;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;resize:none;font-family:inherit"
-                            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendConvMessage()}"></textarea>
+                            onkeydown="if(event.key==='Enter'&&!event.shiftKey){{event.preventDefault();sendConvMessage()}}"></textarea>
                         <button onclick="sendConvMessage()" style="background:#1abc9c;color:#fff;border:none;border-radius:8px;padding:10px 18px;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap">Send</button>
                     </div>
                     <div style="font-size:11px;color:#aaa;margin-top:6px">Sends via Twilio SMS. Enter to send, Shift+Enter for newline.</div>
