@@ -9,3 +9,5 @@ venv/
 *.bak
 *.tmp
 .superpowers/
+
+.worktrees/
