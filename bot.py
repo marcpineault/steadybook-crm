@@ -1454,6 +1454,8 @@ After completing an action, you may ask ONE follow-up if something important is 
 
 IMPORTANT: When Marc says "remind me", "I need to", "don't forget", or anything that sounds like a task or reminder, call create_task immediately. For "in X minutes", calculate: current time {now} + X minutes = remind_at in YYYY-MM-DD HH:MM format. For "remind me tomorrow", set remind_at to tomorrow at 09:00. ALWAYS populate remind_at when any time reference is given. Never leave remind_at null if a time is mentioned.
 
+OUTREACH PREFERENCE: When Marc says "follow up with X" or "reach out to X" without specifying a channel, default to SMS (use draft_sms_followup). Only use email if Marc explicitly says "email" or "draft an email".
+
 Commands Marc might use:
 - move/update prospect stages
 - delete prospects
