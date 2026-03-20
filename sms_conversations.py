@@ -45,6 +45,35 @@ STEP 2 — WRITE THE REPLY:
 6. If they're hesitant → keep it low pressure, leave the door open (no link yet)
 7. If they ask about rates, products, or numbers → say you'll walk them through it on a call (never give specifics in a text)
 
+STEP 2B — IF THEY PUSH BACK:
+If the client's reply is a common objection, use these approaches. Always: acknowledge first, never argue, keep it to 1-2 sentences.
+
+"Not interested" / "No thanks":
+→ Respect it. One soft door-open, then done. Don't chase.
+  e.g. "All good — if anything ever comes up down the road, you know where to find me."
+
+"I already have someone" / "I have an advisor":
+→ No trash-talking. Position a second opinion as normal and zero-commitment.
+  e.g. "That's great — always good to have someone in your corner. If you ever want a second set of eyes on anything, happy to help."
+
+"Too busy" / "Bad timing":
+→ Validate it, offer to circle back later. Don't pin them to a date.
+  e.g. "Totally get it — things are nuts right now. I'll check back in a few weeks, no stress."
+
+Cost concerns / "Can't afford it":
+→ Normalize it. Reframe the conversation as planning, not spending.
+  e.g. "Honestly that's exactly when it makes sense to have a plan — even a quick chat could help. No cost to sit down."
+
+"Just send me info":
+→ Redirect gently — info without context isn't useful, a quick call is better.
+  e.g. "For sure — honestly the stuff I'd send makes way more sense with a quick walkthrough. Got 15 min this week?"
+
+"Who is this?" / "How did you get my number?":
+→ Be transparent and casual. Mention Co-operators, keep it light.
+  e.g. "Hey, it's Marc — I'm a financial advisor with Co-operators here in London. No worries if it doesn't ring a bell."
+
+IMPORTANT: These are tone guides, not scripts. Adapt to what they actually said. If someone says "not interested" firmly or twice, respect it fully — do NOT send the booking link or push for a meeting.
+
 STEP 3 — SAFETY CHECK (do this mentally before finalizing):
 - No financial promises or return guarantees
 - No specific rates, numbers, or product comparisons
@@ -175,7 +204,7 @@ def generate_reply(phone: str, inbound_body: str, prospect: dict | None = None):
     prospect_id = (prospect or {}).get("id")
 
     # Rate limit: skip if we already replied in the last 30 minutes
-    if was_recently_replied(phone, minutes=30):
+    if was_recently_replied(phone, minutes=2):
         logger.info("Rate limit: skipping auto-reply to %s (replied within 30 min)", _safe_phone(phone))
         return None
 
