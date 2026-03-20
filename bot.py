@@ -3323,15 +3323,19 @@ def draft_cold_outreach(phone: str, name: str = "", notes: str = "") -> dict:
     has_prior_thread = len(prior_outbound) > 0
 
     context_line = ""
+    notes_instruction = ""
     if notes:
-        context_line = f"Context/reason for calling: {notes}"
+        context_line = f"Why Marc is calling: {notes}"
+        notes_instruction = "USE the context above — weave a natural reference to it into the message. Don't just say 'had a quick question', be specific about why you're reaching out (but never promise outcomes or mention specific products/numbers)."
     elif has_prior_thread:
-        context_line = "Note: Marc has texted this person before without a reply. Keep it brief, low pressure — no 'following up on my last message' language."
+        context_line = "Note: Marc has texted this person before without a reply."
+        notes_instruction = "Keep it very brief and low pressure — no 'following up on my last message' language."
 
     with RedactionContext(prospect_names=[display_name]) as pii_ctx:
         user_content = pii_ctx.redact(sanitize_for_prompt(
             f"Prospect first name: {display_name.split()[0]}\n"
             + (f"{context_line}\n" if context_line else "")
+            + (f"\nInstruction: {notes_instruction}" if notes_instruction else "")
         ))
 
         response = client.chat.completions.create(
