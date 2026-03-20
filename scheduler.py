@@ -852,12 +852,17 @@ async def check_booking_nurture_touches():
 
 
 async def check_cold_outreach_followups():
-    """Draft a single follow-up text for cold outreach that got no reply after 3 days.
+    """Draft follow-up texts for cold outreach that got no reply.
+
+    Up to 3 follow-ups with varied angles:
+    - Follow-up 1 (day 3):  Gentle nudge — "just in case you missed it"
+    - Follow-up 2 (day 7):  Value angle — why it's worth a quick chat
+    - Follow-up 3 (day 14): Final soft close — "door's always open"
 
     Only fires if:
     - At least 1 outbound text sent to this phone (from cold outreach)
     - Zero inbound replies ever received from this phone
-    - Fewer than 2 total outbound texts (so we never send more than 2 unanswered texts)
+    - Fewer than 4 total outbound texts (1 initial + 3 follow-ups max)
     - Not opted out
     """
     if not _bot or not CHAT_ID:
@@ -869,10 +874,41 @@ async def check_cold_outreach_followups():
         from openai import OpenAI
         import os
 
-        cutoff = (datetime.now(ET) - timedelta(days=3)).strftime("%Y-%m-%d %H:%M:%S")
+        # Follow-up schedule: (outbound_count_threshold, days_since_first, prompt_key)
+        # TODO: restore to (1, 3, ...), (2, 7, ...), (3, 14, ...) for production
+        FOLLOWUP_SCHEDULE = [
+            (1, 0, "nudge"),
+            (2, 0, "value"),
+            (3, 0, "final"),
+        ]
+
+        FOLLOWUP_PROMPTS = {
+            "nudge": (
+                "You are writing a brief follow-up text for Marc Pineault, a financial advisor at Co-operators "
+                "in London, Ontario. Marc texted this person a few days ago and never got a reply. "
+                "Write ONE sentence — low pressure, casual, leaves the door open. "
+                "First name only, sign '- Marc'. No mentioning products or Co-operators. "
+                "Good example: 'Hey Sarah, just leaving this here in case you missed it — happy to chat whenever works for you. - Marc'"
+            ),
+            "value": (
+                "You are writing a second follow-up text for Marc Pineault, a financial advisor at Co-operators "
+                "in London, Ontario. Marc has texted this person before with no reply. "
+                "Write ONE sentence — offer a reason why a quick chat is worth their time (e.g. saving money, "
+                "getting a second opinion, making sure they're covered). Keep it casual and genuine. "
+                "First name only, sign '- Marc'. No specific products, rates, or numbers. "
+                "Good example: 'Hey Sarah, a lot of people I sit down with find they're overpaying or have gaps they didn't know about — happy to take a look if you're curious. - Marc'"
+            ),
+            "final": (
+                "You are writing a final follow-up text for Marc Pineault, a financial advisor at Co-operators "
+                "in London, Ontario. Marc has texted this person a couple times with no reply. "
+                "This is the LAST text — make it respectful, zero pressure, and leave the door wide open. "
+                "Write ONE sentence. First name only, sign '- Marc'. No products or Co-operators. "
+                "Good example: 'Hey Sarah, I won't keep bugging you — just know the door's always open if you ever want to chat. - Marc'"
+            ),
+        }
 
         with _db.get_db() as conn:
-            # Phones with outbound texts sent 3+ days ago, no inbound ever, ≤1 total outbound
+            # Phones with outbound texts, no inbound ever, ≤3 total outbound
             rows = conn.execute(
                 """
                 SELECT phone, MIN(created_at) as first_outbound, COUNT(*) as outbound_count,
@@ -880,19 +916,35 @@ async def check_cold_outreach_followups():
                 FROM sms_conversations
                 WHERE direction = 'outbound'
                 GROUP BY phone
-                HAVING outbound_count <= 1
-                   AND first_outbound <= ?
+                HAVING outbound_count <= 3
                    AND phone NOT IN (
                        SELECT DISTINCT phone FROM sms_conversations WHERE direction = 'inbound'
                    )
                 """,
-                (cutoff,),
             ).fetchall()
+
+        now = datetime.now(ET)
 
         for row in rows:
             phone = row["phone"]
             prospect_id = row["prospect_id"]
             prospect_name = row["prospect_name"] or ""
+            outbound_count = row["outbound_count"]
+            first_outbound = row["first_outbound"]
+
+            # Determine which follow-up is due
+            prompt_key = None
+            followup_label = ""
+            for threshold, days, key in FOLLOWUP_SCHEDULE:
+                if outbound_count == threshold:
+                    cutoff = (now - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+                    if first_outbound <= cutoff:
+                        prompt_key = key
+                        followup_label = f"{days}-day"
+                    break
+
+            if not prompt_key:
+                continue
 
             # Check opt-out
             prospect = None
@@ -904,27 +956,21 @@ async def check_cold_outreach_followups():
             if sms_conversations.is_opted_out(prospect):
                 continue
 
-            # Generate a gentle follow-up (different from cold intro — no STOP footer, just low-pressure)
             try:
                 from pii import RedactionContext, sanitize_for_prompt
                 openai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
                 first_name = (prospect_name or "there").split()[0]
+                if first_name.startswith("Contact"):
+                    first_name = "there"
 
-                followup_prompt = (
-                    "You are writing a brief follow-up text for Marc Pineault, a financial advisor at Co-operators "
-                    "in London, Ontario. Marc texted this person 3+ days ago and never got a reply. "
-                    "Write ONE sentence — low pressure, casual, leaves the door open. "
-                    "First name only, sign '- Marc'. No mentioning products or Co-operators. "
-                    "Good example: 'Hey Sarah, just leaving this here in case you missed it — happy to chat whenever works for you. - Marc'"
-                )
-                with RedactionContext(prospect_names=[prospect_name] if prospect_name else []) as pii_ctx:
+                with RedactionContext(prospect_names=[prospect_name] if prospect_name and not prospect_name.startswith("Contact ") else []) as pii_ctx:
                     user_content = pii_ctx.redact(sanitize_for_prompt(
                         f"Prospect first name: {first_name}"
                     ))
                     resp = openai_client.chat.completions.create(
                         model="gpt-4.1-mini",
                         messages=[
-                            {"role": "system", "content": followup_prompt},
+                            {"role": "system", "content": FOLLOWUP_PROMPTS[prompt_key]},
                             {"role": "user", "content": user_content},
                         ],
                         max_completion_tokens=100,
@@ -937,11 +983,12 @@ async def check_cold_outreach_followups():
                 logger.exception("Cold follow-up generation failed for %s", phone[-4:])
                 continue
 
+            attempt_num = outbound_count  # 1, 2, or 3
             draft = aq.add_draft(
                 draft_type="cold_followup",
                 channel="sms_draft",
                 content=content,
-                context=f"3-day no-reply follow-up for {prospect_name or phone} ({phone})",
+                context=f"{followup_label} no-reply follow-up #{attempt_num} for {prospect_name or phone} ({phone})",
                 prospect_id=prospect_id,
             )
 
@@ -951,9 +998,10 @@ async def check_cold_outreach_followups():
                 InlineKeyboardButton("Skip", callback_data=f"draft_dismiss_{draft['id']}"),
             ]])
             display = prospect_name or phone
+            attempt_labels = {1: "1st", 2: "2nd", 3: "3rd (final)"}
             text = (
                 f"NO REPLY FOLLOW-UP — {display}\n"
-                f"Sent cold text 3+ days ago, no response.\n\n"
+                f"{attempt_labels.get(attempt_num, '')} attempt · {followup_label} since first text\n\n"
                 f"{content}"
             )
             try:
