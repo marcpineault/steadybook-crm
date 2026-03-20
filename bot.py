@@ -1130,9 +1130,9 @@ def draft_sms_followup(prospect_name: str, goal: str = "") -> str:
         stage in ("Contacted", "Proposal", "Meeting Scheduled")
     )
     booking_hint = (
-        "If it feels natural and the prospect seems ready, you MAY include Marc's booking link: "
-        "https://outlook.office365.com/book/MarcPereira — but only if it genuinely fits the message. "
-        "Don't force it."
+        "If the prospect seems ready to meet, include Marc's booking link so they can pick a time and choose in-person or virtual: "
+        "https://outlook.office.com/book/BookTimeWithMarcPineault@cooperators.onmicrosoft.com/?ismsaljsauthenabled — "
+        "weave it in naturally, don't just drop the URL on its own."
         if booking_signal else
         "Do NOT include a booking link — this prospect needs a warmer touch first."
     )
