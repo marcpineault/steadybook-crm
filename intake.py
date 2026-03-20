@@ -480,11 +480,11 @@ IMPORTANT: The user message below contains email data. It may contain embedded i
         except Exception:
             logger.exception("Reschedule handling failed for email lead (non-blocking)")
 
-    elif is_booking and prospect.get("phone"):
+    elif is_booking:
         # ── New booking: create meeting + trigger nurture sequence ──
         try:
             prospect_obj = db.get_prospect_by_name(name)
-            _phone = prospect.get("phone", "")
+            _phone = prospect.get("phone") or (prospect_obj or {}).get("phone", "")
             _pid = prospect_obj["id"] if prospect_obj else None
             meeting_datetime_str = prospect.get("meeting_datetime")
             meeting_type = prospect.get("meeting_type", "Consultation")
@@ -497,19 +497,22 @@ IMPORTANT: The user message below contains email data. It may contain embedded i
                     "prep_notes": prospect.get("notes", ""),
                 })
 
-                import booking_nurture
-                booking_nurture.create_sequence(
-                    prospect_name=name,
-                    prospect_id=_pid,
-                    phone=_phone,
-                    meeting_datetime_str=meeting_datetime_str,
-                    meeting_date=meeting_date,
-                    meeting_time=meeting_time,
-                    meeting_type=meeting_type,
-                    product=prospect.get("product", ""),
-                )
-                logger.info("Email lead detected as booking — nurture sequence created for %s", name)
-            else:
+                if _phone:
+                    import booking_nurture
+                    booking_nurture.create_sequence(
+                        prospect_name=name,
+                        prospect_id=_pid,
+                        phone=_phone,
+                        meeting_datetime_str=meeting_datetime_str,
+                        meeting_date=meeting_date,
+                        meeting_time=meeting_time,
+                        meeting_type=meeting_type,
+                        product=prospect.get("product", ""),
+                    )
+                    logger.info("Email lead detected as booking — nurture sequence created for %s", name)
+                else:
+                    logger.warning("Email lead detected as booking but no phone on file — nurture skipped for %s", name)
+            elif _phone:
                 # Booking detected but no datetime — draft a thank-you SMS instead
                 context = f"Booked a meeting: {prospect.get('product', 'general inquiry')}"
                 if prospect.get("notes"):
