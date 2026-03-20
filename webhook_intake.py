@@ -266,6 +266,14 @@ def sms_reply():
         prospect_id = prospect["id"] if prospect else None
         prospect_name = prospect["name"] if prospect else ""
 
+        # Handle opt-out keywords — update CRM, cancel sequences, don't reply
+        if body.strip().lower() in sms_conversations.OPT_OUT_KEYWORDS:
+            logger.info("Opt-out received from %s", from_number[-4:])
+            sms_conversations.handle_opt_out(
+                phone=from_number, prospect_id=prospect_id, prospect_name=prospect_name
+            )
+            return "", 204
+
         sms_conversations.log_message(
             phone=from_number,
             body=body,
@@ -274,6 +282,12 @@ def sms_reply():
             prospect_name=prospect_name,
             twilio_sid=message_sid,
         )
+
+        # Skip if prospect has previously opted out
+        if sms_conversations.is_opted_out(prospect):
+            logger.info("Skipping reply — prospect opted out (%s)", from_number[-4:])
+            return "", 204
+
         sms_conversations.generate_reply(
             phone=from_number,
             inbound_body=body,

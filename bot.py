@@ -2705,20 +2705,27 @@ async def handle_draft_callback(update, context):
                     f"Copy-paste the above and send manually to {prospect_email}."
                 )
         elif draft.get("channel") == "sms_draft":
-            import sms_sender
+            import sms_sender, sms_conversations as _sms_conv
             _phone = ""
+            _prospect_name = ""
             if draft.get("prospect_id"):
                 with db.get_db() as _conn:
                     _prow = _conn.execute(
-                        "SELECT phone FROM prospects WHERE id = ?", (draft["prospect_id"],)
+                        "SELECT phone, name FROM prospects WHERE id = ?", (draft["prospect_id"],)
                     ).fetchone()
                     if _prow:
                         _phone = _prow["phone"]
+                        _prospect_name = _prow["name"]
             if _phone:
                 handle = sms_sender.send_sms(to=_phone, body=content)
                 if handle:
+                    _sms_conv.log_message(
+                        phone=_phone, body=content, direction="outbound",
+                        prospect_id=draft.get("prospect_id"),
+                        prospect_name=_prospect_name, twilio_sid=handle,
+                    )
                     await query.edit_message_text(
-                        f"✅ SENT via iMessage — booking_nurture #{queue_id}\nHandle: {handle}"
+                        f"✅ SMS sent — #{queue_id}"
                     )
                 else:
                     await query.edit_message_text(

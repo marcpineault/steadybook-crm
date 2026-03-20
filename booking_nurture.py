@@ -75,6 +75,20 @@ def create_sequence(
     if prospect_id:
         cancel_sequence(prospect_id)
 
+    # Dedup: skip if a QUEUED sequence was already created in the last 5 minutes
+    # (catches duplicate email forwards; won't block rebooks since cancel runs first)
+    with db.get_db() as conn:
+        recent = conn.execute(
+            """SELECT id FROM booking_nurture_sequences
+               WHERE (prospect_id = ? OR phone = ?)
+               AND status = 'queued'
+               AND created_at >= datetime('now', '-5 minutes') LIMIT 1""",
+            (prospect_id, phone),
+        ).fetchone()
+    if recent:
+        logger.info("Skipping duplicate nurture sequence for %s (created within 5 min)", prospect_name)
+        return
+
     now_utc = datetime.now(timezone.utc)
 
     # Touch 1: now
@@ -142,6 +156,24 @@ def generate_touch(touch_row: dict):
     touch_id = touch_row["id"]
     touch_number = touch_row["touch_number"]
     prospect_name = touch_row["prospect_name"]
+    phone = touch_row.get("phone", "")
+
+    # Skip if we already texted this phone in the last 4 hours (avoid double-texting)
+    try:
+        import sms_conversations as _sms
+        if phone and _sms.was_recently_contacted(phone, hours=4):
+            logger.info(
+                "Skipping nurture touch %d for %s — already contacted in last 4h",
+                touch_number, prospect_name
+            )
+            # Mark as cancelled so it doesn't re-fire
+            with db.get_db() as conn:
+                conn.execute(
+                    "UPDATE booking_nurture_sequences SET status='cancelled' WHERE id=?", (touch_id,)
+                )
+            return None
+    except Exception:
+        logger.exception("Recent contact check failed for touch #%s", touch_id)
     meeting_date = touch_row["meeting_date"]
     meeting_time = touch_row["meeting_time"]
     product = touch_row.get("product", "")

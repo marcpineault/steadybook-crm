@@ -7,16 +7,20 @@ in Marc's voice, and sends it automatically via Twilio (no human approval step).
 
 import logging
 import os
+from datetime import datetime, timedelta
 
+import pytz
 from openai import OpenAI
 
-import approval_queue
 import db
 import memory_engine
 
 logger = logging.getLogger(__name__)
 
+ET = pytz.timezone("America/Toronto")
 openai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
+
+OPT_OUT_KEYWORDS = {"stop", "unsubscribe", "cancel", "quit", "end", "optout", "opt out", "opt-out"}
 
 SMS_REPLY_SYSTEM_PROMPT = """You are drafting a reply SMS for Marc Pineault, a financial advisor at Co-operators in London, Ontario.
 
@@ -92,14 +96,87 @@ def get_recent_thread(phone: str, limit: int = 10) -> list[dict]:
     return [dict(r) for r in reversed(rows)]
 
 
-def generate_reply(phone: str, inbound_body: str, prospect: dict | None = None) -> int | None:
-    """Draft a GPT reply for an inbound SMS and queue it for Telegram approval.
+def is_opted_out(prospect: dict | None) -> bool:
+    """Return True if this prospect has opted out of SMS."""
+    notes = ((prospect or {}).get("notes") or "")
+    return "[SMS_OPTED_OUT]" in notes
 
-    Returns the approval_queue id or None on failure.
-    Works with or without a matched prospect — degrades gracefully.
+
+def was_recently_contacted(phone: str, hours: int = 4) -> bool:
+    """Return True if we sent an outbound SMS to this phone in the last N hours."""
+    cutoff = (datetime.utcnow() - timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
+    with db.get_db() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM sms_conversations WHERE phone=? AND direction='outbound' AND created_at >= ? LIMIT 1",
+            (phone, cutoff),
+        ).fetchone()
+    return row is not None
+
+
+def was_recently_replied(phone: str, minutes: int = 30) -> bool:
+    """Return True if we auto-replied to this phone in the last N minutes (rate limit)."""
+    cutoff = (datetime.utcnow() - timedelta(minutes=minutes)).strftime("%Y-%m-%d %H:%M:%S")
+    with db.get_db() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM sms_conversations WHERE phone=? AND direction='outbound' AND created_at >= ? LIMIT 1",
+            (phone, cutoff),
+        ).fetchone()
+    return row is not None
+
+
+def handle_opt_out(phone: str, prospect_id=None, prospect_name: str = "") -> None:
+    """Mark prospect as opted out and cancel any queued nurture sequences."""
+    if prospect_id:
+        try:
+            import booking_nurture
+            booking_nurture.cancel_sequence(prospect_id)
+        except Exception:
+            logger.exception("Could not cancel nurture sequence on opt-out")
+        try:
+            with db.get_db() as conn:
+                conn.execute(
+                    "UPDATE prospects SET notes = COALESCE(notes, '') || ' [SMS_OPTED_OUT]' WHERE id = ?",
+                    (prospect_id,),
+                )
+        except Exception:
+            logger.exception("Could not update prospect notes on opt-out")
+    log_message(phone=phone, body="STOP", direction="inbound",
+                prospect_id=prospect_id, prospect_name=prospect_name)
+    logger.info("Opt-out processed for %s", _safe_phone(phone))
+
+
+def _business_hours_delay() -> int:
+    """Return seconds to wait before sending — respects ET business hours (8am–8pm).
+
+    If current time is within business hours, returns a human-like 45–90s delay.
+    If outside hours, returns seconds until 9am ET next day plus a small jitter.
+    """
+    import random
+    now_et = datetime.now(ET)
+    hour = now_et.hour
+    if 8 <= hour < 20:
+        return random.randint(45, 90)
+    # Outside hours — calculate time until 9am ET
+    next_9am = now_et.replace(hour=9, minute=0, second=0, microsecond=0)
+    if now_et >= next_9am:
+        next_9am = next_9am + timedelta(days=1)
+    delay = int((next_9am - now_et).total_seconds()) + random.randint(0, 300)
+    logger.info("Outside business hours — reply delayed %ds (until ~9am ET)", delay)
+    return delay
+
+
+def generate_reply(phone: str, inbound_body: str, prospect: dict | None = None):
+    """Generate and auto-send a reply to an inbound SMS.
+
+    Returns True if a background send was started, None on failure or skip.
     """
     prospect_name = (prospect or {}).get("name", "")
     prospect_id = (prospect or {}).get("id")
+
+    # Rate limit: skip if we already replied in the last 30 minutes
+    if was_recently_replied(phone, minutes=30):
+        logger.info("Rate limit: skipping auto-reply to %s (replied within 30 min)", _safe_phone(phone))
+        return None
 
     # Conversation thread for context
     thread = get_recent_thread(phone, limit=10)
@@ -161,10 +238,10 @@ def generate_reply(phone: str, inbound_body: str, prospect: dict | None = None) 
         return None
 
     # Run delay + send in background so the webhook returns 204 immediately
-    import random, time, threading
+    import time, threading
 
     def _delayed_send():
-        delay = random.randint(45, 90)
+        delay = _business_hours_delay()
         logger.info("Waiting %ds before auto-reply to %s", delay, _safe_phone(phone))
         time.sleep(delay)
 
@@ -189,9 +266,10 @@ def generate_reply(phone: str, inbound_body: str, prospect: dict | None = None) 
             bot_instance = getattr(telegram_app, "bot", None) if telegram_app else None
             if bot_instance and admin_chat_id and bot_event_loop and bot_event_loop.is_running():
                 first_name = prospect_name.split()[0] if prospect_name else "Unknown"
+                status = "✅ Sent" if sid else "❌ Failed"
                 note = (
                     f"📱 {first_name}: \"{inbound_body[:100]}\"\n"
-                    f"↳ Replied: \"{content}\""
+                    f"↳ {status}: \"{content}\""
                 )
                 asyncio.run_coroutine_threadsafe(
                     bot_instance.send_message(chat_id=admin_chat_id, text=note),
