@@ -283,9 +283,10 @@ def generate_reply(phone: str, inbound_body: str, prospect: dict | None = None):
     import time, threading
 
     def _delayed_send():
-        delay = random.randint(45, 90)
+        delay = 0  # TODO: restore to random.randint(45, 90) for production
         logger.info("Waiting %ds before auto-reply to %s", delay, _safe_phone(phone))
-        time.sleep(delay)
+        if delay:
+            time.sleep(delay)
 
         import sms_sender
         sid = sms_sender.send_sms(to=phone, body=content)

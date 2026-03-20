@@ -875,10 +875,11 @@ async def check_cold_outreach_followups():
         import os
 
         # Follow-up schedule: (outbound_count_threshold, days_since_first, prompt_key)
+        # TODO: restore to (1, 3, ...), (2, 7, ...), (3, 14, ...) for production
         FOLLOWUP_SCHEDULE = [
-            (1, 3, "nudge"),
-            (2, 7, "value"),
-            (3, 14, "final"),
+            (1, 0, "nudge"),
+            (2, 0, "value"),
+            (3, 0, "final"),
         ]
 
         FOLLOWUP_PROMPTS = {
