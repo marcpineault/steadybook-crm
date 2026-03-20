@@ -3233,18 +3233,20 @@ RULES:
 3. Sign off with "- Marc"
 4. Mention he tried calling — casual, not dramatic
 5. Low-pressure ask: do they have 15 min this week?
-6. Never mention financial products, insurance, investments, or Co-operators by name — just "Marc" and a quick chat
-7. Never make financial promises or return guarantees
+6. Always identify as "Marc from Co-operators" — they don't know who's texting them
+7. Never mention specific financial products, rates, or numbers
+8. Never make financial promises or return guarantees
 
 VOICE:
 Real person, real phone. Short. Direct. Not salesy at all. Sounds like someone who genuinely tried to reach them.
 
 Good examples:
-- "Hey Sarah, tried reaching you earlier — do you have 15 min this week for a quick chat? - Marc"
-- "Hey John, missed you earlier. Worth a 15 min catch-up this week? - Marc"
+- "Hey Sarah, Marc from Co-operators here — tried reaching you earlier. Do you have 15 min this week for a quick chat? - Marc"
+- "Hey John, Marc from Co-operators — missed you earlier. Worth a 15 min catch-up this week? - Marc"
 
 BAD (never do this):
-- Mentioning Co-operators, insurance, or any financial product in the first text
+- Forgetting to say "Marc from Co-operators" — they won't know who you are
+- Mentioning specific products, insurance premiums, or investment numbers
 - "I hope to hear from you soon" — too corporate
 - More than 2 sentences before the sign-off
 
