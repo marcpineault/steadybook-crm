@@ -1,8 +1,8 @@
-"""Inbound SMS reply handler — logs conversation history and drafts replies.
+"""Inbound SMS reply handler — logs conversation history and auto-replies.
 
 Triggered by Twilio webhooks when prospects reply to outbound SMS.
-Stores conversation history per phone number and uses GPT to draft
-a reply in Marc's voice, queued to Telegram for one-tap approval.
+Stores conversation history per phone number, uses GPT to generate a reply
+in Marc's voice, and sends it automatically via Twilio (no human approval step).
 """
 
 import logging
@@ -32,12 +32,12 @@ Whatever it was, keep driving toward that in your reply.
 
 STEP 2 — WRITE THE REPLY:
 1. 1-2 sentences ONLY
-2. First name if you know it
-3. Sign off "- Marc"
+2. First name if you know it (first name only, no last name)
+3. NO sign-off — this is a back-and-forth conversation, not a letter
 4. Directly address what they said, then nudge toward the goal
 5. If they seem interested → ask for a specific time or next step
 6. If they're hesitant → keep it low pressure, leave the door open
-7. If they ask about rates, products, or numbers → say Marc will walk them through it on the call (never give specifics in a text)
+7. If they ask about rates, products, or numbers → say you'll walk them through it on a call (never give specifics in a text)
 
 STEP 3 — SAFETY CHECK (do this mentally before finalizing):
 - No financial promises or return guarantees
@@ -47,12 +47,12 @@ STEP 3 — SAFETY CHECK (do this mentally before finalizing):
 - If anything feels risky → soften it or remove it
 
 VOICE:
-Real person, real phone. Short. Direct. If it sounds corporate, rewrite it.
+Real person, real phone. Short. Direct. Casual. No sign-off needed mid-conversation.
 
 Examples of the right tone:
-- "Hey John, yeah for sure — what does your week look like? - Marc"
-- "Good to hear. Want to find 30 min to go over what I put together? - Marc"
-- "No rush at all — just let me know when you're ready and we'll set something up. - Marc"
+- "Hey John, yeah for sure — what does your week look like?"
+- "Good to hear. Want to find 30 min to go over what I put together?"
+- "No rush at all — just let me know when you're ready and we'll set something up."
 
 Write ONLY the final SMS text.
 
@@ -159,24 +159,21 @@ def generate_reply(phone: str, inbound_body: str, prospect: dict | None = None) 
         logger.exception("GPT reply generation failed for %s", _safe_phone(phone))
         return None
 
-    snippet = inbound_body[:60].replace("\n", " ")
-    display_name = prospect_name or "unknown caller"
-    context_str = f"phone:{phone} | SMS reply to {display_name} — \"{snippet}\""
+    # Auto-send immediately — no Telegram approval step for replies
+    import sms_sender
+    sid = sms_sender.send_sms(to=phone, body=content)
+    if sid:
+        log_message(
+            phone=phone, body=content, direction="outbound",
+            prospect_id=prospect_id, prospect_name=prospect_name, twilio_sid=sid,
+        )
+        logger.info("Auto-replied to %s (sid=%s)", _safe_phone(phone), sid)
+    else:
+        logger.error("Auto-reply send failed for %s — message was: %s", _safe_phone(phone), content[:80])
 
-    draft = approval_queue.add_draft(
-        draft_type="sms_reply",
-        channel="sms_reply_draft",
-        content=content,
-        context=context_str,
-        prospect_id=prospect_id,
-    )
-
-    logger.info("SMS reply draft queued for %s (queue_id=%s)", _safe_phone(phone), draft["id"])
-
-    # Send Telegram notification immediately with approve/skip buttons
+    # Notify Marc in Telegram (no approval needed — just FYI)
     try:
         import sys, asyncio
-        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
         main_mod = sys.modules.get("__main__")
         telegram_app = getattr(main_mod, "telegram_app", None)
         bot_event_loop = getattr(main_mod, "bot_event_loop", None)
@@ -184,24 +181,18 @@ def generate_reply(phone: str, inbound_body: str, prospect: dict | None = None) 
         bot_instance = getattr(telegram_app, "bot", None) if telegram_app else None
         if bot_instance and admin_chat_id and bot_event_loop and bot_event_loop.is_running():
             first_name = prospect_name.split()[0] if prospect_name else "Unknown"
-            preview = (
-                f"📱 INBOUND REPLY — {first_name}\n"
-                f"They said: {inbound_body[:120]}\n\n"
-                f"Draft reply:\n{content}"
+            note = (
+                f"📱 {first_name}: \"{inbound_body[:100]}\"\n"
+                f"↳ Replied: \"{content}\""
             )
-            keyboard = InlineKeyboardMarkup([[
-                InlineKeyboardButton("Send ✓", callback_data=f"draft_approve_{draft['id']}"),
-                InlineKeyboardButton("Skip", callback_data=f"draft_dismiss_{draft['id']}"),
-                InlineKeyboardButton("Edit & Snooze", callback_data=f"draft_snooze_{draft['id']}"),
-            ]])
             asyncio.run_coroutine_threadsafe(
-                bot_instance.send_message(chat_id=admin_chat_id, text=preview, reply_markup=keyboard),
+                bot_instance.send_message(chat_id=admin_chat_id, text=note),
                 bot_event_loop,
             )
     except Exception:
-        logger.exception("Could not send SMS reply draft notification to Telegram")
+        logger.exception("Could not send reply FYI to Telegram")
 
-    return draft["id"]
+    return sid
 
 
 def _safe_phone(phone: str) -> str:

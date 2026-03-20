@@ -79,47 +79,45 @@ def test_get_recent_thread_empty():
 def test_generate_reply_queues_draft(mock_openai):
     prospect = _seed_prospect("+15198001234")
     mock_openai.chat.completions.create.return_value = MagicMock(
-        choices=[MagicMock(message=MagicMock(content="Hey Jane, Tuesday at 10 works! - Marc"))]
+        choices=[MagicMock(message=MagicMock(content="Hey Jane, Tuesday at 10 works!"))]
     )
-    queue_id = sms_conversations.generate_reply(
-        phone="+15198001234", inbound_body="Is Tuesday at 10 still good?", prospect=prospect,
-    )
-    assert queue_id is not None
-    import approval_queue
-    draft = approval_queue.get_draft_by_id(queue_id)
-    assert draft["channel"] == "sms_reply_draft"
-    assert draft["type"] == "sms_reply"
-    assert "phone:+15198001234" in draft["context"]
+    with patch("sms_sender.send_sms", return_value="SM_test_sid") as mock_send:
+        result = sms_conversations.generate_reply(
+            phone="+15198001234", inbound_body="Is Tuesday at 10 still good?", prospect=prospect,
+        )
+    assert result is not None  # returns sid
+    mock_send.assert_called_once()
+    assert "+15198001234" in str(mock_send.call_args)
 
 
 @patch("sms_conversations.openai_client")
 def test_generate_reply_unknown_prospect(mock_openai):
     mock_openai.chat.completions.create.return_value = MagicMock(
-        choices=[MagicMock(message=MagicMock(content="Hey, thanks! - Marc"))]
+        choices=[MagicMock(message=MagicMock(content="Hey, happy to chat"))]
     )
-    queue_id = sms_conversations.generate_reply(
-        phone="+19995550000", inbound_body="Hey is this Marc?", prospect=None,
-    )
-    assert queue_id is not None
-    import approval_queue
-    draft = approval_queue.get_draft_by_id(queue_id)
-    assert draft["prospect_id"] is None
+    with patch("sms_sender.send_sms", return_value="SM_test_sid_2") as mock_send:
+        result = sms_conversations.generate_reply(
+            phone="+19995550000", inbound_body="Hey is this Marc?", prospect=None,
+        )
+    assert result is not None
+    mock_send.assert_called_once()
 
 
 @patch("sms_conversations.openai_client")
 def test_generate_reply_no_client_memory(mock_openai):
-    """No memory on file — should still draft a reply without crashing."""
+    """No memory on file — should still auto-reply without crashing."""
     prospect = _seed_prospect("+15198005678")
     mock_openai.chat.completions.create.return_value = MagicMock(
-        choices=[MagicMock(message=MagicMock(content="Hey Jane! - Marc"))]
+        choices=[MagicMock(message=MagicMock(content="Hey Jane, sure thing"))]
     )
     with patch("sms_conversations.memory_engine") as mock_mem:
         mock_mem.get_profile_summary_text.return_value = ""
-        queue_id = sms_conversations.generate_reply(
-            phone="+15198005678", inbound_body="Quick question about my policy",
-            prospect=prospect,
-        )
-    assert queue_id is not None
+        with patch("sms_sender.send_sms", return_value="SM_test_sid_3"):
+            result = sms_conversations.generate_reply(
+                phone="+15198005678", inbound_body="Quick question about my policy",
+                prospect=prospect,
+            )
+    assert result is not None
     # GPT was still called even without memory
     mock_openai.chat.completions.create.assert_called_once()
 
