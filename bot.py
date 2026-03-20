@@ -3367,6 +3367,32 @@ def draft_cold_outreach(phone: str, name: str = "", notes: str = "") -> dict:
     }
 
 
+async def cmd_clearsms(update, context):
+    """Clear SMS conversation history for a phone number (admin/testing).
+    Usage: /clearsms +15196001234
+    """
+    if not await _require_admin(update):
+        return
+    if not context.args:
+        await update.message.reply_text("Usage: /clearsms <phone>")
+        return
+    import re as _re
+    import sms_conversations
+    phone_raw = " ".join(context.args)
+    digits = _re.sub(r"\D", "", phone_raw)[-10:]
+    if len(digits) < 7:
+        await update.message.reply_text("Couldn't parse a phone number from that.")
+        return
+    with db.get_db() as conn:
+        count = conn.execute(
+            "SELECT COUNT(*) FROM sms_conversations WHERE phone LIKE ?", (f"%{digits}%",)
+        ).fetchone()[0]
+        conn.execute(
+            "DELETE FROM sms_conversations WHERE phone LIKE ?", (f"%{digits}%",)
+        )
+    await update.message.reply_text(f"Cleared {count} message(s) for ...{digits[-4:]}.")
+
+
 async def cmd_coldcall(update, context):
     """Send a cold outreach text after a missed call.
 
@@ -3548,6 +3574,7 @@ def build_application():
     app.add_handler(CommandHandler("outcomes", cmd_outcomes))
     app.add_handler(CommandHandler("coldcall", cmd_coldcall))
     app.add_handler(CommandHandler("cc", cmd_coldcall))  # shortcut
+    app.add_handler(CommandHandler("clearsms", cmd_clearsms))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice_message))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
