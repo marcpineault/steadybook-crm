@@ -81,11 +81,14 @@ def test_generate_reply_queues_draft(mock_openai):
     mock_openai.chat.completions.create.return_value = MagicMock(
         choices=[MagicMock(message=MagicMock(content="Hey Jane, Tuesday at 10 works!"))]
     )
-    with patch("sms_sender.send_sms", return_value="SM_test_sid") as mock_send:
+    with patch("sms_sender.send_sms", return_value="SM_test_sid") as mock_send, \
+         patch("random.randint", return_value=0), \
+         patch("time.sleep"):
         result = sms_conversations.generate_reply(
             phone="+15198001234", inbound_body="Is Tuesday at 10 still good?", prospect=prospect,
         )
-    assert result is not None  # returns sid
+        import time as _t; _t.sleep(0.1)  # let background thread fire
+    assert result is not None
     mock_send.assert_called_once()
     assert "+15198001234" in str(mock_send.call_args)
 
@@ -95,10 +98,13 @@ def test_generate_reply_unknown_prospect(mock_openai):
     mock_openai.chat.completions.create.return_value = MagicMock(
         choices=[MagicMock(message=MagicMock(content="Hey, happy to chat"))]
     )
-    with patch("sms_sender.send_sms", return_value="SM_test_sid_2") as mock_send:
+    with patch("sms_sender.send_sms", return_value="SM_test_sid_2") as mock_send, \
+         patch("random.randint", return_value=0), \
+         patch("time.sleep"):
         result = sms_conversations.generate_reply(
             phone="+19995550000", inbound_body="Hey is this Marc?", prospect=None,
         )
+        import time as _t; _t.sleep(0.1)
     assert result is not None
     mock_send.assert_called_once()
 

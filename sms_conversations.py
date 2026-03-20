@@ -159,40 +159,48 @@ def generate_reply(phone: str, inbound_body: str, prospect: dict | None = None) 
         logger.exception("GPT reply generation failed for %s", _safe_phone(phone))
         return None
 
-    # Auto-send immediately — no Telegram approval step for replies
-    import sms_sender
-    sid = sms_sender.send_sms(to=phone, body=content)
-    if sid:
-        log_message(
-            phone=phone, body=content, direction="outbound",
-            prospect_id=prospect_id, prospect_name=prospect_name, twilio_sid=sid,
-        )
-        logger.info("Auto-replied to %s (sid=%s)", _safe_phone(phone), sid)
-    else:
-        logger.error("Auto-reply send failed for %s — message was: %s", _safe_phone(phone), content[:80])
+    # Run delay + send in background so the webhook returns 204 immediately
+    import random, time, threading
 
-    # Notify Marc in Telegram (no approval needed — just FYI)
-    try:
-        import sys, asyncio
-        main_mod = sys.modules.get("__main__")
-        telegram_app = getattr(main_mod, "telegram_app", None)
-        bot_event_loop = getattr(main_mod, "bot_event_loop", None)
-        admin_chat_id = getattr(main_mod, "ADMIN_CHAT_ID", None) or os.environ.get("TELEGRAM_CHAT_ID", "")
-        bot_instance = getattr(telegram_app, "bot", None) if telegram_app else None
-        if bot_instance and admin_chat_id and bot_event_loop and bot_event_loop.is_running():
-            first_name = prospect_name.split()[0] if prospect_name else "Unknown"
-            note = (
-                f"📱 {first_name}: \"{inbound_body[:100]}\"\n"
-                f"↳ Replied: \"{content}\""
-            )
-            asyncio.run_coroutine_threadsafe(
-                bot_instance.send_message(chat_id=admin_chat_id, text=note),
-                bot_event_loop,
-            )
-    except Exception:
-        logger.exception("Could not send reply FYI to Telegram")
+    def _delayed_send():
+        delay = random.randint(45, 90)
+        logger.info("Waiting %ds before auto-reply to %s", delay, _safe_phone(phone))
+        time.sleep(delay)
 
-    return sid
+        import sms_sender
+        sid = sms_sender.send_sms(to=phone, body=content)
+        if sid:
+            log_message(
+                phone=phone, body=content, direction="outbound",
+                prospect_id=prospect_id, prospect_name=prospect_name, twilio_sid=sid,
+            )
+            logger.info("Auto-replied to %s (sid=%s)", _safe_phone(phone), sid)
+        else:
+            logger.error("Auto-reply send failed for %s", _safe_phone(phone))
+
+        # FYI notification to Telegram
+        try:
+            import sys, asyncio
+            main_mod = sys.modules.get("__main__")
+            telegram_app = getattr(main_mod, "telegram_app", None)
+            bot_event_loop = getattr(main_mod, "bot_event_loop", None)
+            admin_chat_id = getattr(main_mod, "ADMIN_CHAT_ID", None) or os.environ.get("TELEGRAM_CHAT_ID", "")
+            bot_instance = getattr(telegram_app, "bot", None) if telegram_app else None
+            if bot_instance and admin_chat_id and bot_event_loop and bot_event_loop.is_running():
+                first_name = prospect_name.split()[0] if prospect_name else "Unknown"
+                note = (
+                    f"📱 {first_name}: \"{inbound_body[:100]}\"\n"
+                    f"↳ Replied: \"{content}\""
+                )
+                asyncio.run_coroutine_threadsafe(
+                    bot_instance.send_message(chat_id=admin_chat_id, text=note),
+                    bot_event_loop,
+                )
+        except Exception:
+            logger.exception("Could not send reply FYI to Telegram")
+
+    threading.Thread(target=_delayed_send, daemon=True).start()
+    return True  # background send started
 
 
 def _safe_phone(phone: str) -> str:
