@@ -172,6 +172,35 @@ def generate_reply(phone: str, inbound_body: str, prospect: dict | None = None) 
     )
 
     logger.info("SMS reply draft queued for %s (queue_id=%s)", _safe_phone(phone), draft["id"])
+
+    # Send Telegram notification immediately with approve/skip buttons
+    try:
+        import sys, asyncio
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        main_mod = sys.modules.get("__main__")
+        telegram_app = getattr(main_mod, "telegram_app", None)
+        bot_event_loop = getattr(main_mod, "bot_event_loop", None)
+        admin_chat_id = getattr(main_mod, "ADMIN_CHAT_ID", None) or os.environ.get("TELEGRAM_CHAT_ID", "")
+        bot_instance = getattr(telegram_app, "bot", None) if telegram_app else None
+        if bot_instance and admin_chat_id and bot_event_loop and bot_event_loop.is_running():
+            first_name = prospect_name.split()[0] if prospect_name else "Unknown"
+            preview = (
+                f"📱 INBOUND REPLY — {first_name}\n"
+                f"They said: {inbound_body[:120]}\n\n"
+                f"Draft reply:\n{content}"
+            )
+            keyboard = InlineKeyboardMarkup([[
+                InlineKeyboardButton("Send ✓", callback_data=f"draft_approve_{draft['id']}"),
+                InlineKeyboardButton("Skip", callback_data=f"draft_dismiss_{draft['id']}"),
+                InlineKeyboardButton("Edit & Snooze", callback_data=f"draft_snooze_{draft['id']}"),
+            ]])
+            asyncio.run_coroutine_threadsafe(
+                bot_instance.send_message(chat_id=admin_chat_id, text=preview, reply_markup=keyboard),
+                bot_event_loop,
+            )
+    except Exception:
+        logger.exception("Could not send SMS reply draft notification to Telegram")
+
     return draft["id"]
 
 
