@@ -866,12 +866,22 @@ def get_meetings(date_filter: str = "") -> str:
 
 
 def cancel_meeting(prospect: str) -> str:
-    """Cancel a meeting by prospect name."""
+    """Cancel a meeting by prospect name and stop any pending nurture texts."""
     all_meetings = db.read_meetings()
     for m in all_meetings:
         name = m.get("prospect", "")
         if name and prospect.lower() in name.lower():
-            return db.update_meeting(m["id"], {"status": "Cancelled"})
+            result = db.update_meeting(m["id"], {"status": "Cancelled"})
+            # Cancel any queued booking nurture touches so they don't keep firing
+            try:
+                import booking_nurture
+                prospect_obj = db.get_prospect_by_name(name)
+                if prospect_obj:
+                    booking_nurture.cancel_sequence(prospect_obj["id"])
+                    logger.info("Cancelled nurture sequence for %s (meeting cancelled)", name)
+            except Exception:
+                logger.exception("Could not cancel nurture sequence for %s", name)
+            return result
     return f"No meeting found for '{prospect}'."
 
 
