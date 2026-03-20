@@ -784,7 +784,7 @@ def _intake_event_page(csrf_token, message="", msg_type=""):
     today = date.today().strftime("%B %d, %Y")
     return Response(f"""<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Networking Event — Lead Intake</title>
+<title>Calm Money — Lead Intake</title>
 <style>
   * {{ margin:0; padding:0; box-sizing:border-box; }}
   body {{ font-family:-apple-system,system-ui,sans-serif; background:#0f1117; color:#e8e6f0;
@@ -803,7 +803,7 @@ def _intake_event_page(csrf_token, message="", msg_type=""):
   button:hover {{ background:#00cc8e; }}
 </style></head><body>
 <div class="card">
-  <h1>Networking Event</h1>
+  <h1>Lead Intake</h1>
   <p class="sub">{_esc(today)}</p>
   {msg_html}
   <form method="POST" action="/intake/event">
