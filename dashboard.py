@@ -813,7 +813,7 @@ def _intake_event_page(csrf_token, message="", msg_type=""):
     <input type="tel" id="phone" name="phone" placeholder="Phone number" autocomplete="tel" inputmode="tel" maxlength="30">
     <label for="email">Email</label>
     <input type="email" id="email" name="email" placeholder="Email address" autocomplete="email" inputmode="email" maxlength="254">
-    <button type="submit">Add Lead</button>
+    <button type="submit">Submit</button>
   </form>
 </div></body></html>""", mimetype="text/html")
 
