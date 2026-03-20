@@ -126,6 +126,11 @@ def generate_reply(phone: str, inbound_body: str, prospect: dict | None = None) 
                 temperature=0.7,
             )
             content = pii_ctx.restore(response.choices[0].message.content.strip())
+            # Use first name only in message text
+            if prospect_name:
+                first_name = prospect_name.split()[0]
+                if first_name != prospect_name:
+                    content = content.replace(prospect_name, first_name)
     except Exception:
         logger.exception("GPT reply generation failed for %s", _safe_phone(phone))
         return None

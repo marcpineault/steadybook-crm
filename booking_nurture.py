@@ -171,6 +171,10 @@ def generate_touch(touch_row: dict):
                 temperature=0.7,
             )
             content = pii_ctx.restore(response.choices[0].message.content.strip())
+            # Use first name only in message text
+            first_name = prospect_name.split()[0]
+            if first_name != prospect_name:
+                content = content.replace(prospect_name, first_name)
     except Exception:
         logger.exception("SMS generation failed for touch #%s (%s)", touch_id, prospect_name)
         return None
