@@ -851,6 +851,121 @@ async def check_booking_nurture_touches():
         logger.exception("check_booking_nurture_touches failed")
 
 
+async def check_cold_outreach_followups():
+    """Draft a single follow-up text for cold outreach that got no reply after 3 days.
+
+    Only fires if:
+    - At least 1 outbound text sent to this phone (from cold outreach)
+    - Zero inbound replies ever received from this phone
+    - Fewer than 2 total outbound texts (so we never send more than 2 unanswered texts)
+    - Not opted out
+    """
+    if not _bot or not CHAT_ID:
+        return
+    try:
+        import db as _db
+        import sms_conversations
+        import approval_queue as aq
+        from openai import OpenAI
+        import os
+
+        cutoff = (datetime.now(ET) - timedelta(days=3)).strftime("%Y-%m-%d %H:%M:%S")
+
+        with _db.get_db() as conn:
+            # Phones with outbound texts sent 3+ days ago, no inbound ever, ≤1 total outbound
+            rows = conn.execute(
+                """
+                SELECT phone, MIN(created_at) as first_outbound, COUNT(*) as outbound_count,
+                       MAX(prospect_id) as prospect_id, MAX(prospect_name) as prospect_name
+                FROM sms_conversations
+                WHERE direction = 'outbound'
+                GROUP BY phone
+                HAVING outbound_count <= 1
+                   AND first_outbound <= ?
+                   AND phone NOT IN (
+                       SELECT DISTINCT phone FROM sms_conversations WHERE direction = 'inbound'
+                   )
+                """,
+                (cutoff,),
+            ).fetchall()
+
+        for row in rows:
+            phone = row["phone"]
+            prospect_id = row["prospect_id"]
+            prospect_name = row["prospect_name"] or ""
+
+            # Check opt-out
+            prospect = None
+            if prospect_id:
+                with _db.get_db() as conn:
+                    p = conn.execute("SELECT * FROM prospects WHERE id = ?", (prospect_id,)).fetchone()
+                    if p:
+                        prospect = dict(p)
+            if sms_conversations.is_opted_out(prospect):
+                continue
+
+            # Generate a gentle follow-up (different from cold intro — no STOP footer, just low-pressure)
+            try:
+                from pii import RedactionContext, sanitize_for_prompt
+                openai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
+                first_name = (prospect_name or "there").split()[0]
+
+                followup_prompt = (
+                    "You are writing a brief follow-up text for Marc Pineault, a financial advisor at Co-operators "
+                    "in London, Ontario. Marc texted this person 3+ days ago and never got a reply. "
+                    "Write ONE sentence — low pressure, casual, leaves the door open. "
+                    "First name only, sign '- Marc'. No mentioning products or Co-operators. "
+                    "Good example: 'Hey Sarah, just leaving this here in case you missed it — happy to chat whenever works for you. - Marc'"
+                )
+                with RedactionContext(prospect_names=[prospect_name] if prospect_name else []) as pii_ctx:
+                    user_content = pii_ctx.redact(sanitize_for_prompt(
+                        f"Prospect first name: {first_name}"
+                    ))
+                    resp = openai_client.chat.completions.create(
+                        model="gpt-4.1-mini",
+                        messages=[
+                            {"role": "system", "content": followup_prompt},
+                            {"role": "user", "content": user_content},
+                        ],
+                        max_completion_tokens=100,
+                        temperature=0.7,
+                    )
+                    content = pii_ctx.restore(resp.choices[0].message.content.strip())
+                    if first_name and prospect_name and first_name != prospect_name:
+                        content = content.replace(prospect_name, first_name)
+            except Exception:
+                logger.exception("Cold follow-up generation failed for %s", phone[-4:])
+                continue
+
+            draft = aq.add_draft(
+                draft_type="cold_followup",
+                channel="sms_draft",
+                content=content,
+                context=f"3-day no-reply follow-up for {prospect_name or phone} ({phone})",
+                prospect_id=prospect_id,
+            )
+
+            from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+            keyboard = InlineKeyboardMarkup([[
+                InlineKeyboardButton("Send", callback_data=f"draft_approve_{draft['id']}"),
+                InlineKeyboardButton("Skip", callback_data=f"draft_dismiss_{draft['id']}"),
+            ]])
+            display = prospect_name or phone
+            text = (
+                f"NO REPLY FOLLOW-UP — {display}\n"
+                f"Sent cold text 3+ days ago, no response.\n\n"
+                f"{content}"
+            )
+            try:
+                msg = await _bot.send_message(chat_id=CHAT_ID, text=text, reply_markup=keyboard)
+                aq.set_telegram_message_id(draft["id"], str(msg.message_id))
+            except Exception:
+                logger.exception("Could not send cold follow-up draft to Telegram for %s", phone[-4:])
+
+    except Exception:
+        logger.exception("check_cold_outreach_followups failed")
+
+
 # ── Database Backup ──
 
 async def backup_database():
@@ -1091,6 +1206,15 @@ def start_scheduler(telegram_app, event_loop=None):
         name="Pre-Call Text Nurture Check",
     )
 
+    scheduler.add_job(
+        check_cold_outreach_followups,
+        "cron",
+        hour=9,
+        minute=30,
+        id="check_cold_outreach_followups",
+        name="Cold Outreach No-Reply Follow-ups",
+    )
+
     # Daily database backup at 11 PM ET
     scheduler.add_job(
         backup_database,
@@ -1122,4 +1246,4 @@ def start_scheduler(telegram_app, event_loop=None):
     )
 
     scheduler.start()
-    logger.info("Scheduler started — briefing 8AM (weekdays), nag 9AM+2PM, midday 12:30PM, EOD 5:30PM, weekly Sun 6:30PM, task reminders every 60s, meeting prep hourly, backup 11PM, watchdog 8:45AM, webhook check every 6h, booking nurture every 15min ET.")
+    logger.info("Scheduler started — briefing 8AM (weekdays), nag 9AM+2PM, midday 12:30PM, EOD 5:30PM, weekly Sun 6:30PM, task reminders every 60s, meeting prep hourly, backup 11PM, watchdog 8:45AM, webhook check every 6h, booking nurture every 15min, cold follow-ups 9:30AM daily ET.")
