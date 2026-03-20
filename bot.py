@@ -3269,7 +3269,7 @@ def draft_cold_outreach(phone: str, name: str = "", notes: str = "") -> dict:
 
     # Normalize phone
     normalized = sms_sender._normalize_phone(phone)
-    if len(_re.sub(r"\D", "", normalized)) < 10:
+    if len(_re.sub(r"\D", "", normalized)) < 7:
         raise ValueError(f"Invalid phone number: {phone}")
 
     # Look up existing prospect by phone
@@ -3390,17 +3390,36 @@ async def cmd_coldcall(update, context):
 
     import re as _re
 
-    phone_raw = args[0]
-    remaining_tokens = args[1:]
-    full_rest = " ".join(remaining_tokens)
+    full_input = " ".join(args)
+
+    # Extract phone: find a run of digits (with optional leading +, spaces, dashes, parens)
+    # that contains at least 10 digits
+    phone_match = _re.search(r'(\+?[\d\s\-().]{7,})', full_input)
+    if not phone_match:
+        await update.message.reply_text(
+            "Couldn't find a phone number. Usage: /cc +15196001234 Sarah Jones"
+        )
+        return
+
+    phone_raw = phone_match.group(1).strip()
+    # Verify it has enough digits
+    if len(_re.sub(r"\D", "", phone_raw)) < 7:
+        await update.message.reply_text(
+            f"That doesn't look like a valid phone number: {phone_raw}\n"
+            "Usage: /cc +15196001234 or /cc 5196001234"
+        )
+        return
+
+    # Everything after the phone match is name + notes
+    after_phone = full_input[phone_match.end():].strip()
 
     # Split name from notes on — or " - "
-    if "—" in full_rest:
-        name_part, notes_part = full_rest.split("—", 1)
-    elif " - " in full_rest:
-        name_part, notes_part = full_rest.split(" - ", 1)
+    if "—" in after_phone:
+        name_part, notes_part = after_phone.split("—", 1)
+    elif " - " in after_phone:
+        name_part, notes_part = after_phone.split(" - ", 1)
     else:
-        name_part = full_rest
+        name_part = after_phone
         notes_part = ""
 
     name = name_part.strip()
