@@ -119,7 +119,12 @@ def process_booking(data: dict) -> str:
     try:
         prospect_obj = db.get_prospect_by_name(name)
         _phone = (prospect_obj or {}).get("phone", "") or phone
-        if _phone and data.get("start_time"):
+        _email = (prospect_obj or {}).get("email", "") or email
+        _is_internal = any(
+            domain in (_email or "").lower()
+            for domain in ("@co-operators", "@cooperators", "@theco-operators")
+        )
+        if _phone and data.get("start_time") and not _is_internal:
             import booking_nurture
             booking_nurture.create_sequence(
                 prospect_name=name,
