@@ -3235,14 +3235,13 @@ RULES:
 5. Low-pressure ask: do they have 15 min this week?
 6. Never mention financial products, insurance, investments, or Co-operators by name — just "Marc" and a quick chat
 7. Never make financial promises or return guarantees
-8. ALWAYS end with "Reply STOP to opt out." on its own line — this is required for compliance
 
 VOICE:
 Real person, real phone. Short. Direct. Not salesy at all. Sounds like someone who genuinely tried to reach them.
 
 Good examples:
-- "Hey Sarah, tried reaching you earlier — do you have 15 min this week for a quick chat? - Marc\n\nReply STOP to opt out."
-- "Hey John, missed you earlier. Worth a 15 min catch-up this week? - Marc\n\nReply STOP to opt out."
+- "Hey Sarah, tried reaching you earlier — do you have 15 min this week for a quick chat? - Marc"
+- "Hey John, missed you earlier. Worth a 15 min catch-up this week? - Marc"
 
 BAD (never do this):
 - Mentioning Co-operators, insurance, or any financial product in the first text
