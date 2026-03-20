@@ -7,6 +7,7 @@ in Marc's voice, and sends it automatically via Twilio (no human approval step).
 
 import logging
 import os
+import random
 from datetime import datetime, timedelta
 
 import pytz
@@ -241,7 +242,7 @@ def generate_reply(phone: str, inbound_body: str, prospect: dict | None = None):
     import time, threading
 
     def _delayed_send():
-        delay = _business_hours_delay()
+        delay = random.randint(45, 90)
         logger.info("Waiting %ds before auto-reply to %s", delay, _safe_phone(phone))
         time.sleep(delay)
 
