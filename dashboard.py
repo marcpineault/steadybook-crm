@@ -803,7 +803,6 @@ def _intake_event_page(csrf_token, message="", msg_type=""):
   button:hover {{ background:#00cc8e; }}
 </style></head><body>
 <div class="card">
-  <h1>Lead Intake</h1>
   <p class="sub">{_esc(today)}</p>
   {msg_html}
   <form method="POST" action="/intake/event">
