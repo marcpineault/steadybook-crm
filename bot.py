@@ -3445,7 +3445,7 @@ async def cmd_coldcall(update, context):
     # Everything after the phone match is name + notes
     after_phone = full_input[phone_match.end():].strip()
 
-    # Split name from notes on — or " - "
+    # Split on em-dash or spaced hyphen to separate name from notes
     if "—" in after_phone:
         name_part, notes_part = after_phone.split("—", 1)
     elif " - " in after_phone:
@@ -3454,8 +3454,24 @@ async def cmd_coldcall(update, context):
         name_part = after_phone
         notes_part = ""
 
-    name = name_part.strip()
-    notes = notes_part.strip()
+    name_part = name_part.strip()
+    notes_part = notes_part.strip()
+
+    # Detect if name_part actually looks like a proper name (1-3 words, each capitalized)
+    # If not, treat the whole thing as notes and leave name empty
+    def _looks_like_name(text: str) -> bool:
+        if not text:
+            return False
+        words = text.split()
+        return 1 <= len(words) <= 3 and all(w[0].isupper() for w in words if w)
+
+    if _looks_like_name(name_part):
+        name = name_part
+        notes = notes_part
+    else:
+        # Everything is notes, no name extracted
+        name = ""
+        notes = (name_part + (" — " + notes_part if notes_part else "")).strip(" —")
 
     await update.message.reply_text(f"Generating cold outreach text for {name or phone_raw}...")
 
