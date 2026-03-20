@@ -204,7 +204,7 @@ def generate_reply(phone: str, inbound_body: str, prospect: dict | None = None):
     prospect_id = (prospect or {}).get("id")
 
     # Rate limit: skip if we already replied in the last 30 minutes
-    if was_recently_replied(phone, minutes=2):
+    if was_recently_replied(phone, minutes=0):
         logger.info("Rate limit: skipping auto-reply to %s (replied within 30 min)", _safe_phone(phone))
         return None
 
