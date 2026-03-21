@@ -33,7 +33,14 @@ def process_booking(data: dict) -> str:
     if notes:
         booking_notes += f" | {notes}"
 
-    existing = db.get_prospect_by_name(name)
+    # Dedup: try email first, then phone, then fall back to name
+    existing = None
+    if email:
+        existing = db.get_prospect_by_email(email)
+    if not existing and phone:
+        existing = db.get_prospect_by_phone(phone)
+    if not existing:
+        existing = db.get_prospect_by_name(name)
     if existing:
         old_notes = existing.get("notes", "")
         combined = f"{old_notes} | [Booking] {booking_notes}" if old_notes else f"[Booking] {booking_notes}"
