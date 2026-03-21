@@ -382,11 +382,11 @@ def complete_mission(
     last_msg = thread[-1]["body"][:100] if thread else ""
     outbound_count = len([m for m in thread if m["direction"] == "outbound"])
     if status == "cold":
-        note = f"🧊 {prospect_name} — went cold after {outbound_count} attempt(s).\nLast message: \"{last_msg}\""
+        note = f"🧊 {prospect_name} — went cold after {outbound_count} attempt(s).\nLast message: '{last_msg}'"
     elif status == "needs_marc":
         note = (
             f"⚠️ {prospect_name} — asked something the agent can't handle.\n"
-            f"Message: \"{last_msg}\"\n\n"
+            f"Message: '{last_msg}'\n\n"
             f"Agent paused. Use /agent resume {agent_id} when you've handled it."
         )
     else:

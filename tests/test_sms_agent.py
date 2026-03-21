@@ -69,3 +69,36 @@ def test_complete_mission_updates_status(fresh_db):
         row = conn.execute("SELECT * FROM sms_agents WHERE id = ?", (agent_id,)).fetchone()
     assert row["status"] == "success"
     assert row["completed_at"] is not None
+
+
+def test_resume_mission_needs_marc_sets_active(fresh_db):
+    with db.get_db() as conn:
+        conn.execute(
+            "INSERT INTO sms_agents (phone, prospect_name, objective, status) VALUES (?, ?, ?, ?)",
+            ("+15195550005", "Alice Brown", "book a call", "needs_marc"),
+        )
+        agent_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+    result = sms_agent.resume_mission(agent_id)
+
+    assert "Alice Brown" in result
+    with db.get_db() as conn:
+        row = conn.execute("SELECT * FROM sms_agents WHERE id = ?", (agent_id,)).fetchone()
+    assert row["status"] == "active"
+
+
+def test_resume_mission_non_needs_marc_returns_error(fresh_db):
+    with db.get_db() as conn:
+        conn.execute(
+            "INSERT INTO sms_agents (phone, prospect_name, objective, status) VALUES (?, ?, ?, ?)",
+            ("+15195550006", "Carol White", "book a call", "cold"),
+        )
+        agent_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+    result = sms_agent.resume_mission(agent_id)
+
+    # Should return an error string, not change the status
+    assert "cold" in result
+    with db.get_db() as conn:
+        row = conn.execute("SELECT * FROM sms_agents WHERE id = ?", (agent_id,)).fetchone()
+    assert row["status"] == "cold"
