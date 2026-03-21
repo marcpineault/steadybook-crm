@@ -1079,6 +1079,15 @@ async def check_webhook_health():
         logger.exception("Webhook health check failed")
 
 
+async def _check_cold_agents_job():
+    """Check for SMS agent missions that have gone cold."""
+    try:
+        import sms_agent
+        sms_agent.check_cold_agents()
+    except Exception:
+        logger.exception("check_cold_agents job failed")
+
+
 # ── Scheduler entry point ──
 
 def start_scheduler(telegram_app, event_loop=None):
@@ -1243,6 +1252,14 @@ def start_scheduler(telegram_app, event_loop=None):
         hours=6,
         id="check_webhook_health",
         name="Webhook Health Check",
+    )
+
+    scheduler.add_job(
+        _check_cold_agents_job,
+        "interval",
+        hours=6,
+        id="check_cold_agents",
+        name="SMS Agent Cold Check",
     )
 
     scheduler.start()
