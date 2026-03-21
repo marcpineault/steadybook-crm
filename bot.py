@@ -866,12 +866,22 @@ def get_meetings(date_filter: str = "") -> str:
 
 
 def cancel_meeting(prospect: str) -> str:
-    """Cancel a meeting by prospect name."""
+    """Cancel a meeting by prospect name and stop any pending nurture texts."""
     all_meetings = db.read_meetings()
     for m in all_meetings:
         name = m.get("prospect", "")
         if name and prospect.lower() in name.lower():
-            return db.update_meeting(m["id"], {"status": "Cancelled"})
+            result = db.update_meeting(m["id"], {"status": "Cancelled"})
+            # Cancel any queued booking nurture touches so they don't keep firing
+            try:
+                import booking_nurture
+                prospect_obj = db.get_prospect_by_name(name)
+                if prospect_obj:
+                    booking_nurture.cancel_sequence(prospect_obj["id"])
+                    logger.info("Cancelled nurture sequence for %s (meeting cancelled)", name)
+            except Exception:
+                logger.exception("Could not cancel nurture sequence for %s", name)
+            return result
     return f"No meeting found for '{prospect}'."
 
 
@@ -3250,6 +3260,9 @@ Real person, real phone. Short. Direct. Not salesy at all. Sounds like someone w
 Good examples:
 - "Hey Sarah, Marc from Co-operators here — tried reaching you earlier. Do you have 15 min this week for a quick chat? - Marc"
 - "Hey John, Marc from Co-operators — missed you earlier. Worth a 15 min catch-up this week? - Marc"
+- "Hey, Marc from Co-operators here — tried reaching you earlier. Do you have 15 min this week for a quick chat? - Marc"
+
+If no prospect first name is provided, simply omit the name from the greeting (e.g. "Hey, Marc from Co-operators here..." instead of "Hey [name], ...").
 
 BAD (never do this):
 - Forgetting to say "Marc from Co-operators" — they won't know who you are
@@ -3338,9 +3351,16 @@ def draft_cold_outreach(phone: str, name: str = "", notes: str = "") -> dict:
         context_line = "Note: Marc has texted this person before without a reply."
         notes_instruction = "Keep it very brief and low pressure — no 'following up on my last message' language."
 
-    with RedactionContext(prospect_names=[display_name]) as pii_ctx:
+    has_real_name = not display_name.startswith("Contact ")
+    redact_names = [display_name] if has_real_name else []
+
+    with RedactionContext(prospect_names=redact_names) as pii_ctx:
+        if has_real_name:
+            name_line = f"Prospect first name: {display_name.split()[0]}\n"
+        else:
+            name_line = "Prospect first name: (not provided)\n"
         user_content = pii_ctx.redact(sanitize_for_prompt(
-            f"Prospect first name: {display_name.split()[0]}\n"
+            name_line
             + (f"{context_line}\n" if context_line else "")
             + (f"\nInstruction: {notes_instruction}" if notes_instruction else "")
         ))
@@ -3356,10 +3376,11 @@ def draft_cold_outreach(phone: str, name: str = "", notes: str = "") -> dict:
         )
         content = pii_ctx.restore(response.choices[0].message.content.strip())
 
-    # First name only
-    first_name = display_name.split()[0]
-    if first_name != display_name:
-        content = content.replace(display_name, first_name)
+    # First name only (skip for placeholder names)
+    if has_real_name:
+        first_name = display_name.split()[0]
+        if first_name != display_name:
+            content = content.replace(display_name, first_name)
 
     draft = aq.add_draft(
         draft_type="cold_outreach",

@@ -772,6 +772,111 @@ def logout():
     return resp
 
 
+# ── Event Lead Intake Form ──
+
+def _intake_event_page(csrf_token, message="", msg_type=""):
+    """Render the mobile-friendly event lead intake form."""
+    msg_html = ""
+    if message and msg_type == "success":
+        msg_html = f'<div style="background:#0d3320;border:1px solid #00e5a0;border-radius:8px;padding:0.75rem 1rem;margin-bottom:1rem;color:#00e5a0;font-size:0.95rem">{_esc(message)}</div>'
+    elif message and msg_type == "error":
+        msg_html = f'<div style="background:#3d1519;border:1px solid #e74c3c;border-radius:8px;padding:0.75rem 1rem;margin-bottom:1rem;color:#e74c3c;font-size:0.95rem">{_esc(message)}</div>'
+    today = date.today().strftime("%B %d, %Y")
+    return Response(f"""<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Calm Money — Lead Intake</title>
+<style>
+  * {{ margin:0; padding:0; box-sizing:border-box; }}
+  body {{ font-family:-apple-system,system-ui,sans-serif; background:#0f1117; color:#e8e6f0;
+         display:flex; align-items:center; justify-content:center; min-height:100vh; padding:1rem; }}
+  .card {{ background:#1a1a26; border:1px solid #2a2a3a; border-radius:16px; padding:2rem;
+           width:100%; max-width:420px; }}
+  h1 {{ font-size:1.4rem; margin-bottom:0.2rem; text-align:center; }}
+  .sub {{ color:#8888a0; font-size:0.85rem; margin-bottom:1.5rem; text-align:center; }}
+  label {{ display:block; font-size:0.85rem; color:#8888a0; margin-bottom:0.3rem; }}
+  input {{ width:100%; padding:0.85rem 1rem; border:1px solid #2a2a3a; border-radius:8px;
+           background:#12121a; color:#e8e6f0; font-size:1.05rem; margin-bottom:1rem; outline:none;
+           -webkit-appearance:none; }}
+  input:focus {{ border-color:#00e5a0; }}
+  button {{ width:100%; padding:0.85rem; border:none; border-radius:8px; background:#00e5a0;
+            color:#0a0a0f; font-size:1.1rem; font-weight:600; cursor:pointer; }}
+  button:hover {{ background:#00cc8e; }}
+</style></head><body>
+<div class="card">
+  <p class="sub">{_esc(today)}</p>
+  {msg_html}
+  <form method="POST" action="/intake/event">
+    <input type="hidden" name="_csrf" value="{_esc(csrf_token)}">
+    <label for="name">Name *</label>
+    <input type="text" id="name" name="name" placeholder="Full name" autocomplete="name" maxlength="200" required autofocus>
+    <label for="phone">Phone</label>
+    <input type="tel" id="phone" name="phone" placeholder="Phone number" autocomplete="tel" inputmode="tel" maxlength="30">
+    <label for="email">Email</label>
+    <input type="email" id="email" name="email" placeholder="Email address" autocomplete="email" inputmode="email" maxlength="254">
+    <button type="submit">Submit</button>
+  </form>
+</div></body></html>""", mimetype="text/html")
+
+
+@app.route("/intake/event", methods=["GET", "POST"])
+def intake_event():
+    """Mobile-friendly event lead intake form."""
+    import hashlib
+    authed = False
+    dash_cookie = request.cookies.get("dash_auth", "")
+    if dash_cookie and DASHBOARD_API_KEY:
+        expected = hashlib.sha256(DASHBOARD_API_KEY.encode()).hexdigest()
+        if hmac.compare_digest(dash_cookie, expected):
+            authed = True
+    if not authed:
+        from flask import redirect
+        return redirect("/login")
+
+    message = ""
+    msg_type = ""
+
+    if request.method == "POST":
+        csrf = request.form.get("_csrf", "")
+        if not _validate_csrf_token(csrf):
+            message = "Session expired. Please try again."
+            msg_type = "error"
+        else:
+            name = (request.form.get("name") or "").strip()
+            phone = (request.form.get("phone") or "").strip()
+            email = (request.form.get("email") or "").strip().lower()
+
+            if not name:
+                message = "Name is required."
+                msg_type = "error"
+            else:
+                existing = db.get_prospect_by_email(email) if email else None
+                if existing:
+                    updates = {}
+                    if phone and not existing.get("phone"):
+                        updates["phone"] = phone
+                    old_notes = existing.get("notes") or ""
+                    tag = "[Networking Event] Also met at event"
+                    if tag not in old_notes:
+                        updates["notes"] = f"{old_notes} | {tag}".lstrip(" |") if old_notes else tag
+                    if updates:
+                        db.update_prospect(existing["name"], updates)
+                    db.add_activity({"prospect": existing["name"], "action": "Networking Event lead intake (existing)"})
+                    message = f"Updated {existing['name']} (already in pipeline)."
+                    msg_type = "success"
+                else:
+                    db.add_prospect({
+                        "name": name, "phone": phone, "email": email,
+                        "source": "Networking Event", "stage": "New Lead",
+                        "priority": "Warm",
+                    })
+                    db.add_activity({"prospect": name, "action": "Networking Event lead intake"})
+                    message = f"Added {name} to pipeline."
+                    msg_type = "success"
+
+    csrf_token = _generate_csrf_token()
+    return _intake_event_page(csrf_token, message, msg_type)
+
+
 @app.route("/")
 def dashboard():
     # Check auth: cookie (browser login), API key header (programmatic), or query param (legacy)
