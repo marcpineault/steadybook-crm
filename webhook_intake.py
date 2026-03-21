@@ -11,7 +11,11 @@ import logging
 import os
 import re
 
+import db as _db
+import sms_conversations
+
 from flask import Blueprint, jsonify, request
+from twilio.request_validator import RequestValidator
 
 from intake import (
     process_booking, process_calendar_event, process_email_lead,
@@ -23,6 +27,19 @@ logger = logging.getLogger(__name__)
 
 WEBHOOK_SECRET = os.environ.get("INTAKE_WEBHOOK_SECRET", "")
 CLOUDMAILIN_SECRET = os.environ.get("CLOUDMAILIN_SECRET", "")
+TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", "")
+
+
+def _validate_twilio_signature() -> bool:
+    """Validate the X-Twilio-Signature header using HMAC."""
+    if not TWILIO_AUTH_TOKEN:
+        logger.warning("TWILIO_AUTH_TOKEN not set — rejecting all SMS webhooks")
+        return False
+    validator = RequestValidator(TWILIO_AUTH_TOKEN)
+    url = request.url
+    params = request.form.to_dict()
+    signature = request.headers.get("X-Twilio-Signature", "")
+    return validator.validate(url, params, signature)
 
 intake_bp = Blueprint("intake", __name__)
 
@@ -231,27 +248,16 @@ def _strip_html(html: str) -> str:
     return text.strip()
 
 
-def _find_prospect_by_phone(phone: str):
-    """Look up a prospect by phone, matching last 10 digits. Returns dict or None."""
-    import re as _re
-    import db as _db
-    digits = _re.sub(r"\D", "", phone)[-10:]
-    if not digits:
-        return None
-    with _db.get_db() as conn:
-        row = conn.execute(
-            "SELECT * FROM prospects WHERE REPLACE(REPLACE(REPLACE(REPLACE(phone, '-', ''), ' ', ''), '+', ''), '1', '') LIKE ? OR phone LIKE ? LIMIT 1",
-            (f"%{digits}%", f"%{digits}%"),
-        ).fetchone()
-    return dict(row) if row else None
-
-
 @intake_bp.route("/api/sms-reply", methods=["POST"])
 def sms_reply():
     """Receive inbound SMS replies from Twilio.
     Twilio POST fields: From, Body, MessageSid, To.
     Always returns 204 so Twilio does not retry on errors.
     """
+    if not _validate_twilio_signature():
+        logger.warning("SMS webhook: invalid Twilio signature — rejected")
+        return "", 403
+
     from_number = request.form.get("From", "").strip()
     body = request.form.get("Body", "").strip()
     message_sid = request.form.get("MessageSid", "").strip()
@@ -261,8 +267,7 @@ def sms_reply():
         return "", 400
 
     try:
-        import sms_conversations
-        prospect = _find_prospect_by_phone(from_number)
+        prospect = _db.get_prospect_by_phone(from_number)
         prospect_id = prospect["id"] if prospect else None
         prospect_name = prospect["name"] if prospect else ""
 
@@ -287,6 +292,14 @@ def sms_reply():
         if sms_conversations.is_opted_out(prospect):
             logger.info("Skipping reply — prospect opted out (%s)", from_number[-4:])
             return "", 204
+
+        # Don't auto-reply to completely unknown numbers with no prior thread
+        if prospect is None:
+            thread = sms_conversations.get_recent_thread(from_number, limit=1)
+            if not thread:
+                logger.info("SMS from unknown number %s with no prior thread — not auto-replying", from_number[-4:])
+                _notify_telegram(f"📱 Unknown number texted: ...{from_number[-4:]} — \"{body[:100]}\"")
+                return "", 204
 
         sms_conversations.generate_reply(
             phone=from_number,
