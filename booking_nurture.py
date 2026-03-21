@@ -97,8 +97,17 @@ def create_sequence(
 
     now_utc = datetime.now(timezone.utc)
 
-    # Touch 1: now
-    touch1_for = now_utc
+    # Touch 1: schedule respecting business hours (8am-8pm ET)
+    now_et = now_utc.astimezone(ET)
+    et_hour = now_et.hour
+    if 8 <= et_hour < 20:
+        touch1_for = now_utc
+    else:
+        # Delay until 9am ET next day
+        next_9am_et = now_et.replace(hour=9, minute=0, second=0, microsecond=0)
+        if now_et >= next_9am_et:
+            next_9am_et = next_9am_et + timedelta(days=1)
+        touch1_for = next_9am_et.astimezone(timezone.utc)
 
     # Touch 2: day before meeting at 9 AM ET
     meeting_day_et = meeting_dt_utc.astimezone(ET).date()
@@ -180,6 +189,26 @@ def generate_touch(touch_row: dict):
             return None
     except Exception:
         logger.exception("Recent contact check failed for touch #%s", touch_id)
+
+    # Abort if prospect has opted out or is Do Not Contact
+    prospect_id = touch_row.get("prospect_id")
+    if prospect_id:
+        try:
+            import sms_conversations as _sms
+            prospect_rec = db.get_prospect_by_name(touch_row["prospect_name"])
+            if _sms.is_opted_out(prospect_rec) or (prospect_rec or {}).get("stage") == "Do Not Contact":
+                logger.info(
+                    "Skipping nurture touch %d for %s — opted out or Do Not Contact",
+                    touch_number, prospect_name
+                )
+                with db.get_db() as conn:
+                    conn.execute(
+                        "UPDATE booking_nurture_sequences SET status='cancelled' WHERE id=?", (touch_id,)
+                    )
+                return None
+        except Exception:
+            logger.exception("Opt-out/DNC check failed for touch #%s", touch_id)
+
     meeting_date = touch_row["meeting_date"]
     meeting_time = touch_row["meeting_time"]
     product = touch_row.get("product", "")

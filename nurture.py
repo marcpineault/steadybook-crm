@@ -121,6 +121,15 @@ def generate_touch(sequence_id):
 
     # Gather context
     prospect = db.get_prospect_by_name(seq["prospect_name"])
+
+    # Abort if prospect is Do Not Contact or opted out
+    if prospect:
+        import sms_conversations as _sms
+        if _sms.is_opted_out(prospect) or prospect.get("stage") == "Do Not Contact":
+            logger.info("Skipping nurture touch for %s — opted out or Do Not Contact", seq["prospect_name"])
+            complete_sequence(sequence_id, reason="opted_out")
+            return None
+
     if prospect:
         client_intel = memory_engine.get_profile_summary_text(prospect["id"])
         if not client_intel or "No additional" in client_intel:
