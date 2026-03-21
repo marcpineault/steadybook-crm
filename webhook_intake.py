@@ -301,6 +301,16 @@ def sms_reply():
                 _notify_telegram(f"📱 Unknown number texted: ...{from_number[-4:]} — \"{body[:100]}\"")
                 return "", 204
 
+        # Route to SMS agent if there's an active mission for this number
+        import sms_agent as _sms_agent
+        if _sms_agent.get_active_agent(from_number):
+            _sms_agent.handle_reply(
+                phone=from_number,
+                inbound_body=body,
+                prospect=prospect,
+            )
+            return "", 204
+
         sms_conversations.generate_reply(
             phone=from_number,
             inbound_body=body,
