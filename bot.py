@@ -2732,7 +2732,6 @@ async def handle_draft_callback(update, context):
                         try:
                             import sms_agent as _sms_agent
                             _sms_agent.activate_mission(_phone)
-                            logger.info("SMS agent mission activated for phone ...%s", str(_phone)[-4:])
                         except Exception:
                             logger.exception("Could not activate SMS agent mission after approval")
                 else:
@@ -3517,7 +3516,10 @@ async def agent_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         /agent +15191234567 John Smith — book a discovery call
         /agent resume 42
     """
+    if not await _require_admin(update):
+        return
     import re
+    import sms_agent as _sms_agent
     args_text = " ".join(context.args) if context.args else ""
 
     # Handle resume subcommand
@@ -3526,14 +3528,13 @@ async def agent_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         if len(parts) < 2 or not parts[1].isdigit():
             await update.message.reply_text("Usage: /agent resume <id>")
             return
-        import sms_agent as _sms_agent
         msg = _sms_agent.resume_mission(int(parts[1]))
         await update.message.reply_text(msg)
         return
 
     # Parse: /agent +15191234567 John Smith — book a discovery call
     # The em-dash (—) or double-dash (--) separates name from objective
-    match = re.match(r"(\+?[\d\-\s]{10,15})\s+(.+?)\s+[—\-]{1,2}\s+(.+)", args_text)
+    match = re.match(r"(\+?[\d\-]{10,17})\s+(.+?)\s+(?:—|--)\s+(.+)", args_text.strip())
     if not match:
         await update.message.reply_text(
             "Usage: /agent +15191234567 John Smith — book a discovery call\n"
@@ -3547,11 +3548,15 @@ async def agent_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     # Normalize phone to E.164
     digits = re.sub(r"\D", "", phone_raw)
+    if len(digits) not in (10, 11):
+        await update.message.reply_text(
+            f"❌ Invalid phone number (got {len(digits)} digits). Use 10 digits (local) or 11 digits (with country code)."
+        )
+        return
     phone = f"+1{digits}" if len(digits) == 10 else f"+{digits}"
 
     await update.message.reply_text(f"Creating agent mission for {name}...")
 
-    import sms_agent as _sms_agent
     mission = _sms_agent.create_mission(phone=phone, prospect_name=name, objective=objective)
     if mission:
         await update.message.reply_text(
