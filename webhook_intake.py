@@ -33,10 +33,11 @@ TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", "")
 
 def _validate_twilio_signature() -> bool:
     """Validate the X-Twilio-Signature header using HMAC."""
-    if not TWILIO_AUTH_TOKEN:
+    token = os.environ.get("TWILIO_AUTH_TOKEN", "") or TWILIO_AUTH_TOKEN
+    if not token:
         logger.warning("TWILIO_AUTH_TOKEN not set — rejecting all SMS webhooks")
         return False
-    validator = RequestValidator(TWILIO_AUTH_TOKEN)
+    validator = RequestValidator(token)
     url = request.url
     params = request.form.to_dict()
     signature = request.headers.get("X-Twilio-Signature", "")

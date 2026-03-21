@@ -13,6 +13,7 @@ import follow_up
 
 def setup_function():
     db_path = os.path.join(os.environ["DATA_DIR"], "pipeline.db")
+    db.DB_PATH = db_path  # ensure module-level path matches DATA_DIR
     if os.path.exists(db_path):
         os.remove(db_path)
     db.init_db()

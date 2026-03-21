@@ -13,8 +13,10 @@ import sms_conversations
 
 
 def setup_function():
-    if os.path.exists(db.DB_PATH):
-        os.remove(db.DB_PATH)
+    db_path = os.path.join(os.environ["DATA_DIR"], "pipeline.db")
+    db.DB_PATH = db_path  # ensure module-level path matches DATA_DIR
+    if os.path.exists(db_path):
+        os.remove(db_path)
     db.init_db()
 
 
@@ -81,13 +83,21 @@ def test_generate_reply_queues_draft(mock_openai):
     mock_openai.chat.completions.create.return_value = MagicMock(
         choices=[MagicMock(message=MagicMock(content="Hey Jane, Tuesday at 10 works!"))]
     )
+
+    def run_thread_synchronously(target, daemon=True):
+        """Run the background thread target inline so assertions are reliable."""
+        class _SyncThread:
+            def start(self):
+                target()
+        return _SyncThread()
+
     with patch("sms_sender.send_sms", return_value="SM_test_sid") as mock_send, \
          patch("random.randint", return_value=0), \
-         patch("time.sleep"):
+         patch("time.sleep"), \
+         patch("threading.Thread", side_effect=run_thread_synchronously):
         result = sms_conversations.generate_reply(
             phone="+15198001234", inbound_body="Is Tuesday at 10 still good?", prospect=prospect,
         )
-        import time as _t; _t.sleep(0.1)  # let background thread fire
     assert result is not None
     mock_send.assert_called_once()
     assert "+15198001234" in str(mock_send.call_args)
@@ -98,13 +108,20 @@ def test_generate_reply_unknown_prospect(mock_openai):
     mock_openai.chat.completions.create.return_value = MagicMock(
         choices=[MagicMock(message=MagicMock(content="Hey, happy to chat"))]
     )
+
+    def run_thread_synchronously(target, daemon=True):
+        class _SyncThread:
+            def start(self):
+                target()
+        return _SyncThread()
+
     with patch("sms_sender.send_sms", return_value="SM_test_sid_2") as mock_send, \
          patch("random.randint", return_value=0), \
-         patch("time.sleep"):
+         patch("time.sleep"), \
+         patch("threading.Thread", side_effect=run_thread_synchronously):
         result = sms_conversations.generate_reply(
             phone="+19995550000", inbound_body="Hey is this Marc?", prospect=None,
         )
-        import time as _t; _t.sleep(0.1)
     assert result is not None
     mock_send.assert_called_once()
 
@@ -137,13 +154,16 @@ def test_generate_reply_openai_failure_returns_none(mock_openai):
 
 def test_sms_reply_webhook_returns_204():
     os.environ.setdefault("INTAKE_WEBHOOK_SECRET", "test-secret")
+    os.environ["TWILIO_AUTH_TOKEN"] = "test-token"
     from webhook_intake import intake_bp
     from flask import Flask
 
     app = Flask(__name__)
     app.register_blueprint(intake_bp)
 
-    with patch("sms_conversations.openai_client") as mock_ai:
+    with patch("webhook_intake.RequestValidator") as mock_rv, \
+         patch("sms_conversations.openai_client") as mock_ai:
+        mock_rv.return_value.validate.return_value = True
         mock_ai.chat.completions.create.return_value = MagicMock(
             choices=[MagicMock(message=MagicMock(content="Sure! - Marc"))]
         )
@@ -156,12 +176,15 @@ def test_sms_reply_webhook_returns_204():
 
 
 def test_sms_reply_webhook_missing_from_returns_400():
+    os.environ["TWILIO_AUTH_TOKEN"] = "test-token"
     from webhook_intake import intake_bp
     from flask import Flask
 
     app = Flask(__name__)
     app.register_blueprint(intake_bp)
 
-    with app.test_client() as c:
-        resp = c.post("/api/sms-reply", data={"Body": "Hello", "MessageSid": "SM000"})
+    with patch("webhook_intake.RequestValidator") as mock_rv:
+        mock_rv.return_value.validate.return_value = True
+        with app.test_client() as c:
+            resp = c.post("/api/sms-reply", data={"Body": "Hello", "MessageSid": "SM000"})
     assert resp.status_code == 400
