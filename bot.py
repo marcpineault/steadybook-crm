@@ -2727,6 +2727,14 @@ async def handle_draft_callback(update, context):
                     await query.edit_message_text(
                         f"✅ SMS sent — #{queue_id}"
                     )
+                    # If this is an SMS agent opener, activate the mission now that it's been sent
+                    if draft.get("type") == "sms_agent":
+                        try:
+                            import sms_agent as _sms_agent
+                            _sms_agent.activate_mission(_phone)
+                            logger.info("SMS agent mission activated for phone ...%s", str(_phone)[-4:])
+                        except Exception:
+                            logger.exception("Could not activate SMS agent mission after approval")
                 else:
                     await query.edit_message_text(
                         f"❌ SMS failed — #{queue_id}\n\nSend manually:\n{_phone}\n\n{content}"
@@ -3502,6 +3510,61 @@ async def cmd_coldcall(update, context):
     await update.message.reply_text(preview, reply_markup=keyboard)
 
 
+async def agent_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /agent command — create or resume an SMS agent mission.
+
+    Usage:
+        /agent +15191234567 John Smith — book a discovery call
+        /agent resume 42
+    """
+    import re
+    args_text = " ".join(context.args) if context.args else ""
+
+    # Handle resume subcommand
+    if args_text.lower().startswith("resume"):
+        parts = args_text.split()
+        if len(parts) < 2 or not parts[1].isdigit():
+            await update.message.reply_text("Usage: /agent resume <id>")
+            return
+        import sms_agent as _sms_agent
+        msg = _sms_agent.resume_mission(int(parts[1]))
+        await update.message.reply_text(msg)
+        return
+
+    # Parse: /agent +15191234567 John Smith — book a discovery call
+    # The em-dash (—) or double-dash (--) separates name from objective
+    match = re.match(r"(\+?[\d\-\s]{10,15})\s+(.+?)\s+[—\-]{1,2}\s+(.+)", args_text)
+    if not match:
+        await update.message.reply_text(
+            "Usage: /agent +15191234567 John Smith — book a discovery call\n"
+            "Or: /agent resume <id>"
+        )
+        return
+
+    phone_raw = match.group(1).strip().replace(" ", "")
+    name = match.group(2).strip()
+    objective = match.group(3).strip()
+
+    # Normalize phone to E.164
+    digits = re.sub(r"\D", "", phone_raw)
+    phone = f"+1{digits}" if len(digits) == 10 else f"+{digits}"
+
+    await update.message.reply_text(f"Creating agent mission for {name}...")
+
+    import sms_agent as _sms_agent
+    mission = _sms_agent.create_mission(phone=phone, prospect_name=name, objective=objective)
+    if mission:
+        await update.message.reply_text(
+            f"✅ Agent mission created for {name}.\n"
+            f"Objective: {objective}\n\n"
+            f"Opener draft is queued — approve it and the agent takes over."
+        )
+    else:
+        await update.message.reply_text(
+            f"❌ Could not create agent mission for {name} — check logs."
+        )
+
+
 async def cmd_outcomes(update, context):
     """View outcome tracking stats: /outcomes or /outcomes insights"""
     if not await _require_admin(update):
@@ -3596,6 +3659,7 @@ def build_application():
     app.add_handler(CommandHandler("outcomes", cmd_outcomes))
     app.add_handler(CommandHandler("coldcall", cmd_coldcall))
     app.add_handler(CommandHandler("cc", cmd_coldcall))  # shortcut
+    app.add_handler(CommandHandler("agent", agent_command))
     app.add_handler(CommandHandler("clearsms", cmd_clearsms))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice_message))
