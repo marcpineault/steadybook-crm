@@ -7,7 +7,6 @@ in Marc's voice, and sends it automatically via Twilio (no human approval step).
 
 import logging
 import os
-import random
 from datetime import datetime, timedelta
 
 import pytz
@@ -98,9 +97,10 @@ def get_recent_thread(phone: str, limit: int = 10) -> list[dict]:
 
 
 def is_opted_out(prospect: dict | None) -> bool:
-    """Return True if this prospect has opted out of SMS."""
-    notes = ((prospect or {}).get("notes") or "")
-    return "[SMS_OPTED_OUT]" in notes
+    """Return True if this prospect has opted out of SMS (checks sms_opted_out column)."""
+    if not prospect:
+        return False
+    return bool(prospect.get("sms_opted_out"))
 
 
 def was_recently_contacted(phone: str, hours: int = 4) -> bool:
@@ -114,15 +114,27 @@ def was_recently_contacted(phone: str, hours: int = 4) -> bool:
     return row is not None
 
 
-def was_recently_replied(phone: str, minutes: int = 30) -> bool:
-    """Return True if we auto-replied to this phone in the last N minutes (rate limit)."""
-    cutoff = (datetime.utcnow() - timedelta(minutes=minutes)).strftime("%Y-%m-%d %H:%M:%S")
+def has_replied_since_last_outbound(phone: str) -> bool:
+    """Return True if we should auto-reply.
+
+    Only reply if an inbound message exists after our last outbound:
+    - No outbound yet → True (fresh contact, reply)
+    - Inbound arrived after last outbound → True (they responded, reply)
+    - We sent last and they haven't replied → False (don't double-text)
+    """
     with db.get_db() as conn:
-        row = conn.execute(
-            "SELECT 1 FROM sms_conversations WHERE phone=? AND direction='outbound' AND created_at >= ? LIMIT 1",
-            (phone, cutoff),
+        last_outbound = conn.execute(
+            "SELECT id, created_at FROM sms_conversations WHERE phone=? AND direction='outbound' ORDER BY created_at DESC, id DESC LIMIT 1",
+            (phone,),
         ).fetchone()
-    return row is not None
+        if last_outbound is None:
+            return True  # No prior outbound — fresh contact
+        # Use (created_at, id) pair so same-second inbound rows still count as "after"
+        inbound_after = conn.execute(
+            "SELECT 1 FROM sms_conversations WHERE phone=? AND direction='inbound' AND (created_at > ? OR (created_at = ? AND id > ?)) LIMIT 1",
+            (phone, last_outbound["created_at"], last_outbound["created_at"], last_outbound["id"]),
+        ).fetchone()
+        return inbound_after is not None
 
 
 def handle_opt_out(phone: str, prospect_id=None, prospect_name: str = "") -> None:
@@ -136,11 +148,22 @@ def handle_opt_out(phone: str, prospect_id=None, prospect_name: str = "") -> Non
         try:
             with db.get_db() as conn:
                 conn.execute(
-                    "UPDATE prospects SET notes = COALESCE(notes, '') || ' [SMS_OPTED_OUT]' WHERE id = ?",
+                    "UPDATE prospects SET sms_opted_out = 1 WHERE id = ?",
                     (prospect_id,),
                 )
         except Exception:
-            logger.exception("Could not update prospect notes on opt-out")
+            logger.exception("Could not set sms_opted_out on opt-out")
+
+    # Always cancel by phone — catches anonymous opt-outs with no prospect_id
+    try:
+        with db.get_db() as conn:
+            conn.execute(
+                "UPDATE booking_nurture_sequences SET status = 'cancelled' WHERE phone = ? AND status = 'queued'",
+                (phone,),
+            )
+    except Exception:
+        logger.exception("Could not cancel booking nurture by phone on opt-out")
+
     log_message(phone=phone, body="STOP", direction="inbound",
                 prospect_id=prospect_id, prospect_name=prospect_name)
     logger.info("Opt-out processed for %s", _safe_phone(phone))
@@ -174,9 +197,9 @@ def generate_reply(phone: str, inbound_body: str, prospect: dict | None = None):
     prospect_name = (prospect or {}).get("name", "")
     prospect_id = (prospect or {}).get("id")
 
-    # Rate limit: skip if we already replied in the last 30 minutes
-    if was_recently_replied(phone, minutes=30):
-        logger.info("Rate limit: skipping auto-reply to %s (replied within 30 min)", _safe_phone(phone))
+    # Rate limit: skip if we sent last and they haven't replied yet
+    if not has_replied_since_last_outbound(phone):
+        logger.info("Skipping auto-reply to %s — waiting for their reply to our last message", _safe_phone(phone))
         return None
 
     # Conversation thread for context
@@ -242,9 +265,15 @@ def generate_reply(phone: str, inbound_body: str, prospect: dict | None = None):
     import time, threading
 
     def _delayed_send():
-        delay = random.randint(45, 90)
+        delay = _business_hours_delay()
         logger.info("Waiting %ds before auto-reply to %s", delay, _safe_phone(phone))
         time.sleep(delay)
+
+        # Re-check opt-out at send time (prospect may have opted out during delay)
+        latest_prospect = db.get_prospect_by_phone(phone)
+        if is_opted_out(latest_prospect):
+            logger.info("Aborting delayed send — prospect opted out during delay (%s)", _safe_phone(phone))
+            return
 
         import sms_sender
         sid = sms_sender.send_sms(to=phone, body=content)
