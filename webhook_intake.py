@@ -12,6 +12,7 @@ import os
 import re
 
 import db as _db
+import sms_agent as _sms_agent
 import sms_conversations
 
 from flask import Blueprint, jsonify, request
@@ -302,13 +303,14 @@ def sms_reply():
                 return "", 204
 
         # Route to SMS agent if there's an active mission for this number
-        import sms_agent as _sms_agent
         if _sms_agent.get_active_agent(from_number):
-            _sms_agent.handle_reply(
+            ok = _sms_agent.handle_reply(
                 phone=from_number,
                 inbound_body=body,
                 prospect=prospect,
             )
+            if not ok:
+                logger.warning("sms_agent.handle_reply returned False for ...%s", str(from_number)[-4:])
             return "", 204
 
         sms_conversations.generate_reply(

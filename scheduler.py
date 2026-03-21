@@ -1254,6 +1254,7 @@ def start_scheduler(telegram_app, event_loop=None):
         name="Webhook Health Check",
     )
 
+    # SMS agent cold check every 6 hours
     scheduler.add_job(
         _check_cold_agents_job,
         "interval",
@@ -1263,4 +1264,4 @@ def start_scheduler(telegram_app, event_loop=None):
     )
 
     scheduler.start()
-    logger.info("Scheduler started — briefing 8AM (weekdays), nag 9AM+2PM, midday 12:30PM, EOD 5:30PM, weekly Sun 6:30PM, task reminders every 60s, meeting prep hourly, backup 11PM, watchdog 8:45AM, webhook check every 6h, booking nurture every 15min, cold follow-ups 9:30AM daily ET.")
+    logger.info("Scheduler started — briefing 8AM (weekdays), nag 9AM+2PM, midday 12:30PM, EOD 5:30PM, weekly Sun 6:30PM, task reminders every 60s, meeting prep hourly, backup 11PM, watchdog 8:45AM, webhook check every 6h, booking nurture every 15min, cold follow-ups 9:30AM daily ET, cold agents every 6h.")
