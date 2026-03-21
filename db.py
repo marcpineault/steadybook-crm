@@ -92,6 +92,31 @@ def _parse_date_val(val):
     return s  # return as-is if unparseable
 
 
+def normalize_phone(phone: str) -> str:
+    """Return the last 10 digits of a phone number with all non-digits stripped.
+
+    Safe for numbers with 1s in the middle — strips by taking the last 10 chars
+    of the digit string, not by removing the character '1' everywhere.
+    """
+    if not phone:
+        return ""
+    digits = re.sub(r"\D", "", phone)
+    return digits[-10:] if len(digits) >= 10 else digits
+
+
+def get_prospect_by_phone(phone: str):
+    """Look up a prospect by phone number. Matches on last 10 digits. Returns dict or None."""
+    last10 = normalize_phone(phone)
+    if not last10:
+        return None
+    with get_db() as conn:
+        rows = conn.execute("SELECT * FROM prospects WHERE phone != ''").fetchall()
+    for row in rows:
+        if normalize_phone(row["phone"]) == last10:
+            return _row_to_dict(row)
+    return None
+
+
 # ── Schema ──
 
 def init_db():
@@ -314,25 +339,28 @@ def init_db():
     _migrate_phase6()
     _migrate_booking_nurture()
     _migrate_sms_conversations()
+    _migrate_sms_agent()
     cleanup_old_data()
     logger.info(f"Database initialized at {DB_PATH}")
 
 
 def cleanup_old_data():
-    """Remove interactions and audit log entries older than 90 days."""
-    cutoff = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
+    """Remove interactions older than 90 days and audit log older than 7 years."""
+    cutoff_interactions = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
+    cutoff_audit = (datetime.now() - timedelta(days=AUDIT_LOG_RETENTION_DAYS)).strftime("%Y-%m-%d")
     with get_db() as conn:
-        # Clean old interactions (keep the data in activities table which is more compact)
         deleted_interactions = conn.execute(
-            "DELETE FROM interactions WHERE date < ? AND date != ''", (cutoff,)
+            "DELETE FROM interactions WHERE date < ? AND date != ''", (cutoff_interactions,)
         ).rowcount
-        # Clean old audit log entries
         deleted_audit = conn.execute(
-            "DELETE FROM audit_log WHERE timestamp < ?", (cutoff,)
+            "DELETE FROM audit_log WHERE timestamp < ?", (cutoff_audit,)
         ).rowcount
         if deleted_interactions or deleted_audit:
-            logger.info(f"Cleanup: removed {deleted_interactions} old interactions, {deleted_audit} old audit entries (before {cutoff})")
-            conn.execute("VACUUM")  # Reclaim disk space
+            logger.info(
+                "Cleanup: removed %d old interactions, %d old audit entries",
+                deleted_interactions, deleted_audit,
+            )
+            conn.execute("VACUUM")
 
 
 def _migrate_booking_nurture():
@@ -388,6 +416,52 @@ def _migrate_sms_conversations():
         conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_sms_conv_prospect
                 ON sms_conversations(prospect_id, created_at)
+        """)
+
+
+AUDIT_LOG_RETENTION_DAYS = 2555  # 7 years — FSRA compliance
+
+
+def _migrate_sms_agent():
+    """Add sms_opted_out column, sms_agents table, and partial unique index (idempotent)."""
+    with get_db() as conn:
+        # sms_opted_out column
+        cols = [row[1] for row in conn.execute("PRAGMA table_info(prospects)").fetchall()]
+        if "sms_opted_out" not in cols:
+            conn.execute("ALTER TABLE prospects ADD COLUMN sms_opted_out INTEGER DEFAULT 0")
+            logger.info("Migration: added sms_opted_out column")
+        # Always backfill from notes (idempotent — only updates rows not yet flagged)
+        conn.execute(
+            "UPDATE prospects SET sms_opted_out = 1 WHERE notes LIKE '%[SMS_OPTED_OUT]%' AND sms_opted_out = 0"
+        )
+        logger.info("Migration: backfilled sms_opted_out from notes")
+
+        # sms_agents table
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS sms_agents (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                phone         TEXT NOT NULL,
+                prospect_id   INTEGER,
+                prospect_name TEXT NOT NULL,
+                objective     TEXT NOT NULL,
+                status        TEXT DEFAULT 'pending_approval',
+                attempts      INTEGER DEFAULT 0,
+                created_at    TEXT DEFAULT (datetime('now')),
+                updated_at    TEXT DEFAULT (datetime('now')),
+                completed_at  TEXT,
+                summary       TEXT
+            )
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_sms_agents_phone
+                ON sms_agents(phone, status)
+        """)
+
+        # Partial unique index to deduplicate Twilio inbound retries
+        conn.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS ux_sms_inbound_sid
+                ON sms_conversations(phone, twilio_sid)
+                WHERE direction = 'inbound' AND twilio_sid != ''
         """)
 
 
@@ -482,6 +556,12 @@ def update_prospect(name: str, updates: dict) -> str:
 
         if not safe_fields:
             return f"No valid updates for {matched_name}."
+
+        # Cap notes at 2000 chars — truncate oldest content from the front
+        if "notes" in safe_fields and safe_fields["notes"]:
+            notes_val = safe_fields["notes"]
+            if len(notes_val) > 2000:
+                safe_fields["notes"] = "..." + notes_val[-1997:]
 
         # Build SET clause using only validated field names from the allowlist
         validated_fields = [f for f in safe_fields if f in allowed]
@@ -614,15 +694,12 @@ def get_prospect_by_name(name: str):
                 row = candidates[0]
                 logger.info(f"Prospect fuzzy match: '{name}' → '{dict(row)['name']}'")
             elif len(candidates) > 1:
-                # Multiple matches — pick the shortest name (closest to exact match)
-                # e.g. searching "John Smith" should prefer "John Smith" over "John Smithson"
-                sorted_candidates = sorted(candidates, key=lambda r: len(dict(r)["name"]))
-                row = sorted_candidates[0]
-                other_names = [dict(r)["name"] for r in sorted_candidates[1:]]
+                other_names = [dict(r)["name"] for r in candidates]
                 logger.warning(
-                    f"Prospect fuzzy match: '{name}' → '{dict(row)['name']}' "
-                    f"(ambiguous — also matched: {other_names})"
+                    "Prospect fuzzy match ambiguous for '%s' — matched: %s. Returning None.",
+                    name, other_names,
                 )
+                row = None
     return _row_to_dict(row)
 
 
@@ -635,6 +712,13 @@ def get_prospect_by_email(email: str):
             "SELECT * FROM prospects WHERE LOWER(email) = ? LIMIT 1",
             (email.lower().strip(),),
         ).fetchone()
+    return _row_to_dict(row)
+
+
+def get_prospect_by_id(prospect_id: int):
+    """Look up a prospect by primary key. Returns dict or None."""
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM prospects WHERE id = ?", (prospect_id,)).fetchone()
     return _row_to_dict(row)
 
 
