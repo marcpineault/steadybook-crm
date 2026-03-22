@@ -216,14 +216,14 @@ def handle_opt_out(phone: str, prospect_id=None, prospect_name: str = "") -> Non
 def _business_hours_delay() -> int:
     """Return seconds to wait before sending -respects ET business hours (8am–8pm).
 
-    If current time is within business hours, returns a human-like 45–90s delay.
+    If current time is within business hours, returns a human-like 5–45s delay.
     If outside hours, returns seconds until 9am ET next day plus a small jitter.
     """
     import random
     now_et = datetime.now(ET)
     hour = now_et.hour
     if 8 <= hour < 20:
-        return random.randint(45, 90)
+        return random.randint(5, 45)
     # Outside hours -calculate time until 9am ET
     next_9am = now_et.replace(hour=9, minute=0, second=0, microsecond=0)
     if now_et >= next_9am:
