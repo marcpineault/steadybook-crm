@@ -3477,11 +3477,13 @@ async def cmd_coldcall(update, context):
     # Everything after the phone match is name + notes
     after_phone = full_input[phone_match.end():].strip()
 
-    # Split on em-dash or spaced hyphen to separate name from notes
+    # Split on em-dash, spaced hyphen, or comma to separate name from notes
     if "—" in after_phone:
         name_part, notes_part = after_phone.split("—", 1)
     elif " - " in after_phone:
         name_part, notes_part = after_phone.split(" - ", 1)
+    elif "," in after_phone:
+        name_part, notes_part = after_phone.split(",", 1)
     else:
         name_part = after_phone
         notes_part = ""
