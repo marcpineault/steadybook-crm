@@ -1,4 +1,4 @@
-"""Inbound SMS reply handler — logs conversation history and auto-replies.
+"""Inbound SMS reply handler -logs conversation history and auto-replies.
 
 Triggered by Twilio webhooks when prospects reply to outbound SMS.
 Stores conversation history per phone number, uses GPT to generate a reply
@@ -24,9 +24,9 @@ OPT_OUT_KEYWORDS = {"stop", "unsubscribe", "cancel", "quit", "end", "optout", "o
 
 SMS_REPLY_SYSTEM_PROMPT = """You are drafting a reply SMS for Marc Pineault, a financial advisor at Co-operators in London, Ontario.
 
-YOUR JOB: Read the conversation thread, figure out what Marc was trying to accomplish, and write a reply that moves toward that goal — without being pushy or sounding like AI.
+YOUR JOB: Read the conversation thread, figure out what Marc was trying to accomplish, and write a reply that moves toward that goal without being pushy or sounding like AI.
 
-STEP 1 — INFER THE OBJECTIVE:
+STEP 1 - INFER THE OBJECTIVE:
 Look at what Marc sent first. Was he trying to:
 - Book a meeting or call?
 - Follow up on a proposal he sent?
@@ -34,7 +34,7 @@ Look at what Marc sent first. Was he trying to:
 - Reconnect with someone who went cold?
 Whatever it was, keep driving toward that in your reply.
 
-STEP 1B — ADAPT TO THE PROSPECT'S STAGE:
+STEP 1B -ADAPT TO THE PROSPECT'S STAGE:
 The client's current pipeline stage (if known) tells you what Marc is working toward:
 
 - "New Lead" or "Contacted": Goal is to book a first call or discovery meeting. Keep it light and easy.
@@ -44,50 +44,51 @@ The client's current pipeline stage (if known) tells you what Marc is working to
 - "Negotiation": They're close. Goal is to resolve final objections and close.
 - "Nurture": Long-term prospect, not ready now. Goal is to stay top-of-mind, low pressure, check in occasionally.
 
-Use the stage to guide your objective — but always let the conversation feel natural. Don't mention the stage or pipeline to the client.
+Use the stage to guide your objective, but always let the conversation feel natural. Don't mention the stage or pipeline to the client.
 
-STEP 2 — WRITE THE REPLY:
+STEP 2 - WRITE THE REPLY:
 1. 1-2 sentences ONLY
 2. First name if you know it (first name only, no last name)
-3. NO sign-off — this is a back-and-forth conversation, not a letter
+3. NO sign-off, this is a back-and-forth conversation, not a letter
+7. NEVER use long dashes or em-dashes. Use commas, periods, or short dashes (-) instead. This is a text message.
 4. Directly address what they said, then nudge toward the goal
 5. If they seem interested → send Marc's booking link so they can pick a time and choose in-person or virtual:
    https://outlook.office.com/book/BookTimeWithMarcPineault@cooperators.onmicrosoft.com/?ismsaljsauthenabled
 6. If they're hesitant → keep it low pressure, leave the door open (no link yet)
 7. If they ask about rates, products, or numbers → say you'll walk them through it on a call (never give specifics in a text)
 
-STEP 2B — IF THEY PUSH BACK:
+STEP 2B - IF THEY PUSH BACK:
 If the client's reply is a common objection, use these approaches. The goal is ALWAYS to get a call or meeting booked. Acknowledge what they said, then pivot back to booking a quick call. Keep it to 1-2 sentences.
 
-CRITICAL: Do NOT just accept the objection and back off. Always make ONE concrete attempt to book the call before leaving the door open. Vague replies like "let me know if you want to chat sometime" are too passive — instead, propose a specific ask like "even just 15 min this week".
+CRITICAL: Do NOT just accept the objection and back off. Always make ONE concrete attempt to book the call before leaving the door open. Vague replies like "let me know if you want to chat sometime" are too passive, instead propose a specific ask like "even just 15 min this week".
 
 "Not interested" / "No thanks":
-→ Acknowledge, then reframe what the call actually is — a no-pressure look at their situation.
-  e.g. "Totally fair — honestly it's just a 15 min conversation to see if there's anything worth looking at. No pitch, no pressure. Worth a shot?"
+→ Acknowledge, then reframe what the call actually is, a no-pressure look at their situation.
+  e.g. "Totally fair, honestly it's just a 15 min conversation to see if there's anything worth looking at. No pitch, no pressure. Worth a shot?"
 
 "I already have someone" / "I have an advisor":
-→ Acknowledge, then position the call as a free second opinion — everyone benefits from a fresh set of eyes.
-  e.g. "That's great you've got someone — a lot of my clients actually came to me for a second opinion and found gaps they didn't know about. Happy to do a quick 15 min review if you're open to it."
+→ Acknowledge, then position the call as a free second opinion, everyone benefits from a fresh set of eyes.
+  e.g. "That's great you've got someone, a lot of my clients actually came to me for a second opinion and found gaps they didn't know about. Happy to do a quick 15 min review if you're open to it."
 
 "Too busy" / "Bad timing":
-→ Acknowledge, then make it easy — offer a super short call and flexibility on timing.
-  e.g. "Totally get it — what if we kept it to 15 min? I can work around your schedule, even early morning or after hours."
+→ Acknowledge, then make it easy, offer a super short call and flexibility on timing.
+  e.g. "Totally get it, what if we kept it to 15 min? I can work around your schedule, even early morning or after hours."
 
 Cost concerns / "Can't afford it":
 → Normalize it, then reframe the call as free and about saving money, not spending it.
-  e.g. "Honestly that's exactly why it's worth a quick chat — most people I sit down with find ways to save. 15 min, no cost, no commitment."
+  e.g. "Honestly that's exactly why it's worth a quick chat, most people I sit down with find ways to save. 15 min, no cost, no commitment."
 
 "Just send me info":
-→ Redirect to a call — info without context doesn't land. A quick walkthrough is better.
-  e.g. "For sure — honestly it'll make way more sense if I walk you through it. Can we do 15 min this week?"
+→ Redirect to a call, info without context doesn't land. A quick walkthrough is better.
+  e.g. "For sure, honestly it'll make way more sense if I walk you through it. Can we do 15 min this week?"
 
 "Who is this?" / "How did you get my number?":
 → Be transparent and casual. Mention Co-operators, then pivot to the ask.
-  e.g. "Hey, it's Marc — I'm a financial advisor with Co-operators here in London. Would you be open to a quick 15 min chat this week?"
+  e.g. "Hey, it's Marc, I'm a financial advisor with Co-operators here in London. Would you be open to a quick 15 min chat this week?"
 
 IMPORTANT: These are tone guides, not scripts. Adapt to what they actually said. If someone says "not interested" firmly TWICE, then respect it and back off gracefully. But on the FIRST objection, always try to redirect toward booking a call.
 
-STEP 3 — SAFETY CHECK (do this mentally before finalizing):
+STEP 3 - SAFETY CHECK (do this mentally before finalizing):
 - No financial promises or return guarantees
 - No specific rates, numbers, or product comparisons
 - No advice that could be construed as a recommendation
@@ -98,9 +99,9 @@ VOICE:
 Real person, real phone. Short. Direct. Casual. No sign-off needed mid-conversation.
 
 Examples of the right tone:
-- "Hey John, yeah for sure — what does your week look like?"
+- "Hey John, yeah for sure, what does your week look like?"
 - "Good to hear. Want to find 30 min to go over what I put together?"
-- "No rush at all — just let me know when you're ready and we'll set something up."
+- "No rush at all, just let me know when you're ready and we'll set something up."
 
 Write ONLY the final SMS text.
 
@@ -171,7 +172,7 @@ def has_replied_since_last_outbound(phone: str) -> bool:
             (phone,),
         ).fetchone()
         if last_outbound is None:
-            return True  # No prior outbound — fresh contact
+            return True  # No prior outbound -fresh contact
         # Use (created_at, id) pair so same-second inbound rows still count as "after"
         inbound_after = conn.execute(
             "SELECT 1 FROM sms_conversations WHERE phone=? AND direction='inbound' AND (created_at > ? OR (created_at = ? AND id > ?)) LIMIT 1",
@@ -197,7 +198,7 @@ def handle_opt_out(phone: str, prospect_id=None, prospect_name: str = "") -> Non
         except Exception:
             logger.exception("Could not set sms_opted_out on opt-out")
 
-    # Always cancel by phone — catches anonymous opt-outs with no prospect_id
+    # Always cancel by phone -catches anonymous opt-outs with no prospect_id
     try:
         with db.get_db() as conn:
             conn.execute(
@@ -213,7 +214,7 @@ def handle_opt_out(phone: str, prospect_id=None, prospect_name: str = "") -> Non
 
 
 def _business_hours_delay() -> int:
-    """Return seconds to wait before sending — respects ET business hours (8am–8pm).
+    """Return seconds to wait before sending -respects ET business hours (8am–8pm).
 
     If current time is within business hours, returns a human-like 45–90s delay.
     If outside hours, returns seconds until 9am ET next day plus a small jitter.
@@ -223,12 +224,12 @@ def _business_hours_delay() -> int:
     hour = now_et.hour
     if 8 <= hour < 20:
         return random.randint(45, 90)
-    # Outside hours — calculate time until 9am ET
+    # Outside hours -calculate time until 9am ET
     next_9am = now_et.replace(hour=9, minute=0, second=0, microsecond=0)
     if now_et >= next_9am:
         next_9am = next_9am + timedelta(days=1)
     delay = int((next_9am - now_et).total_seconds()) + random.randint(0, 300)
-    logger.info("Outside business hours — reply delayed %ds (until ~9am ET)", delay)
+    logger.info("Outside business hours -reply delayed %ds (until ~9am ET)", delay)
     return delay
 
 
@@ -242,13 +243,13 @@ def generate_reply(phone: str, inbound_body: str, prospect: dict | None = None):
 
     # Rate limit: skip if we sent last and they haven't replied yet
     if not has_replied_since_last_outbound(phone):
-        logger.info("Skipping auto-reply to %s — waiting for their reply to our last message", _safe_phone(phone))
+        logger.info("Skipping auto-reply to %s -waiting for their reply to our last message", _safe_phone(phone))
         return None
 
     # Conversation thread for context
     thread = get_recent_thread(phone, limit=10)
 
-    # Client memory (only if prospect known — empty string if not)
+    # Client memory (only if prospect known -empty string if not)
     memory_text = ""
     if prospect_id:
         try:
@@ -316,7 +317,7 @@ def generate_reply(phone: str, inbound_body: str, prospect: dict | None = None):
         # Re-check opt-out at send time (prospect may have opted out during delay)
         latest_prospect = db.get_prospect_by_phone(phone)
         if is_opted_out(latest_prospect):
-            logger.info("Aborting delayed send — prospect opted out during delay (%s)", _safe_phone(phone))
+            logger.info("Aborting delayed send -prospect opted out during delay (%s)", _safe_phone(phone))
             return
 
         import sms_sender

@@ -30,7 +30,8 @@ RULES:
 - 1-2 sentences MAX
 - Warm, casual, like a message from someone they've already met
 - First name only, no sign-off
-- No hard sell — open a door, don't push through it
+- No hard sell, open a door, don't push through it
+- NEVER use long dashes or em-dashes. Use commas, periods, or short dashes (-) instead.
 - Never mention rates, products, or specific numbers
 - Nothing that sounds like AI wrote it
 
@@ -43,11 +44,12 @@ AGENT_REPLY_PROMPT = """You are handling an ongoing SMS conversation for Marc Pi
 
 MISSION: {objective}
 
-Your job: move this conversation toward the mission goal — naturally, without pressure.
+Your job: move this conversation toward the mission goal, naturally, without pressure.
 
 RULES:
 - 1-2 sentences MAX
 - First name only, no sign-off
+- NEVER use long dashes or em-dashes. Use commas, periods, or short dashes (-) instead.
 - If they seem interested → send booking link:
   https://outlook.office.com/book/BookTimeWithMarcPineault@cooperators.onmicrosoft.com/?ismsaljsauthenabled
 - If hesitant → low pressure, leave the door open
@@ -282,7 +284,7 @@ def handle_reply(phone: str, inbound_body: str, prospect: dict | None) -> bool:
         # Re-check opt-out
         latest = db.get_prospect_by_phone(phone)
         if sms_conversations.is_opted_out(latest):
-            logger.info("Agent aborting — prospect opted out during delay")
+            logger.info("Agent aborting -prospect opted out during delay")
             complete_mission(agent_id, "cold", updated_thread, prospect_name, prospect_id)
             return
 
@@ -341,11 +343,11 @@ def complete_mission(
     """Finalize a mission: update DB, extract memory, update stage, notify Marc."""
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     summary_map = {
-        "success": f"✅ {prospect_name} — mission complete.",
-        "cold": f"🧊 {prospect_name} — went cold.",
-        "needs_marc": f"⚠️ {prospect_name} — needs you. Agent paused.",
+        "success": f"✅ {prospect_name} -mission complete.",
+        "cold": f"🧊 {prospect_name} -went cold.",
+        "needs_marc": f"⚠️ {prospect_name} -needs you. Agent paused.",
     }
-    summary = summary_map.get(status, f"{prospect_name} — {status}")
+    summary = summary_map.get(status, f"{prospect_name} -{status}")
 
     _update_agent(agent_id, {
         "status": status,
@@ -360,7 +362,7 @@ def complete_mission(
     )
     db.add_activity({
         "prospect": prospect_name,
-        "action": f"SMS Agent — {status}",
+        "action": f"SMS Agent -{status}",
         "outcome": summary,
         "notes": f"Thread excerpt: {thread_text}",
     })
@@ -389,21 +391,21 @@ def complete_mission(
             except Exception:
                 logger.exception("Stage update failed after agent success")
         else:
-            logger.warning("Cannot update stage — no prospect_id for mission %d", agent_id)
+            logger.warning("Cannot update stage -no prospect_id for mission %d", agent_id)
 
     # Build notification
     last_msg = thread[-1]["body"][:100] if thread else ""
     outbound_count = len([m for m in thread if m["direction"] == "outbound"])
     if status == "cold":
-        note = f"🧊 {prospect_name} — went cold after {outbound_count} attempt(s).\nLast message: '{last_msg}'"
+        note = f"🧊 {prospect_name} -went cold after {outbound_count} attempt(s).\nLast message: '{last_msg}'"
     elif status == "needs_marc":
         note = (
-            f"⚠️ {prospect_name} — asked something the agent can't handle.\n"
+            f"⚠️ {prospect_name} -asked something the agent can't handle.\n"
             f"Message: '{last_msg}'\n\n"
             f"Agent paused. Use /agent resume {agent_id} when you've handled it."
         )
     else:
-        note = f"✅ {prospect_name} — goal achieved! Thread saved."
+        note = f"✅ {prospect_name} -goal achieved! Thread saved."
 
     _notify_telegram(note)
     logger.info("Mission %d completed with status=%s for %s", agent_id, status, prospect_name)
@@ -466,7 +468,7 @@ def check_cold_agents() -> None:
 
         if hours_elapsed >= 48 or unanswered >= 2:
             logger.info(
-                "Agent %d going cold — %.0fh silence, %d unanswered",
+                "Agent %d going cold -%.0fh silence, %d unanswered",
                 agent_id, hours_elapsed, unanswered,
             )
             complete_mission(agent_id, "cold", thread, prospect_name, prospect_id)
@@ -480,9 +482,9 @@ def resume_mission(agent_id: int) -> str:
         return f"No agent mission found with id {agent_id}."
     agent = dict(row)
     if agent["status"] not in ("needs_marc",):
-        return f"Agent {agent_id} is '{agent['status']}' — can only resume needs_marc agents."
+        return f"Agent {agent_id} is '{agent['status']}' -can only resume needs_marc agents."
     _update_agent(agent_id, {"status": "active"})
-    return f"Agent for {agent['prospect_name']} resumed — will continue on next reply."
+    return f"Agent for {agent['prospect_name']} resumed -will continue on next reply."
 
 
 def _notify_telegram(message: str) -> None:

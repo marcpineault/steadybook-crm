@@ -1,8 +1,8 @@
 """
 Webhook endpoint for external lead intake.
 Handles:
-  - /api/intake — Power Automate / Zapier payloads (requires X-Webhook-Secret)
-  - /api/email-inbound — CloudMailin inbound email forwarding (validated by CLOUDMAILIN_SECRET)
+  - /api/intake -Power Automate / Zapier payloads (requires X-Webhook-Secret)
+  - /api/email-inbound -CloudMailin inbound email forwarding (validated by CLOUDMAILIN_SECRET)
 """
 
 import hmac
@@ -35,7 +35,7 @@ def _validate_twilio_signature() -> bool:
     """Validate the X-Twilio-Signature header using HMAC."""
     token = os.environ.get("TWILIO_AUTH_TOKEN", "") or TWILIO_AUTH_TOKEN
     if not token:
-        logger.warning("TWILIO_AUTH_TOKEN not set — rejecting all SMS webhooks")
+        logger.warning("TWILIO_AUTH_TOKEN not set -rejecting all SMS webhooks")
         return False
     validator = RequestValidator(token)
     url = request.url
@@ -57,7 +57,7 @@ intake_bp = Blueprint("intake", __name__)
 def _check_auth() -> bool:
     """Validate the webhook secret header."""
     if not WEBHOOK_SECRET:
-        logger.warning("INTAKE_WEBHOOK_SECRET not set — rejecting all intake webhooks")
+        logger.warning("INTAKE_WEBHOOK_SECRET not set -rejecting all intake webhooks")
         return False
     token = request.headers.get("X-Webhook-Secret", "")
     return hmac.compare_digest(token, WEBHOOK_SECRET)
@@ -89,7 +89,7 @@ def intake_webhook():
         try:
             result = _process_otter_transcript(transcript)
             logger.info("Intake webhook (otter_transcript): processed successfully")
-            _notify_telegram("Otter transcript processed — pipeline updated.")
+            _notify_telegram("Otter transcript processed -pipeline updated.")
             return jsonify({"ok": True, "message": result})
         except Exception as e:
             logger.error(f"Otter transcript processing error: {e}")
@@ -134,7 +134,7 @@ def email_inbound():
     """
     # Validate CloudMailin secret (check header first, fall back to query param)
     if not CLOUDMAILIN_SECRET:
-        logger.warning("CLOUDMAILIN_SECRET not set — rejecting email-inbound request")
+        logger.warning("CLOUDMAILIN_SECRET not set -rejecting email-inbound request")
         return jsonify({"error": "Unauthorized"}), 401
     # Accept secret from header or query param (CloudMailin uses query param by default)
     token = request.headers.get("X-CloudMailin-Secret", "") or request.args.get("secret", "")
@@ -180,7 +180,7 @@ def email_inbound():
         try:
             result = _process_otter_transcript(body)
             logger.info("Email inbound: Otter transcript processed")
-            _notify_telegram("Otter transcript processed — pipeline updated.")
+            _notify_telegram("Otter transcript processed -pipeline updated.")
             return jsonify({"ok": True, "message": result})
         except Exception as e:
             logger.error(f"Otter transcript (email) error: {e}")
@@ -265,7 +265,7 @@ def sms_reply():
     Always returns 204 so Twilio does not retry on errors.
     """
     if not _validate_twilio_signature():
-        logger.warning("SMS webhook: invalid Twilio signature — rejected")
+        logger.warning("SMS webhook: invalid Twilio signature -rejected")
         return "", 403
 
     from_number = request.form.get("From", "").strip()
@@ -281,7 +281,7 @@ def sms_reply():
         prospect_id = prospect["id"] if prospect else None
         prospect_name = prospect["name"] if prospect else ""
 
-        # Handle opt-out keywords — update CRM, cancel sequences, don't reply
+        # Handle opt-out keywords -update CRM, cancel sequences, don't reply
         if body.strip().lower() in sms_conversations.OPT_OUT_KEYWORDS:
             logger.info("Opt-out received from %s", from_number[-4:])
             sms_conversations.handle_opt_out(
@@ -300,15 +300,15 @@ def sms_reply():
 
         # Skip if prospect has previously opted out
         if sms_conversations.is_opted_out(prospect):
-            logger.info("Skipping reply — prospect opted out (%s)", from_number[-4:])
+            logger.info("Skipping reply -prospect opted out (%s)", from_number[-4:])
             return "", 204
 
         # Don't auto-reply to completely unknown numbers with no prior thread
         if prospect is None:
             thread = sms_conversations.get_recent_thread(from_number, limit=1)
             if not thread:
-                logger.info("SMS from unknown number %s with no prior thread — not auto-replying", from_number[-4:])
-                _notify_telegram(f"📱 Unknown number texted: ...{from_number[-4:]} — \"{body[:100]}\"")
+                logger.info("SMS from unknown number %s with no prior thread -not auto-replying", from_number[-4:])
+                _notify_telegram(f"📱 Unknown number texted: ...{from_number[-4:]} -\"{body[:100]}\"")
                 return "", 204
 
         # Route to SMS agent if there's an active mission for this number
