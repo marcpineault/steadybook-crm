@@ -3248,7 +3248,7 @@ Marc just tried calling this person and they didn't pick up. He wants to follow 
 RULES:
 1. 1-2 sentences ONLY
 2. First name only, no last name
-3. Sign off with "- Marc"
+3. Do NOT sign off with "- Marc" at the end. Marc already introduces himself in the message body (e.g. "Marc from Co-operators here"), so a sign-off is redundant.
 4. Mention he tried calling, casual not dramatic
 5. Low-pressure ask: do they have 15 min this week?
 6. Always identify as "Marc from Co-operators", they don't know who's texting them
@@ -3261,9 +3261,9 @@ Real person, real phone. Short. Direct. Not salesy at all. Sounds like someone w
 IMPORTANT: Never use long dashes or em-dashes in the message. Use commas, periods, or short dashes (-) instead. This is a text message, not an essay.
 
 Good examples:
-- "Hey Sarah, Marc from Co-operators here, tried reaching you earlier. Do you have 15 min this week for a quick chat? - Marc"
-- "Hey John, Marc from Co-operators. Missed you earlier, worth a 15 min catch-up this week? - Marc"
-- "Hey, Marc from Co-operators here. Tried reaching you earlier, do you have 15 min this week for a quick chat? - Marc"
+- "Hey Sarah, Marc from Co-operators here, tried reaching you earlier. Do you have 15 min this week for a quick chat?"
+- "Hey John, Marc from Co-operators. Missed you earlier, worth a 15 min catch-up this week?"
+- "Hey, Marc from Co-operators here. Tried reaching you earlier, do you have 15 min this week for a quick chat?"
 
 If no prospect first name is provided, simply omit the name from the greeting (e.g. "Hey, Marc from Co-operators here..." instead of "Hey [name], ...").
 
