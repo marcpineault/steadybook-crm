@@ -1,4 +1,4 @@
-"""Lead nurture sequences — personalized multi-touch outreach.
+"""Lead nurture sequences -personalized multi-touch outreach.
 
 For prospects who enter the pipeline but aren't meeting-ready, this module
 builds and executes 3-5 value touches over 2-4 weeks:
@@ -26,8 +26,8 @@ openai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
 TOUCH_TYPES = {
     1: {"type": "educational", "description": "Share relevant educational content about their product interest"},
     2: {"type": "insight", "description": "Share a specific insight related to their situation"},
-    3: {"type": "soft_ask", "description": "Soft ask — invite them to book a chat, include booking link"},
-    4: {"type": "value_add", "description": "Additional value — a different angle or follow-up on earlier touches"},
+    3: {"type": "soft_ask", "description": "Soft ask -invite them to book a chat, include booking link"},
+    4: {"type": "value_add", "description": "Additional value -a different angle or follow-up on earlier touches"},
 }
 
 TOUCH_SPACING_DAYS = [3, 5, 7, 10]  # Days between touches 1→2, 2→3, 3→4, 4→end
@@ -35,7 +35,7 @@ TOUCH_SPACING_DAYS = [3, 5, 7, 10]  # Days between touches 1→2, 2→3, 3→4, 
 NURTURE_SYSTEM_PROMPT = """You are writing a nurture message for Marc Pineault, a financial advisor at Co-operators in London, Ontario.
 
 GUIDELINES:
-1. Sound like Marc — casual, direct, like texting someone you've met
+1. Sound like Marc -casual, direct, like texting someone you've met
 2. This is a nurture message, not a hard sell
 3. Keep it concise (80-120 words for email)
 4. Reference their specific situation when possible
@@ -46,7 +46,7 @@ TONE RULES:
 - Use FIRST NAME ONLY (e.g. "Hey John," not "Dear John Smith,")
 - No "I hope this finds you well" or formal openings
 - Short sentences. Casual. Like a message to someone you grabbed coffee with.
-- Sign off with just "Marc" — no title, no company name
+- Sign off with just "Marc" -no title, no company name
 - It's okay to start with "Hey" or just their name
 
 Write ONLY the message text.
@@ -126,7 +126,7 @@ def generate_touch(sequence_id):
     if prospect:
         import sms_conversations as _sms
         if _sms.is_opted_out(prospect) or prospect.get("stage") == "Do Not Contact":
-            logger.info("Skipping nurture touch for %s — opted out or Do Not Contact", seq["prospect_name"])
+            logger.info("Skipping nurture touch for %s -opted out or Do Not Contact", seq["prospect_name"])
             complete_sequence(sequence_id, reason="opted_out")
             return None
 
@@ -158,7 +158,7 @@ def generate_touch(sequence_id):
         with RedactionContext(prospect_names=[seq["prospect_name"]]) as pii_ctx:
             user_content = pii_ctx.redact(sanitize_for_prompt(
                 f"Touch {next_touch} of {seq['total_touches']} in nurture sequence.\n"
-                f"TOUCH TYPE: {touch_info['type']} — {touch_info['description']}\n\n"
+                f"TOUCH TYPE: {touch_info['type']} -{touch_info['description']}\n\n"
                 f"PROSPECT: {seq['prospect_name']}\n"
                 f"PRODUCT INTEREST: {product}\n"
                 f"STAGE: {stage}\n\n"
@@ -193,7 +193,7 @@ def generate_touch(sequence_id):
         draft_type="nurture",
         channel="email_draft",
         content=content,
-        context=f"Nurture touch {next_touch}/{seq['total_touches']} — {touch_info['type']}",
+        context=f"Nurture touch {next_touch}/{seq['total_touches']} -{touch_info['type']}",
         prospect_id=seq.get("prospect_id"),
     )
 

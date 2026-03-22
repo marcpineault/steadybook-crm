@@ -163,7 +163,7 @@ async def morning_briefing():
     except Exception as e:
         logger.error(f"Morning briefing failed: {e}")
         try:
-            await _bot.send_message(chat_id=CHAT_ID, text="Morning briefing error — check logs.")
+            await _bot.send_message(chat_id=CHAT_ID, text="Morning briefing error -check logs.")
         except Exception:
             pass
 
@@ -210,21 +210,21 @@ async def auto_nag():
         if ref_date and (today - ref_date).days >= 7:
             if _can_nag(nag_state, name, "stale"):
                 days_idle = (today - ref_date).days
-                alerts.append(f"  STALE: {name} — no activity for {days_idle} days")
+                alerts.append(f"  STALE: {name} -no activity for {days_idle} days")
                 _mark_nagged(nag_state, name, "stale")
 
         # 2. Follow-up 2+ days overdue
         if fu and (today - fu).days >= 2:
             if _can_nag(nag_state, name, "overdue"):
                 days_late = (today - fu).days
-                alerts.append(f"  OVERDUE: {name} — follow-up is {days_late} days late")
+                alerts.append(f"  OVERDUE: {name} -follow-up is {days_late} days late")
                 _mark_nagged(nag_state, name, "overdue")
 
         # 3. Hot lead stuck in New Lead/Contacted for 5+ days
         if priority == "hot" and stage in ("New Lead", "Contacted"):
             if fc and (today - fc).days >= 5:
                 if _can_nag(nag_state, name, "hot_stuck"):
-                    alerts.append(f"  HOT STUCK: {name} — hot lead in '{stage}' for {(today - fc).days} days")
+                    alerts.append(f"  HOT STUCK: {name} -hot lead in '{stage}' for {(today - fc).days} days")
                     _mark_nagged(nag_state, name, "hot_stuck")
 
     # 4. Meeting tomorrow prep reminder
@@ -233,7 +233,7 @@ async def auto_nag():
         for m in tomorrow_meetings:
             mkey = f"{m['prospect']}_{m['time']}"
             if _can_nag(nag_state, mkey, "meeting_prep"):
-                prep = f" — Prep: {m['prep_notes']}" if m["prep_notes"] else ""
+                prep = f" -Prep: {m['prep_notes']}" if m["prep_notes"] else ""
                 alerts.append(f"  MEETING TOMORROW: {m['prospect']} at {m['time']} ({m['type']}){prep}")
                 _mark_nagged(nag_state, mkey, "meeting_prep")
     except Exception as e:
@@ -247,7 +247,7 @@ async def auto_nag():
             if _can_nag(nag_state, task_key, "overdue_task"):
                 days_late = (today - datetime.strptime(t["due_date"], "%Y-%m-%d").date()).days
                 prospect_str = f" ({t['prospect']})" if t.get("prospect") else ""
-                alerts.append(f"  TASK OVERDUE: {t['title']}{prospect_str} — {days_late} days late")
+                alerts.append(f"  TASK OVERDUE: {t['title']}{prospect_str} -{days_late} days late")
                 _mark_nagged(nag_state, task_key, "overdue_task")
     except Exception as e:
         logger.warning(f"Could not check overdue tasks for nag: {e}")
@@ -273,7 +273,7 @@ async def weekly_report():
     except Exception as e:
         logger.error(f"Weekly report failed: {e}")
         try:
-            await _bot.send_message(chat_id=CHAT_ID, text="Weekly report error — check logs.")
+            await _bot.send_message(chat_id=CHAT_ID, text="Weekly report error -check logs.")
         except Exception:
             pass
 
@@ -367,7 +367,7 @@ async def _weekly_report_inner():
 
     # Build the report
     lines = [
-        f"WEEKLY REPORT — {week_start.strftime('%b %d')} to {today.strftime('%b %d')}",
+        f"WEEKLY REPORT -{week_start.strftime('%b %d')} to {today.strftime('%b %d')}",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
         "",
         "ACTIVITY:",
@@ -428,7 +428,7 @@ async def _weekly_report_inner():
                 lines.append("")
                 lines.append(insights[:1500])
     except Exception:
-        logger.exception("Insights section failed — sending report without it")
+        logger.exception("Insights section failed -sending report without it")
 
     msg = "\n".join(lines)
     await _bot.send_message(chat_id=CHAT_ID, text=msg)
@@ -496,7 +496,7 @@ async def midday_checkin():
             lines.append(f"\nOverdue ({len(overdue)}):")
             for p in overdue[:3]:
                 days_late = (today - p["_next_followup_date"]).days
-                lines.append(f"  {p['name']} — {days_late}d late")
+                lines.append(f"  {p['name']} -{days_late}d late")
 
         # Afternoon meetings
         meetings = _read_meetings_today()
@@ -504,7 +504,7 @@ async def midday_checkin():
         if afternoon:
             lines.append(f"\nThis afternoon:")
             for m in afternoon:
-                lines.append(f"  {m.get('time', '?')} — {m.get('prospect', '?')} ({m.get('type', '?')})")
+                lines.append(f"  {m.get('time', '?')} -{m.get('prospect', '?')} ({m.get('type', '?')})")
 
         if not due_today and not overdue and calls_today >= 10:
             lines.append("\nYou're crushing it today. Keep going.")
@@ -587,7 +587,7 @@ async def eod_wrapup():
             lines.append(f"\nStill overdue ({len(overdue)}):")
             for p in overdue[:5]:
                 days_late = (today - p["_next_followup_date"]).days
-                lines.append(f"  {p['name']} — {days_late}d late")
+                lines.append(f"  {p['name']} -{days_late}d late")
 
         # Tomorrow preview
         tomorrow = today + timedelta(days=1)
@@ -596,7 +596,7 @@ async def eod_wrapup():
         if tomorrow_meetings or due_tomorrow:
             lines.append(f"\nTomorrow:")
             for m in tomorrow_meetings:
-                lines.append(f"  Meeting: {m.get('time', '?')} — {m.get('prospect', '?')} ({m.get('type', '?')})")
+                lines.append(f"  Meeting: {m.get('time', '?')} -{m.get('prospect', '?')} ({m.get('type', '?')})")
             for p in due_tomorrow[:3]:
                 lines.append(f"  Follow-up: {p['name']}")
 
@@ -630,7 +630,7 @@ async def check_task_reminders():
         for t in tasks:
             task_id = t["id"]
 
-            # Skip if we've already failed too many times — clear it so it stops spamming
+            # Skip if we've already failed too many times -clear it so it stops spamming
             fail_count = _reminder_failures.get(task_id, 0)
             if fail_count >= _REMINDER_MAX_RETRIES:
                 logger.error(f"Task reminder #{task_id} failed {fail_count} times, clearing to stop spam")
@@ -799,13 +799,13 @@ async def check_nurture_sequences():
         if len(touches) == 1:
             t = touches[0]
             text = (
-                f"NURTURE TOUCH — {t['prospect_name']}\n"
+                f"NURTURE TOUCH -{t['prospect_name']}\n"
                 f"Touch {t['touch_number']}/{t['total_touches']}\n\n"
                 f"{t['content'][:500]}\n\n"
-                f"Queue #{t['queue_id']} — /drafts to review"
+                f"Queue #{t['queue_id']} -/drafts to review"
             )
         else:
-            lines = [f"NURTURE TOUCHES — {len(touches)} due today\n"]
+            lines = [f"NURTURE TOUCHES -{len(touches)} due today\n"]
             for t in touches:
                 lines.append(
                     f"  {t['prospect_name']} (touch {t['touch_number']}/{t['total_touches']}) "
@@ -855,9 +855,9 @@ async def check_cold_outreach_followups():
     """Draft follow-up texts for cold outreach that got no reply.
 
     Up to 3 follow-ups with varied angles:
-    - Follow-up 1 (day 3):  Gentle nudge — "just in case you missed it"
-    - Follow-up 2 (day 7):  Value angle — why it's worth a quick chat
-    - Follow-up 3 (day 14): Final soft close — "door's always open"
+    - Follow-up 1 (day 3):  Gentle nudge -"just in case you missed it"
+    - Follow-up 2 (day 7):  Value angle -why it's worth a quick chat
+    - Follow-up 3 (day 14): Final soft close -"door's always open"
 
     Only fires if:
     - At least 1 outbound text sent to this phone (from cold outreach)
@@ -886,24 +886,24 @@ async def check_cold_outreach_followups():
             "nudge": (
                 "You are writing a brief follow-up text for Marc Pineault, a financial advisor at Co-operators "
                 "in London, Ontario. Marc texted this person a few days ago and never got a reply. "
-                "Write ONE sentence — low pressure, casual, leaves the door open. "
+                "Write ONE sentence -low pressure, casual, leaves the door open. "
                 "First name only, sign '- Marc'. No mentioning products or Co-operators. "
-                "Good example: 'Hey Sarah, just leaving this here in case you missed it — happy to chat whenever works for you. - Marc'"
+                "Good example: 'Hey Sarah, just leaving this here in case you missed it -happy to chat whenever works for you. - Marc'"
             ),
             "value": (
                 "You are writing a second follow-up text for Marc Pineault, a financial advisor at Co-operators "
                 "in London, Ontario. Marc has texted this person before with no reply. "
-                "Write ONE sentence — offer a reason why a quick chat is worth their time (e.g. saving money, "
+                "Write ONE sentence -offer a reason why a quick chat is worth their time (e.g. saving money, "
                 "getting a second opinion, making sure they're covered). Keep it casual and genuine. "
                 "First name only, sign '- Marc'. No specific products, rates, or numbers. "
-                "Good example: 'Hey Sarah, a lot of people I sit down with find they're overpaying or have gaps they didn't know about — happy to take a look if you're curious. - Marc'"
+                "Good example: 'Hey Sarah, a lot of people I sit down with find they're overpaying or have gaps they didn't know about -happy to take a look if you're curious. - Marc'"
             ),
             "final": (
                 "You are writing a final follow-up text for Marc Pineault, a financial advisor at Co-operators "
                 "in London, Ontario. Marc has texted this person a couple times with no reply. "
-                "This is the LAST text — make it respectful, zero pressure, and leave the door wide open. "
+                "This is the LAST text -make it respectful, zero pressure, and leave the door wide open. "
                 "Write ONE sentence. First name only, sign '- Marc'. No products or Co-operators. "
-                "Good example: 'Hey Sarah, I won't keep bugging you — just know the door's always open if you ever want to chat. - Marc'"
+                "Good example: 'Hey Sarah, I won't keep bugging you -just know the door's always open if you ever want to chat. - Marc'"
             ),
         }
 
@@ -1000,7 +1000,7 @@ async def check_cold_outreach_followups():
             display = prospect_name or phone
             attempt_labels = {1: "1st", 2: "2nd", 3: "3rd (final)"}
             text = (
-                f"NO REPLY FOLLOW-UP — {display}\n"
+                f"NO REPLY FOLLOW-UP -{display}\n"
                 f"{attempt_labels.get(attempt_num, '')} attempt · {followup_label} since first text\n\n"
                 f"{content}"
             )
@@ -1118,7 +1118,7 @@ async def check_webhook_health():
         if pending > 10:
             await _bot.send_message(
                 chat_id=CHAT_ID,
-                text=f"Webhook has {pending} pending updates — messages may not be processing."
+                text=f"Webhook has {pending} pending updates -messages may not be processing."
             )
             logger.warning(f"Webhook pending updates: {pending}")
 
@@ -1150,7 +1150,7 @@ def start_scheduler(telegram_app, event_loop=None):
     _bot = telegram_app.bot
 
     if not CHAT_ID:
-        logger.warning("TELEGRAM_CHAT_ID not set — scheduler will not send messages.")
+        logger.warning("TELEGRAM_CHAT_ID not set -scheduler will not send messages.")
         return
 
     kwargs = {"timezone": ET}
@@ -1212,7 +1212,7 @@ def start_scheduler(telegram_app, event_loop=None):
         name="Weekly Performance Report",
     )
 
-    # Task reminders — check every 60 seconds
+    # Task reminders -check every 60 seconds
     scheduler.add_job(
         check_task_reminders,
         "interval",
@@ -1232,7 +1232,7 @@ def start_scheduler(telegram_app, event_loop=None):
         name="Nudge Stale Drafts",
     )
 
-    # Meeting prep docs — check every hour during business hours
+    # Meeting prep docs -check every hour during business hours
     scheduler.add_job(
         send_meeting_prep_docs,
         "cron",
@@ -1243,7 +1243,7 @@ def start_scheduler(telegram_app, event_loop=None):
         name="Meeting Prep Docs",
     )
 
-    # Daily nurture check — 9:15AM ET weekdays (offset from 9AM auto_nag)
+    # Daily nurture check -9:15AM ET weekdays (offset from 9AM auto_nag)
     scheduler.add_job(
         check_nurture_sequences,
         "cron",
@@ -1254,7 +1254,7 @@ def start_scheduler(telegram_app, event_loop=None):
         name="Nurture Sequence Check",
     )
 
-    # Pre-call text nurture — check every 15 minutes
+    # Pre-call text nurture -check every 15 minutes
     scheduler.add_job(
         check_booking_nurture_touches,
         "interval",
@@ -1312,4 +1312,4 @@ def start_scheduler(telegram_app, event_loop=None):
     )
 
     scheduler.start()
-    logger.info("Scheduler started — briefing 8AM (weekdays), nag 9AM+2PM, midday 12:30PM, EOD 5:30PM, weekly Sun 6:30PM, task reminders every 60s, meeting prep hourly, backup 11PM, watchdog 8:45AM, webhook check every 6h, booking nurture every 15min, cold follow-ups 9:30AM daily ET, cold agents every 6h.")
+    logger.info("Scheduler started -briefing 8AM (weekdays), nag 9AM+2PM, midday 12:30PM, EOD 5:30PM, weekly Sun 6:30PM, task reminders every 60s, meeting prep hourly, backup 11PM, watchdog 8:45AM, webhook check every 6h, booking nurture every 15min, cold follow-ups 9:30AM daily ET, cold agents every 6h.")
