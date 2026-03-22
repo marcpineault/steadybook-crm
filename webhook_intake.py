@@ -39,6 +39,14 @@ def _validate_twilio_signature() -> bool:
         return False
     validator = RequestValidator(token)
     url = request.url
+    # Railway (and most reverse proxies) terminate TLS and forward HTTP
+    # internally.  Flask therefore sees http:// in request.url, but Twilio
+    # computed its signature against the public https:// URL.  Fix the
+    # scheme using the standard X-Forwarded-Proto header so the HMAC
+    # matches.
+    proto = request.headers.get("X-Forwarded-Proto")
+    if proto == "https" and url.startswith("http://"):
+        url = "https://" + url[len("http://"):]
     params = request.form.to_dict()
     signature = request.headers.get("X-Twilio-Signature", "")
     return validator.validate(url, params, signature)
