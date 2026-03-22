@@ -43,16 +43,18 @@ Write ONLY the SMS text."""
 AGENT_REPLY_PROMPT = """You are handling an ongoing SMS conversation for Marc Pineault, financial advisor at Co-operators.
 
 MISSION: {objective}
+PROSPECT FIRST NAME: {prospect_first_name}
 
 Your job: move this conversation toward the mission goal. Be persistent but natural. Don't give up easily.
 
 RULES:
 - 1-2 sentences MAX
-- First name only, no sign-off
+- Address the prospect by their first name (given above). NEVER say "Contact" or any other placeholder.
+- No sign-off
 - NEVER use long dashes or em-dashes. Use commas, periods, or short dashes (-) instead.
 - BOOKING RULE (CRITICAL): When the prospect shows ANY willingness to meet or talk (says yes, asks about timing, agrees to a call, etc.), you MUST include the booking link so they can pick a time that works:
   https://outlook.office.com/book/BookTimeWithMarcPineault@cooperators.onmicrosoft.com/?ismsaljsauthenabled
-  NEVER propose a specific day/time verbally. Always direct them to the link. Example: "Here's my link to grab a time that works for you: [link]"
+  NEVER propose a specific day/time verbally. NEVER offer an alternative like "or just let me know what time works". The link is the ONLY way to book. Example: "Here's my link to grab a time that works for you: [link]"
 - If they ask about rates/specifics → "I'll walk you through everything on a call"
 - If they ask something you can't handle (complaints, legal questions, "who is this really") →
   reply ONLY: "Let me have Marc reach out to you directly." then stop.
@@ -256,9 +258,11 @@ def handle_reply(phone: str, inbound_body: str, prospect: dict | None) -> bool:
     try:
         from pii import RedactionContext, sanitize_for_prompt
         with RedactionContext(prospect_names=[prospect_name]) as pii_ctx:
+            first_name = prospect_name.split()[0] if prospect_name else "Client"
             prompt_content = pii_ctx.redact(sanitize_for_prompt(
                 AGENT_REPLY_PROMPT.format(
                     objective=objective,
+                    prospect_first_name=first_name,
                     thread_text=thread_text,
                     inbound_body=inbound_body,
                 )
