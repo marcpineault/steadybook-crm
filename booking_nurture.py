@@ -23,7 +23,7 @@ openai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
 
 SMS_SYSTEM_PROMPT = """You are writing a text message for Marc Pineault, a financial advisor at Co-operators in London, Ontario.
 
-This needs to read like a real person typed it on their phone — not like AI, not like marketing copy.
+This needs to read like a real person typed it on their phone -not like AI, not like marketing copy.
 
 RULES:
 1. 1-3 sentences ONLY
@@ -31,14 +31,15 @@ RULES:
 3. Sign off with "- Marc"
 4. No "I hope this finds you well", no "excited to connect", no corporate language
 5. Never make financial promises or return guarantees
-6. Touch 1: Confirm the meeting, mention what you'll go over — keep it simple
+9. NEVER use long dashes or em-dashes. Use commas, periods, or short dashes (-) instead. This is a text message.
+6. Touch 1: Confirm the meeting, mention what you'll go over -keep it simple
 7. Touch 2: Quick day-before check-in, ask if they have any questions
-8. Touch 3: 2 hours before — brief heads-up with the time, nothing more
+8. Touch 3: 2 hours before -brief heads-up with the time, nothing more
 
 MEETING LOCATION RULES (use the Meeting type field to decide):
-- If meeting type contains "virtual", "online", "video", or "teams": reference "our call" or "video call" — do NOT mention an address
+- If meeting type contains "virtual", "online", "video", or "teams": reference "our call" or "video call" -do NOT mention an address
 - If meeting type is in-person / consultation (no virtual keyword): for Touch 2 and Touch 3, you may mention "911 Commissioners Road East" as the office address so they know where to go
-- Touch 1 never needs the address — just confirm the meeting is set
+- Touch 1 never needs the address -just confirm the meeting is set
 
 VOICE:
 Write like Marc texting from his personal phone. Direct. Short sentences. No fluff.
@@ -46,8 +47,8 @@ If it sounds like it came from a company, rewrite it.
 
 Examples of the right tone:
 - "Hey John, just a heads-up we're meeting tomorrow at 2. Let me know if anything comes up. - Marc"
-- "Hey Sarah, talk soon — our call is at 3 today. Holler if you have any questions beforehand. - Marc"
-- "Hey Dan, see you tomorrow at 10 — we're at 911 Commissioners Road East. Text me if you need anything. - Marc"
+- "Hey Sarah, talk soon -our call is at 3 today. Holler if you have any questions beforehand. - Marc"
+- "Hey Dan, see you tomorrow at 10 -we're at 911 Commissioners Road East. Text me if you need anything. - Marc"
 
 Write ONLY the message text. Use the client's name token (e.g. [CLIENT_01]) as-is.
 
@@ -146,7 +147,7 @@ def create_sequence(
             )
 
     logger.info(
-        "Booking nurture sequence created for %s — %d touches scheduled",
+        "Booking nurture sequence created for %s -%d touches scheduled",
         prospect_name, len(rows),
     )
 
@@ -178,7 +179,7 @@ def generate_touch(touch_row: dict):
         import sms_conversations as _sms
         if phone and _sms.was_recently_contacted(phone, hours=4):
             logger.info(
-                "Skipping nurture touch %d for %s — already contacted in last 4h",
+                "Skipping nurture touch %d for %s -already contacted in last 4h",
                 touch_number, prospect_name
             )
             # Mark as cancelled so it doesn't re-fire
@@ -198,7 +199,7 @@ def generate_touch(touch_row: dict):
             prospect_rec = db.get_prospect_by_name(touch_row["prospect_name"])
             if _sms.is_opted_out(prospect_rec) or (prospect_rec or {}).get("stage") == "Do Not Contact":
                 logger.info(
-                    "Skipping nurture touch %d for %s — opted out or Do Not Contact",
+                    "Skipping nurture touch %d for %s -opted out or Do Not Contact",
                     touch_number, prospect_name
                 )
                 with db.get_db() as conn:
@@ -221,7 +222,7 @@ def generate_touch(touch_row: dict):
 
         with RedactionContext(prospect_names=[prospect_name]) as pii_ctx:
             user_content = pii_ctx.redact(sanitize_for_prompt(
-                f"Touch {touch_number} of 3 — {label}\n\n"
+                f"Touch {touch_number} of 3 -{label}\n\n"
                 f"Prospect: {prospect_name}\n"
                 f"Meeting: {meeting_date} at {meeting_time}\n"
                 f"Meeting type: {meeting_type}\n"
@@ -250,7 +251,7 @@ def generate_touch(touch_row: dict):
         draft_type="booking_nurture",
         channel="sms_draft",
         content=content,
-        context=f"Booking nurture touch {touch_number}/3 — {label} for {prospect_name} on {meeting_date}",
+        context=f"Booking nurture touch {touch_number}/3 -{label} for {prospect_name} on {meeting_date}",
         prospect_id=touch_row.get("prospect_id"),
     )
 
@@ -279,7 +280,7 @@ def format_touch_for_telegram(touch_row: dict, content: str) -> str:
     touch_number = touch_row["touch_number"]
     label = TOUCH_LABELS.get(touch_number, f"Touch {touch_number}")
     return (
-        f"BOOKING NURTURE — {touch_row['prospect_name']}\n"
+        f"BOOKING NURTURE -{touch_row['prospect_name']}\n"
         f"Touch {touch_number}/3: {label}\n"
         f"Meeting: {touch_row['meeting_date']} at {touch_row['meeting_time']}\n\n"
         f"{content}"

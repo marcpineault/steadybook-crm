@@ -30,7 +30,8 @@ RULES:
 - 1-2 sentences MAX
 - Warm, casual, like a message from someone they've already met
 - First name only, no sign-off
-- No hard sell — open a door, don't push through it
+- No hard sell, open a door, don't push through it
+- NEVER use long dashes or em-dashes. Use commas, periods, or short dashes (-) instead.
 - Never mention rates, products, or specific numbers
 - Nothing that sounds like AI wrote it
 
@@ -42,19 +43,41 @@ Write ONLY the SMS text."""
 AGENT_REPLY_PROMPT = """You are handling an ongoing SMS conversation for Marc Pineault, financial advisor at Co-operators.
 
 MISSION: {objective}
+PROSPECT FIRST NAME: {prospect_first_name}
 
-Your job: move this conversation toward the mission goal — naturally, without pressure.
+Your job: move this conversation toward the mission goal. Be persistent but natural. Don't give up easily.
 
 RULES:
 - 1-2 sentences MAX
-- First name only, no sign-off
-- If they seem interested → send booking link:
+- Address the prospect by their first name (given above). NEVER say "Contact" or any other placeholder.
+- No sign-off
+- NEVER use long dashes or em-dashes. Use commas, periods, or short dashes (-) instead.
+- BOOKING RULE (CRITICAL): When the prospect shows ANY willingness to meet or talk (says yes, asks about timing, agrees to a call, etc.), you MUST include the booking link so they can pick a time that works:
   https://outlook.office.com/book/BookTimeWithMarcPineault@cooperators.onmicrosoft.com/?ismsaljsauthenabled
-- If hesitant → low pressure, leave the door open
+  NEVER propose a specific day/time verbally. NEVER offer an alternative like "or just let me know what time works". The link is the ONLY way to book. Example: "Here's my link to grab a time that works for you: [link]"
+- If they say a time verbally instead of using the link, or ask you to book for them, do NOT confirm it. Resend the booking link and ask them to pick a time through it. Example: "I can't book it on my end but this link has all my availability: [link]"
 - If they ask about rates/specifics → "I'll walk you through everything on a call"
 - If they ask something you can't handle (complaints, legal questions, "who is this really") →
   reply ONLY: "Let me have Marc reach out to you directly." then stop.
 - Never make financial promises or specific recommendations over text
+
+HANDLING OBJECTIONS - BE PERSISTENT:
+The goal is ALWAYS to get a call or meeting booked. When they push back, acknowledge what they said, then pivot back to booking. Do NOT just accept the objection and back off.
+
+"Not interested" / "No thanks":
+→ Reframe the call as a no-pressure 15 min look at their situation, not a sales pitch.
+
+"Too busy" / "Can't right now" / "Bad timing":
+→ Make it easy. Offer a super short call and flexibility on timing (early, late, whenever works).
+  e.g. "Totally get it, what if we kept it to 15 min? I can work around your schedule."
+
+"I already have someone":
+→ Position the call as a free second opinion, fresh set of eyes.
+
+"Just send me info":
+→ Redirect to a call, info without context doesn't land. A quick walkthrough is better.
+
+CRITICAL: On the FIRST objection, always make ONE concrete attempt to redirect toward booking. Only back off gracefully if they push back firmly a SECOND time.
 
 CONVERSATION:
 {thread_text}
@@ -73,9 +96,9 @@ THREAD:
 {thread_text}
 
 STATUS OPTIONS:
-- ongoing: conversation is still moving, goal not yet achieved
-- success: goal is clearly achieved (call booked, firm interest confirmed, booking link accepted)
-- cold: prospect is clearly not interested or has not replied to 2+ messages
+- ongoing: conversation is still moving, goal not yet achieved. A single objection like "too busy" or "not interested" is NOT cold, it's ongoing, Marc should try once more.
+- success: goal is clearly achieved (booking link was sent AND prospect confirmed, or prospect booked via the link)
+- cold: prospect has FIRMLY declined TWICE or more (e.g. said no, got a redirect attempt, and said no again), OR has not replied to 2+ messages. A single "no" or "too busy" is NOT cold.
 - needs_marc: prospect asked something the agent cannot handle (rates, complaints, legal, identity)
 
 Reply with ONLY one of: ongoing, success, cold, needs_marc
@@ -236,9 +259,11 @@ def handle_reply(phone: str, inbound_body: str, prospect: dict | None) -> bool:
     try:
         from pii import RedactionContext, sanitize_for_prompt
         with RedactionContext(prospect_names=[prospect_name]) as pii_ctx:
+            first_name = prospect_name.split()[0] if prospect_name else "Client"
             prompt_content = pii_ctx.redact(sanitize_for_prompt(
                 AGENT_REPLY_PROMPT.format(
                     objective=objective,
+                    prospect_first_name=first_name,
                     thread_text=thread_text,
                     inbound_body=inbound_body,
                 )
@@ -282,7 +307,7 @@ def handle_reply(phone: str, inbound_body: str, prospect: dict | None) -> bool:
         # Re-check opt-out
         latest = db.get_prospect_by_phone(phone)
         if sms_conversations.is_opted_out(latest):
-            logger.info("Agent aborting — prospect opted out during delay")
+            logger.info("Agent aborting -prospect opted out during delay")
             complete_mission(agent_id, "cold", updated_thread, prospect_name, prospect_id)
             return
 
@@ -341,11 +366,11 @@ def complete_mission(
     """Finalize a mission: update DB, extract memory, update stage, notify Marc."""
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     summary_map = {
-        "success": f"✅ {prospect_name} — mission complete.",
-        "cold": f"🧊 {prospect_name} — went cold.",
-        "needs_marc": f"⚠️ {prospect_name} — needs you. Agent paused.",
+        "success": f"✅ {prospect_name} -mission complete.",
+        "cold": f"🧊 {prospect_name} -went cold.",
+        "needs_marc": f"⚠️ {prospect_name} -needs you. Agent paused.",
     }
-    summary = summary_map.get(status, f"{prospect_name} — {status}")
+    summary = summary_map.get(status, f"{prospect_name} -{status}")
 
     _update_agent(agent_id, {
         "status": status,
@@ -360,7 +385,7 @@ def complete_mission(
     )
     db.add_activity({
         "prospect": prospect_name,
-        "action": f"SMS Agent — {status}",
+        "action": f"SMS Agent -{status}",
         "outcome": summary,
         "notes": f"Thread excerpt: {thread_text}",
     })
@@ -389,21 +414,21 @@ def complete_mission(
             except Exception:
                 logger.exception("Stage update failed after agent success")
         else:
-            logger.warning("Cannot update stage — no prospect_id for mission %d", agent_id)
+            logger.warning("Cannot update stage -no prospect_id for mission %d", agent_id)
 
     # Build notification
     last_msg = thread[-1]["body"][:100] if thread else ""
     outbound_count = len([m for m in thread if m["direction"] == "outbound"])
     if status == "cold":
-        note = f"🧊 {prospect_name} — went cold after {outbound_count} attempt(s).\nLast message: '{last_msg}'"
+        note = f"🧊 {prospect_name} -went cold after {outbound_count} attempt(s).\nLast message: '{last_msg}'"
     elif status == "needs_marc":
         note = (
-            f"⚠️ {prospect_name} — asked something the agent can't handle.\n"
+            f"⚠️ {prospect_name} -asked something the agent can't handle.\n"
             f"Message: '{last_msg}'\n\n"
             f"Agent paused. Use /agent resume {agent_id} when you've handled it."
         )
     else:
-        note = f"✅ {prospect_name} — goal achieved! Thread saved."
+        note = f"✅ {prospect_name} -goal achieved! Thread saved."
 
     _notify_telegram(note)
     logger.info("Mission %d completed with status=%s for %s", agent_id, status, prospect_name)
@@ -466,7 +491,7 @@ def check_cold_agents() -> None:
 
         if hours_elapsed >= 48 or unanswered >= 2:
             logger.info(
-                "Agent %d going cold — %.0fh silence, %d unanswered",
+                "Agent %d going cold -%.0fh silence, %d unanswered",
                 agent_id, hours_elapsed, unanswered,
             )
             complete_mission(agent_id, "cold", thread, prospect_name, prospect_id)
@@ -480,9 +505,9 @@ def resume_mission(agent_id: int) -> str:
         return f"No agent mission found with id {agent_id}."
     agent = dict(row)
     if agent["status"] not in ("needs_marc",):
-        return f"Agent {agent_id} is '{agent['status']}' — can only resume needs_marc agents."
+        return f"Agent {agent_id} is '{agent['status']}' -can only resume needs_marc agents."
     _update_agent(agent_id, {"status": "active"})
-    return f"Agent for {agent['prospect_name']} resumed — will continue on next reply."
+    return f"Agent for {agent['prospect_name']} resumed -will continue on next reply."
 
 
 def _notify_telegram(message: str) -> None:
