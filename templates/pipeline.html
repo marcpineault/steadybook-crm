@@ -80,6 +80,7 @@
             <table class="pipeline-table">
                 <thead>
                     <tr>
+                        <th style="width:30px"><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)" title="Select all"></th>
                         <th class="sortable" data-sort-type="text">Name</th>
                         <th class="sortable" data-sort-type="number">Health</th>
                         <th class="sortable" data-sort-type="text">Priority</th>
@@ -97,6 +98,9 @@
                     {% for p in active_prospects %}
                     <tr data-name="{{ p.name|e }}" data-priority="{{ p.priority|lower }}"
                         style="cursor:pointer">
+                        <td style="text-align:center" onclick="event.stopPropagation()">
+                            <input type="checkbox" class="prospect-select" data-name="{{ p.name|e }}" onchange="updateBulkBar()" style="width:16px;height:16px;cursor:pointer">
+                        </td>
                         <td class="name-cell">{{ p.name }}</td>
                         <td style="text-align:center">
                             {% set hcolor = 'var(--success)' if p.health >= 70 else 'var(--warning)' if p.health >= 40 else 'var(--danger)' %}
@@ -134,7 +138,124 @@
     </div>
 </div>
 
+<!-- Bulk Action Bar (hidden until selections made) -->
+<div id="bulkBar" style="display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--text-primary);color:#fff;padding:10px 20px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.2);z-index:500;display:none;align-items:center;gap:12px;font-size:12px">
+    <span id="bulkCount" style="font-weight:600"></span>
+    <div style="width:1px;height:20px;background:rgba(255,255,255,0.2)"></div>
+    <button onclick="bulkChangeStage()" class="btn btn-sm" style="background:rgba(255,255,255,0.15);color:#fff;border:none">Change Stage</button>
+    <button onclick="bulkChangePriority()" class="btn btn-sm" style="background:rgba(255,255,255,0.15);color:#fff;border:none">Change Priority</button>
+    <button onclick="bulkDelete()" class="btn btn-sm" style="background:#dc2626;color:#fff;border:none">Delete</button>
+    <button onclick="clearSelection()" class="btn btn-sm" style="background:none;color:rgba(255,255,255,0.6);border:none;font-size:16px">&times;</button>
+</div>
+
 <script>
+// ── Bulk selection ──
+function getSelectedNames() {
+    return Array.from(document.querySelectorAll('.prospect-select:checked')).map(cb => cb.dataset.name);
+}
+
+function updateBulkBar() {
+    const selected = getSelectedNames();
+    const bar = document.getElementById('bulkBar');
+    if (selected.length > 0) {
+        bar.style.display = 'flex';
+        document.getElementById('bulkCount').textContent = selected.length + ' selected';
+    } else {
+        bar.style.display = 'none';
+    }
+    // Update select-all checkbox state
+    const all = document.querySelectorAll('.prospect-select');
+    const allChecked = all.length > 0 && getSelectedNames().length === all.length;
+    const selectAll = document.getElementById('selectAll');
+    if (selectAll) selectAll.checked = allChecked;
+}
+
+function toggleSelectAll(masterCheckbox) {
+    document.querySelectorAll('.prospect-select').forEach(cb => {
+        if (cb.closest('tr').style.display !== 'none') {
+            cb.checked = masterCheckbox.checked;
+        }
+    });
+    updateBulkBar();
+}
+
+function clearSelection() {
+    document.querySelectorAll('.prospect-select').forEach(cb => cb.checked = false);
+    const selectAll = document.getElementById('selectAll');
+    if (selectAll) selectAll.checked = false;
+    updateBulkBar();
+}
+
+function bulkChangeStage() {
+    const names = getSelectedNames();
+    if (!names.length) return;
+    const stages = ['New Lead','Contacted','Discovery Call','Needs Analysis','Plan Presentation','Proposal Sent','Negotiation','Nurture','Closed-Won','Closed-Lost'];
+    closeAllDropdowns();
+    const menu = document.createElement('div');
+    menu.className = 'dropdown-menu active';
+    menu.style.cssText = 'position:fixed;bottom:70px;left:50%;transform:translateX(-50%);z-index:9999';
+    stages.forEach(s => {
+        const item = document.createElement('button');
+        item.className = 'dropdown-item';
+        item.textContent = s;
+        item.addEventListener('click', function() {
+            menu.remove();
+            let done = 0;
+            names.forEach(name => {
+                fetch('/api/prospect/update', {
+                    method: 'PUT', headers: _headers(),
+                    body: JSON.stringify({ name: name, updates: { stage: s } })
+                }).then(() => { done++; if (done === names.length) { showToast(done + ' prospects → ' + s, 'success'); location.reload(); } });
+            });
+        });
+        menu.appendChild(item);
+    });
+    document.body.appendChild(menu);
+}
+
+function bulkChangePriority() {
+    const names = getSelectedNames();
+    if (!names.length) return;
+    closeAllDropdowns();
+    const pris = [{name:'Hot',color:'#dc2626'},{name:'Warm',color:'#f59e0b'},{name:'Cold',color:'#3498db'}];
+    const menu = document.createElement('div');
+    menu.className = 'dropdown-menu active';
+    menu.style.cssText = 'position:fixed;bottom:70px;left:50%;transform:translateX(-50%);z-index:9999';
+    pris.forEach(p => {
+        const item = document.createElement('button');
+        item.className = 'dropdown-item';
+        const dot = document.createElement('span');
+        dot.className = 'dot';
+        dot.style.background = p.color;
+        item.appendChild(dot);
+        item.appendChild(document.createTextNode(p.name));
+        item.addEventListener('click', function() {
+            menu.remove();
+            let done = 0;
+            names.forEach(name => {
+                fetch('/api/prospect/update', {
+                    method: 'PUT', headers: _headers(),
+                    body: JSON.stringify({ name: name, updates: { priority: p.name } })
+                }).then(() => { done++; if (done === names.length) { showToast(done + ' prospects → ' + p.name, 'success'); location.reload(); } });
+            });
+        });
+        menu.appendChild(item);
+    });
+    document.body.appendChild(menu);
+}
+
+function bulkDelete() {
+    const names = getSelectedNames();
+    if (!names.length) return;
+    if (!confirm('Delete ' + names.length + ' prospect(s)? This cannot be undone.')) return;
+    let done = 0;
+    names.forEach(name => {
+        fetch('/api/prospect/' + encodeURIComponent(name), {
+            method: 'DELETE', headers: _headers()
+        }).then(() => { done++; if (done === names.length) { showToast(done + ' prospect(s) deleted', 'success'); location.reload(); } });
+    });
+}
+
 // Priority filter for both kanban and table
 function filterByPriority(chip, priority) {
     document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
