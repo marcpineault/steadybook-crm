@@ -81,10 +81,29 @@
     <!-- Toast container -->
     <div id="toast" class="toast"></div>
 
+    <!-- Mobile: sidebar backdrop -->
+    <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="closeMobileMenu()"></div>
+
     <!-- Mobile menu toggle -->
-    <button class="menu-toggle" onclick="document.querySelector('.sidebar').classList.toggle('open')">&#9776;</button>
+    <button class="menu-toggle" onclick="toggleMobileMenu()" aria-label="Menu">&#9776;</button>
 
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script>
+    function toggleMobileMenu() {
+        document.querySelector('.sidebar').classList.toggle('open');
+        document.getElementById('sidebarBackdrop').classList.toggle('active');
+        document.body.style.overflow = document.querySelector('.sidebar').classList.contains('open') ? 'hidden' : '';
+    }
+    function closeMobileMenu() {
+        document.querySelector('.sidebar').classList.remove('open');
+        document.getElementById('sidebarBackdrop').classList.remove('active');
+        document.body.style.overflow = '';
+    }
+    // Close sidebar when a link is clicked (mobile)
+    document.querySelectorAll('.sidebar-item').forEach(function(item) {
+        item.addEventListener('click', closeMobileMenu);
+    });
+    </script>
     {% block scripts %}{% endblock %}
 </body>
 </html>

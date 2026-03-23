@@ -1045,65 +1045,385 @@ td.money {
 
 /* ---- Responsive ---- */
 
+/* Tablet */
 @media (max-width: 1024px) {
   .kpi-grid {
     grid-template-columns: repeat(2, 1fr);
   }
-
   .two-col {
     grid-template-columns: 1fr;
   }
-
   .rec-grid {
     grid-template-columns: 1fr;
   }
+  .main-content {
+    padding: 20px;
+  }
 }
 
+/* Mobile */
 @media (max-width: 768px) {
+  /* Sidebar: slide-out drawer with backdrop */
   .sidebar {
     position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 260px;
     transform: translateX(-100%);
     z-index: 1000;
-    transition: transform 0.2s;
+    transition: transform 0.25s ease;
+    box-shadow: none;
   }
-
   .sidebar.open {
     transform: translateX(0);
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.15);
+  }
+  /* Backdrop overlay when sidebar is open */
+  .sidebar-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.3);
+    z-index: 999;
+  }
+  .sidebar-backdrop.active {
+    display: block;
   }
 
+  /* Main content: full width */
   .main-content {
     margin-left: 0;
+    padding: 16px;
+    padding-top: 56px; /* room for hamburger */
   }
 
+  /* Hamburger menu button */
+  .menu-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    width: 40px;
+    height: 40px;
+  }
+
+  /* Page header: stack vertically on mobile */
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .header-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  .header-actions .form-input {
+    width: 100% !important;
+  }
+
+  /* KPI grid: 2 per row */
+  .kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  .kpi-card {
+    padding: 12px;
+  }
+  .kpi-value {
+    font-size: 20px;
+  }
+
+  /* Action rows: stack buttons below text */
+  .action-row {
+    flex-wrap: wrap;
+    padding: 10px;
+    gap: 8px;
+  }
+  .action-buttons {
+    width: 100%;
+    justify-content: flex-start;
+    margin-top: 4px;
+  }
+
+  /* Cards */
+  .card {
+    padding: 12px;
+  }
+  .card-title {
+    font-size: 12px;
+  }
+
+  /* Tables: horizontal scroll */
+  .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  table {
+    min-width: 600px;
+  }
+  th, td {
+    padding: 6px 8px;
+    font-size: 11px;
+  }
+
+  /* Kanban: scroll horizontally, narrower columns */
+  .kanban-board {
+    padding-bottom: 12px;
+    -webkit-overflow-scrolling: touch;
+  }
   .kanban-col {
-    min-width: 160px;
-    max-width: 160px;
+    min-width: 150px;
+    max-width: 150px;
+  }
+  .kanban-card {
+    padding: 10px;
+  }
+  .kanban-card-name {
+    font-size: 11px;
+  }
+  .kanban-card-product {
+    font-size: 9px;
   }
 
+  /* Conversations: stack panels vertically */
   .conv-layout {
+    grid-template-columns: 1fr;
+    height: auto;
+    min-height: calc(100vh - 56px);
+  }
+  .conv-list {
+    max-height: 250px;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .conv-thread {
+    min-height: 400px;
+  }
+  .conv-messages {
+    max-height: none;
+    min-height: 300px;
+  }
+  .msg-bubble {
+    max-width: 85%;
+  }
+
+  /* Modals: nearly full screen */
+  .modal-overlay {
+    align-items: flex-end;
+  }
+  .modal {
+    max-width: 100%;
+    width: 100%;
+    max-height: 92vh;
+    border-radius: 12px 12px 0 0;
+    padding: 16px;
+  }
+  .modal form [style*="grid-template-columns"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Chat panel: full width */
+  .chat-panel {
+    width: calc(100% - 32px);
+    right: 16px;
+    bottom: 72px;
+    max-height: 60vh;
+  }
+  .chat-fab {
+    bottom: 16px;
+    right: 16px;
+  }
+
+  /* Progress bars */
+  .progress-bar {
+    height: 6px;
+  }
+
+  /* Two-col always single col */
+  .two-col {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  /* Rec grid */
+  .rec-grid {
     grid-template-columns: 1fr;
   }
 
-  .kpi-grid {
-    grid-template-columns: repeat(2, 1fr);
+  /* Meeting items */
+  .meeting-item {
+    padding: 6px;
   }
 
-  .menu-toggle {
-    display: block;
+  /* View toggle */
+  .view-toggle-btn {
+    padding: 6px 10px;
+    font-size: 9px;
+  }
+
+  /* Forecast KPI grid on mobile */
+  .kpi-grid[style*="repeat(3"] {
+    grid-template-columns: repeat(2, 1fr) !important;
   }
 }
 
+/* Small phones */
 @media (max-width: 480px) {
+  .main-content {
+    padding: 12px;
+    padding-top: 52px;
+  }
+
+  /* KPI: single column */
   .kpi-grid {
     grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  .kpi-card {
+    padding: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .kpi-label {
+    font-size: 11px;
+    margin-bottom: 0;
+  }
+  .kpi-value {
+    font-size: 18px;
+    margin-top: 0;
   }
 
-  .modal {
-    max-width: 100%;
+  /* Compact action rows */
+  .action-row {
+    padding: 8px;
+    gap: 6px;
+  }
+  .action-name {
+    font-size: 11px;
+  }
+  .action-detail {
+    font-size: 9px;
+  }
+  .action-buttons {
+    gap: 4px;
+  }
+  .btn-sm {
+    padding: 3px 8px;
+    font-size: 9px;
   }
 
+  /* Page header */
+  .page-title {
+    font-size: 16px;
+  }
+  .page-subtitle {
+    font-size: 11px;
+  }
+  .header-actions {
+    gap: 6px;
+  }
+
+  /* Kanban even narrower */
+  .kanban-col {
+    min-width: 130px;
+    max-width: 130px;
+  }
+  .kanban-col-title {
+    font-size: 10px;
+  }
+  .kanban-card {
+    padding: 8px;
+  }
+
+  /* Tables: smaller min-width for horizontal scroll */
+  table {
+    min-width: 500px;
+  }
+
+  /* Modal: full screen */
   .modal {
-    padding: 16px;
+    max-height: 95vh;
+    border-radius: 8px 8px 0 0;
+    padding: 12px;
+  }
+  .modal-title {
+    font-size: 14px;
+  }
+
+  /* Conversations */
+  .conv-list {
+    max-height: 200px;
+  }
+  .conv-item {
+    padding: 10px 12px;
+  }
+  .conv-composer {
+    padding: 8px;
+  }
+  .conv-composer input {
+    font-size: 14px; /* prevent iOS zoom */
+  }
+
+  /* Forms: prevent iOS zoom on input focus */
+  .form-input, .form-select, .form-textarea, input, select, textarea {
+    font-size: 16px !important; /* iOS won't zoom at 16px+ */
+  }
+
+  /* Chat panel */
+  .chat-panel {
+    width: calc(100% - 16px);
+    right: 8px;
+    bottom: 64px;
+  }
+  .chat-fab {
+    width: 42px;
+    height: 42px;
+    bottom: 12px;
+    right: 12px;
+    font-size: 18px;
+  }
+
+  /* Badges slightly larger touch targets */
+  .badge {
+    padding: 3px 10px;
+    font-size: 10px;
+  }
+}
+
+/* Touch device improvements */
+@media (hover: none) and (pointer: coarse) {
+  /* Larger touch targets */
+  .sidebar-item {
+    padding: 12px 14px;
+    font-size: 14px;
+  }
+  .btn {
+    padding: 10px 16px;
+    font-size: 13px;
+  }
+  .btn-sm {
+    padding: 6px 12px;
+    font-size: 11px;
+  }
+  /* Disable hover effects that cause sticky states on touch */
+  .kanban-card:hover {
+    box-shadow: none;
+  }
+  tr:hover {
+    background: transparent;
+  }
+  .sidebar-item:hover {
+    background: transparent;
+  }
+  .sidebar-item.active:hover {
+    background: var(--primary-light);
+  }
+  /* Checkbox and button tap targets */
+  input[type="checkbox"] {
+    width: 20px !important;
+    height: 20px !important;
   }
 }
 
