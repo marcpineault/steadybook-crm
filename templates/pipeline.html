@@ -49,7 +49,7 @@
                      data-name="{{ p.name|e }}" data-priority="{{ p.priority|lower }}"
                      style="border-left-color:{{ pri_color }}">
                     <div class="kanban-card-name">{{ p.name }}</div>
-                    <div class="kanban-card-product">{{ p.product or '' }}</div>
+                    {% if p.product %}<div class="kanban-card-product">{{ p.product }}</div>{% endif %}
                     {% if p.overdue_days %}
                     <div class="kanban-card-alert overdue">{{ p.overdue_days }}d overdue</div>
                     {% elif p.meeting_today %}
@@ -139,7 +139,7 @@
 </div>
 
 <!-- Bulk Action Bar (hidden until selections made) -->
-<div id="bulkBar" style="display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--text-primary);color:#fff;padding:10px 20px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.2);z-index:500;display:none;align-items:center;gap:12px;font-size:12px">
+<div id="bulkBar" style="display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--text-primary);color:#fff;padding:10px 20px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.2);z-index:500;align-items:center;gap:12px;font-size:12px;max-width:90vw">
     <span id="bulkCount" style="font-weight:600"></span>
     <div style="width:1px;height:20px;background:rgba(255,255,255,0.2)"></div>
     <button onclick="bulkChangeStage()" class="btn btn-sm" style="background:rgba(255,255,255,0.15);color:#fff;border:none">Change Stage</button>

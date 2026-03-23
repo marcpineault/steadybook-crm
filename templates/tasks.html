@@ -24,7 +24,7 @@
             {% for t in overdue_tasks %}
             <tr class="table-row-overdue">
                 <td style="width:30px;text-align:center"><input type="checkbox" onchange="completeTask({{ t.id }}, this)" style="width:16px;height:16px;cursor:pointer"></td>
-                <td class="name-cell" onclick="openTaskModal({{ t.id }},'{{ t.title|e }}','{{ t.prospect|e }}','{{ t.due_date }}','{{ (t.remind_at or '')|replace(' ','T') }}','{{ (t.notes or '')|e }}')">
+                <td class="name-cell" data-task-id="{{ t.id }}" data-title="{{ t.title|e }}" data-prospect="{{ t.prospect|e }}" data-due="{{ t.due_date or '' }}" data-remind="{{ (t.remind_at or '')|replace(' ','T') }}" data-notes="{{ (t.notes or '')|e }}" onclick="var d=this.dataset;openTaskModal(d.taskId,d.title,d.prospect,d.due,d.remind,d.notes)">
                     {{ t.title }}{% if t.remind_at %} <span style="color:var(--warning)">&#9200;</span>{% endif %}
                 </td>
                 <td>{% if t.prospect %}<a href="javascript:void(0)" data-prospect="{{ t.prospect|e }}" onclick="event.stopPropagation();openProspectDetail(this.dataset.prospect)" style="color:var(--primary);text-decoration:none">{{ t.prospect }}</a>{% endif %}</td>
@@ -46,7 +46,7 @@
             {% for t in due_today_tasks %}
             <tr class="table-row-today">
                 <td style="width:30px;text-align:center"><input type="checkbox" onchange="completeTask({{ t.id }}, this)" style="width:16px;height:16px;cursor:pointer"></td>
-                <td class="name-cell" onclick="openTaskModal({{ t.id }},'{{ t.title|e }}','{{ t.prospect|e }}','{{ t.due_date }}','{{ (t.remind_at or '')|replace(' ','T') }}','{{ (t.notes or '')|e }}')">
+                <td class="name-cell" data-task-id="{{ t.id }}" data-title="{{ t.title|e }}" data-prospect="{{ t.prospect|e }}" data-due="{{ t.due_date or '' }}" data-remind="{{ (t.remind_at or '')|replace(' ','T') }}" data-notes="{{ (t.notes or '')|e }}" onclick="var d=this.dataset;openTaskModal(d.taskId,d.title,d.prospect,d.due,d.remind,d.notes)">
                     {{ t.title }}{% if t.remind_at %} <span style="color:var(--warning)">&#9200;</span>{% endif %}
                 </td>
                 <td>{% if t.prospect %}<a href="javascript:void(0)" data-prospect="{{ t.prospect|e }}" onclick="event.stopPropagation();openProspectDetail(this.dataset.prospect)" style="color:var(--primary);text-decoration:none">{{ t.prospect }}</a>{% endif %}</td>
