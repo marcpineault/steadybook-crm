@@ -943,10 +943,17 @@ def dashboard():
             "date_relative": _relative_time(date_str, today),
         })
 
-    # Pending drafts
+    # Pending drafts — enrich with prospect names
     try:
         import approval_queue as _aq
         pending_drafts = _aq.get_pending_drafts()
+        prospects = ctx["prospects"]
+        for d in pending_drafts:
+            if d.get("prospect_id"):
+                match = next((p["name"] for p in prospects if str(p.get("id", "")) == str(d["prospect_id"])), "")
+                d["prospect_name"] = match
+            else:
+                d["prospect_name"] = ""
     except Exception:
         pending_drafts = []
 

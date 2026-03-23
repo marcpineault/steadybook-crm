@@ -48,29 +48,61 @@
     <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
             <div class="card-title mb-0">Priority Actions</div>
-            <div class="card-subtitle">Ranked by urgency</div>
+            {% if priority_actions|length > 3 %}
+            <button class="btn btn-sm btn-secondary" id="showAllActions" onclick="toggleShowAll('actionsList', this, {{ priority_actions|length }})">
+                Show all ({{ priority_actions|length }})
+            </button>
+            {% endif %}
         </div>
         {% if priority_actions %}
-        {% for action in priority_actions %}
-        <div class="action-row {{ action.urgency }}">
-            <div class="action-dot {{ action.urgency }}"></div>
-            <div style="flex:1">
-                <div class="action-name">{{ action.title }}</div>
-                <div class="action-detail">{{ action.detail }}</div>
-            </div>
-            <div class="action-buttons">
-                {% if action.action_type == 'prospect' %}
-                    {% for btn in action.buttons %}
-                    <button class="btn {{ 'btn-primary' if btn.primary else 'btn-secondary' }} btn-sm"
-                            onclick="openLogModal('{{ btn.action|title }}', {{ action.prospect_name|tojson }})">{{ btn.label }}</button>
-                    {% endfor %}
-                {% elif action.action_type == 'task' %}
-                    <button class="btn btn-secondary btn-sm"
+        <div id="actionsList">
+            {% for action in priority_actions %}
+            <div class="action-row {{ action.urgency }}" {% if loop.index > 3 %}style="display:none" data-extra{% endif %}>
+                <div class="action-dot {{ action.urgency }}"></div>
+                <div style="flex:1;min-width:0">
+                    <div class="action-name">{{ action.title }}</div>
+                    <div class="action-detail">{{ action.detail }}</div>
+                </div>
+                <!-- Dropdown actions menu -->
+                <div class="dropdown" style="position:relative">
+                    {% if action.action_type == 'prospect' %}
+                    <button class="btn btn-sm btn-primary" data-dropdown
+                            onclick="event.stopPropagation();toggleActionMenu(this)">
+                        Actions &#9662;
+                    </button>
+                    <div class="dropdown-menu right">
+                        <button class="dropdown-item" onclick="openLogModal('Call', {{ action.prospect_name|tojson }});closeAllDropdowns()">
+                            &#128222; Log Call
+                        </button>
+                        <button class="dropdown-item" onclick="openLogModal('SMS', {{ action.prospect_name|tojson }});closeAllDropdowns()">
+                            &#128172; Send SMS
+                        </button>
+                        <button class="dropdown-item" onclick="openLogModal('Email', {{ action.prospect_name|tojson }});closeAllDropdowns()">
+                            &#9993; Send Email
+                        </button>
+                        <div class="dropdown-divider"></div>
+                        <button class="dropdown-item" onclick="quickReschedule({{ action.prospect_name|tojson }}, 0);closeAllDropdowns()">
+                            &#128197; Reschedule Today
+                        </button>
+                        <button class="dropdown-item" onclick="quickReschedule({{ action.prospect_name|tojson }}, 1);closeAllDropdowns()">
+                            &#128197; Reschedule Tomorrow
+                        </button>
+                        <button class="dropdown-item" onclick="quickReschedule({{ action.prospect_name|tojson }}, 7);closeAllDropdowns()">
+                            &#128197; Reschedule +1 Week
+                        </button>
+                        <div class="dropdown-divider"></div>
+                        <button class="dropdown-item" onclick="openProspectDetail({{ action.prospect_name|tojson }});closeAllDropdowns()">
+                            &#128100; View Prospect
+                        </button>
+                    </div>
+                    {% elif action.action_type == 'task' %}
+                    <button class="btn btn-sm btn-secondary"
                             onclick="openTaskModal({{ action.task_id }})">View</button>
-                {% endif %}
+                    {% endif %}
+                </div>
             </div>
+            {% endfor %}
         </div>
-        {% endfor %}
         {% else %}
         <div class="text-muted" style="text-align:center;padding:20px">All clear! No urgent actions today.</div>
         {% endif %}
@@ -98,16 +130,43 @@
 
         <!-- Recent Activity -->
         <div class="card" style="flex:1">
-            <div class="card-title">Recent Activity</div>
-            {% for a in recent_activities[:5] %}
-            <div class="activity-item">
-                <div class="activity-dot" style="background:var(--primary)"></div>
-                <div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <div class="card-title mb-0">Recent Activity</div>
+                {% if recent_activities|length > 3 %}
+                <button class="btn btn-sm btn-secondary" onclick="toggleShowAll('activityList', this, {{ recent_activities|length }})">
+                    Show all ({{ recent_activities|length }})
+                </button>
+                {% endif %}
+            </div>
+            <div id="activityList">
+            {% for a in recent_activities %}
+            <div class="activity-item" {% if loop.index > 3 %}style="display:none" data-extra{% endif %}>
+                <div class="activity-dot" style="background:{{ 'var(--success)' if 'call' in a.action|lower or 'meeting' in a.action|lower else 'var(--primary)' if 'email' in a.action|lower or 'sms' in a.action|lower else 'var(--warning)' }}"></div>
+                <div style="flex:1;min-width:0">
                     <div class="activity-text">{{ a.action }}{% if a.prospect %} &mdash; {{ a.prospect }}{% endif %}{% if a.outcome %} ({{ a.outcome }}){% endif %}</div>
                     <div class="activity-time">{{ a.date_relative }}</div>
                 </div>
+                {% if a.prospect %}
+                <div class="dropdown" style="position:relative">
+                    <button class="btn btn-sm btn-secondary" data-dropdown
+                            onclick="event.stopPropagation();toggleActionMenu(this)"
+                            style="padding:2px 8px;font-size:10px">&#8943;</button>
+                    <div class="dropdown-menu right">
+                        <button class="dropdown-item" onclick="openProspectDetail({{ a.prospect|tojson }});closeAllDropdowns()">
+                            &#128100; View {{ a.prospect }}
+                        </button>
+                        <button class="dropdown-item" onclick="openLogModal('Call', {{ a.prospect|tojson }});closeAllDropdowns()">
+                            &#128222; Log Call
+                        </button>
+                        <button class="dropdown-item" onclick="openLogModal('Email', {{ a.prospect|tojson }});closeAllDropdowns()">
+                            &#9993; Send Email
+                        </button>
+                    </div>
+                </div>
+                {% endif %}
             </div>
             {% endfor %}
+            </div>
             {% if not recent_activities %}
             <div class="text-muted" style="text-align:center;padding:12px">No recent activity</div>
             {% endif %}
@@ -135,16 +194,108 @@
 <!-- Pending Drafts -->
 {% if pending_drafts %}
 <div class="card" style="border-top:3px solid #8b5cf6">
-    <div class="card-title" style="color:#8b5cf6">Drafts Awaiting Approval ({{ pending_drafts|length }})</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div class="card-title mb-0" style="color:#8b5cf6">Drafts Awaiting Approval ({{ pending_drafts|length }})</div>
+        {% if pending_drafts|length > 2 %}
+        <button class="btn btn-sm btn-secondary" onclick="toggleShowAll('draftsList', this, {{ pending_drafts|length }})">
+            Show all ({{ pending_drafts|length }})
+        </button>
+        {% endif %}
+    </div>
+    <div id="draftsList">
     {% for d in pending_drafts %}
-    <div style="padding:10px;margin-bottom:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg-subtle)">
-        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-            <span class="badge badge-info">{{ d.type }}</span>
-            <span class="text-muted" style="font-size:10px">{{ d.created_at[:16] }}</span>
+    <div style="padding:10px;margin-bottom:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg-subtle);display:flex;align-items:flex-start;gap:10px" {% if loop.index > 2 %}data-extra style="display:none"{% endif %}>
+        <div style="flex:1;min-width:0">
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+                <span class="badge badge-info">{{ d.type }}</span>
+                <span class="text-muted" style="font-size:10px">{{ d.created_at[:16] }}</span>
+            </div>
+            <div style="font-size:12px;white-space:pre-wrap">{{ d.content[:200] }}{{ '...' if d.content|length > 200 else '' }}</div>
         </div>
-        <div style="font-size:12px;white-space:pre-wrap">{{ d.content[:200] }}{{ '...' if d.content|length > 200 else '' }}</div>
+        <!-- Draft actions dropdown -->
+        <div class="dropdown" style="position:relative;flex-shrink:0">
+            <button class="btn btn-sm btn-secondary" data-dropdown
+                    onclick="event.stopPropagation();toggleActionMenu(this)"
+                    style="padding:4px 8px;font-size:10px">&#8943;</button>
+            <div class="dropdown-menu right">
+                {% if d.prospect_id %}
+                <button class="dropdown-item" onclick="openProspectDetail({{ d.prospect_name|default('')|tojson }});closeAllDropdowns()">
+                    &#128100; View Prospect
+                </button>
+                {% endif %}
+                <button class="dropdown-item" onclick="copyDraftText(this);closeAllDropdowns()" data-content="{{ d.content|e }}">
+                    &#128203; Copy Text
+                </button>
+                <button class="dropdown-item" onclick="expandDraft(this)" data-full="{{ d.content|e }}">
+                    &#128196; Read Full Draft
+                </button>
+            </div>
+        </div>
     </div>
     {% endfor %}
+    </div>
 </div>
 {% endif %}
+
+<script>
+// Toggle show-all for collapsible sections
+function toggleShowAll(containerId, btn, total) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const extras = container.querySelectorAll('[data-extra]');
+    const isHidden = extras[0]?.style.display === 'none';
+    extras.forEach(el => el.style.display = isHidden ? '' : 'none');
+    btn.textContent = isHidden ? 'Show less' : 'Show all (' + total + ')';
+}
+
+// Toggle action dropdown menu
+function toggleActionMenu(btn) {
+    const menu = btn.nextElementSibling || btn.parentElement.querySelector('.dropdown-menu');
+    if (!menu) return;
+    const wasActive = menu.classList.contains('active');
+    closeAllDropdowns();
+    if (!wasActive) {
+        menu.classList.add('active');
+        // Position check: flip up if near bottom
+        requestAnimationFrame(() => {
+            const rect = menu.getBoundingClientRect();
+            if (rect.bottom > window.innerHeight - 10) {
+                menu.classList.add('up');
+            } else {
+                menu.classList.remove('up');
+            }
+        });
+    }
+}
+
+// Copy draft text to clipboard
+function copyDraftText(btn) {
+    const text = btn.dataset.content;
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(text).then(() => showToast('Copied to clipboard', 'success'));
+    } else {
+        // Fallback
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+        showToast('Copied to clipboard', 'success');
+    }
+}
+
+// Expand draft to show full text
+function expandDraft(btn) {
+    const full = btn.dataset.full;
+    const card = btn.closest('[data-extra], div[style*="padding"]') || btn.closest('.card > div');
+    if (!card) return;
+    const textDiv = card.querySelector('div[style*="white-space"]');
+    if (textDiv) {
+        textDiv.textContent = full;
+        textDiv.style.maxHeight = 'none';
+    }
+    closeAllDropdowns();
+}
+</script>
 {% endblock %}
