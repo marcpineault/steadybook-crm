@@ -64,25 +64,38 @@ function sendFullChat() {
     });
 }
 
-// Voice input for full chat page
-let _fullVoiceRec = null;
-let _fullIsRecording = false;
+// Voice input for full chat page (reuses same pattern as base.html)
+var _fullVoiceRec = null;
+var _fullIsRecording = false;
+
+function _resetFullVoiceBtn(btn) {
+    _fullIsRecording = false;
+    btn.style.background = 'none';
+    btn.style.borderColor = 'var(--border)';
+    btn.style.color = '';
+    btn.textContent = '\uD83C\uDFA4';
+}
+
 function toggleFullChatVoice() {
-    const btn = document.getElementById('fullVoiceBtn');
-    if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
-        showToast('Voice input not supported in this browser', 'error');
+    var btn = document.getElementById('fullVoiceBtn');
+    if (!btn) return;
+
+    var SpeechAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechAPI) {
+        showToast('Voice input not supported \u2014 try Chrome or Edge', 'error');
         return;
     }
     if (_fullIsRecording) {
         if (_fullVoiceRec) _fullVoiceRec.stop();
-        _fullIsRecording = false;
-        btn.style.background = 'none';
-        btn.style.borderColor = 'var(--border)';
-        btn.textContent = '\u{1F3A4}';
+        _resetFullVoiceBtn(btn);
         return;
     }
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    _fullVoiceRec = new SpeechRecognition();
+    if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+        showToast('Voice requires HTTPS connection', 'error');
+        return;
+    }
+
+    _fullVoiceRec = new SpeechAPI();
     _fullVoiceRec.continuous = false;
     _fullVoiceRec.interimResults = true;
     _fullVoiceRec.lang = 'en-CA';
@@ -91,34 +104,38 @@ function toggleFullChatVoice() {
     btn.style.borderColor = 'var(--danger)';
     btn.style.color = '#fff';
     btn.textContent = '\u23F9';
-    const input = document.getElementById('fullChatInput');
-    let finalTranscript = '';
+    var input = document.getElementById('fullChatInput');
+    var finalTranscript = '';
+
     _fullVoiceRec.onresult = function(event) {
-        let interim = '';
-        for (let i = event.resultIndex; i < event.results.length; i++) {
+        var interim = '';
+        for (var i = event.resultIndex; i < event.results.length; i++) {
             if (event.results[i].isFinal) finalTranscript += event.results[i][0].transcript;
             else interim += event.results[i][0].transcript;
         }
-        input.value = finalTranscript + interim;
+        if (input) input.value = finalTranscript + interim;
     };
     _fullVoiceRec.onend = function() {
-        _fullIsRecording = false;
-        btn.style.background = 'none';
-        btn.style.borderColor = 'var(--border)';
-        btn.style.color = '';
-        btn.textContent = '\u{1F3A4}';
-        if (finalTranscript.trim()) { input.value = finalTranscript.trim(); input.focus(); }
+        _resetFullVoiceBtn(btn);
+        if (finalTranscript.trim() && input) { input.value = finalTranscript.trim(); input.focus(); }
     };
     _fullVoiceRec.onerror = function(event) {
-        _fullIsRecording = false;
-        btn.style.background = 'none';
-        btn.style.borderColor = 'var(--border)';
-        btn.style.color = '';
-        btn.textContent = '\u{1F3A4}';
-        if (event.error !== 'aborted') showToast('Voice error: ' + event.error, 'error');
+        _resetFullVoiceBtn(btn);
+        if (event.error === 'not-allowed') {
+            showToast('Microphone access denied \u2014 check browser permissions', 'error');
+        } else if (event.error === 'no-speech') {
+            showToast('No speech detected \u2014 try again', 'info');
+        } else if (event.error !== 'aborted') {
+            showToast('Voice error: ' + event.error, 'error');
+        }
     };
-    _fullVoiceRec.start();
-    showToast('Listening... speak now', 'info');
+    try {
+        _fullVoiceRec.start();
+        showToast('Listening... speak now', 'info');
+    } catch (e) {
+        _resetFullVoiceBtn(btn);
+        showToast('Could not start voice input: ' + e.message, 'error');
+    }
 }
 </script>
 {% endblock %}

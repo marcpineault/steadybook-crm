@@ -241,29 +241,40 @@
     });
 
     // Voice input for AI chat (Web Speech API)
-    let _voiceRecognition = null;
-    let _isRecording = false;
+    var _voiceRecognition = null;
+    var _isRecording = false;
+
+    function _resetVoiceBtn(btn) {
+        _isRecording = false;
+        btn.style.background = 'none';
+        btn.style.borderColor = 'var(--border)';
+        btn.style.color = '';
+        btn.textContent = '\uD83C\uDFA4'; // microphone emoji (ES5-safe surrogate pair)
+    }
 
     function toggleVoiceInput() {
-        const btn = document.getElementById('voiceBtn');
-        if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
-            showToast('Voice input not supported in this browser', 'error');
+        var btn = document.getElementById('voiceBtn');
+        if (!btn) return;
+
+        var SpeechAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechAPI) {
+            showToast('Voice input not supported \u2014 try Chrome or Edge', 'error');
             return;
         }
 
         if (_isRecording) {
-            // Stop recording
             if (_voiceRecognition) _voiceRecognition.stop();
-            _isRecording = false;
-            btn.style.background = 'none';
-            btn.style.borderColor = 'var(--border)';
-            btn.textContent = '\u{1F3A4}';
+            _resetVoiceBtn(btn);
             return;
         }
 
-        // Start recording
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        _voiceRecognition = new SpeechRecognition();
+        // Must be on HTTPS for speech recognition
+        if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+            showToast('Voice requires HTTPS connection', 'error');
+            return;
+        }
+
+        _voiceRecognition = new SpeechAPI();
         _voiceRecognition.continuous = false;
         _voiceRecognition.interimResults = true;
         _voiceRecognition.lang = 'en-CA';
@@ -272,48 +283,49 @@
         btn.style.background = 'var(--danger)';
         btn.style.borderColor = 'var(--danger)';
         btn.style.color = '#fff';
-        btn.textContent = '\u23F9';
+        btn.textContent = '\u23F9'; // stop icon
 
-        const input = document.getElementById('chatInput');
-        let finalTranscript = '';
+        var input = document.getElementById('chatInput');
+        var finalTranscript = '';
 
         _voiceRecognition.onresult = function(event) {
-            let interim = '';
-            for (let i = event.resultIndex; i < event.results.length; i++) {
+            var interim = '';
+            for (var i = event.resultIndex; i < event.results.length; i++) {
                 if (event.results[i].isFinal) {
                     finalTranscript += event.results[i][0].transcript;
                 } else {
                     interim += event.results[i][0].transcript;
                 }
             }
-            input.value = finalTranscript + interim;
+            if (input) input.value = finalTranscript + interim;
         };
 
         _voiceRecognition.onend = function() {
-            _isRecording = false;
-            btn.style.background = 'none';
-            btn.style.borderColor = 'var(--border)';
-            btn.style.color = '';
-            btn.textContent = '\u{1F3A4}';
-            if (finalTranscript.trim()) {
+            _resetVoiceBtn(btn);
+            if (finalTranscript.trim() && input) {
                 input.value = finalTranscript.trim();
                 input.focus();
             }
         };
 
         _voiceRecognition.onerror = function(event) {
-            _isRecording = false;
-            btn.style.background = 'none';
-            btn.style.borderColor = 'var(--border)';
-            btn.style.color = '';
-            btn.textContent = '\u{1F3A4}';
-            if (event.error !== 'aborted') {
+            _resetVoiceBtn(btn);
+            if (event.error === 'not-allowed') {
+                showToast('Microphone access denied \u2014 check browser permissions', 'error');
+            } else if (event.error === 'no-speech') {
+                showToast('No speech detected \u2014 try again', 'info');
+            } else if (event.error !== 'aborted') {
                 showToast('Voice error: ' + event.error, 'error');
             }
         };
 
-        _voiceRecognition.start();
-        showToast('Listening... speak now', 'info');
+        try {
+            _voiceRecognition.start();
+            showToast('Listening... speak now', 'info');
+        } catch (e) {
+            _resetVoiceBtn(btn);
+            showToast('Could not start voice input: ' + e.message, 'error');
+        }
     }
     </script>
     {% block scripts %}{% endblock %}
