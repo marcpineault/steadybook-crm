@@ -1471,7 +1471,7 @@ When UPDATING an existing prospect:
 - Only update fields that have new/better values (don't overwrite good data with empty strings)
 - Always add a note with the new information so there's a timeline
 
-FOLLOW-UP DATES: Only set next_followup if Marc explicitly mentions a follow-up date or says something like "follow up Friday", "call back next week", "check in tomorrow". If he doesn't mention a follow-up date, do NOT set one — leave it unchanged. Do NOT use auto_set_follow_up unless Marc is adding a brand-new prospect and doesn't specify a follow-up date.
+FOLLOW-UP DATES: Only set next_followup if Marc explicitly mentions a follow-up date or says something like "follow up Friday", "call back next week", "check in tomorrow". If he doesn't mention a follow-up date, do NOT set one. HOWEVER — if you look up a prospect and their next_followup is in the past (overdue), clear it by setting next_followup to "" (empty string) as part of the update. Don't leave stale overdue dates sitting there after Marc has interacted with the prospect. Do NOT use auto_set_follow_up unless Marc is adding a brand-new prospect and doesn't specify a follow-up date.
 
 Guess fields from context:
 - stage: PHQ/paperwork = "Proposal Sent", just met = "Discovery Call", wants quote = "Needs Analysis", done = "Closed-Won", else = "New Lead"
@@ -1928,7 +1928,7 @@ Marc just told you about a call. Parse the message and:
    - action: "Phone call" or "Call attempt"
    - outcome: what happened (connected, voicemail, no answer, booked meeting, etc.)
    - next_step: what to do next (if mentioned or obvious)
-3. If Marc EXPLICITLY mentions a follow-up date ("follow up Friday", "call back next week", "check in 3 days"), use update_prospect to set next_followup. If he doesn't mention a specific follow-up date, do NOT set one — leave it unchanged.
+3. If Marc EXPLICITLY mentions a follow-up date ("follow up Friday", "call back next week", "check in 3 days"), use update_prospect to set next_followup. If he doesn't mention a specific follow-up date, do NOT set a new one — BUT if the prospect's current next_followup is in the past (overdue), clear it by setting next_followup to "" (empty string). Don't leave stale overdue dates after Marc has logged a call.
 4. If the call outcome changes the stage (e.g. booked a meeting = Discovery Call, sent proposal = Proposal Sent), use update_prospect to update stage
 
 Common outcomes to recognize:
