@@ -899,64 +899,43 @@ def dashboard():
     # Today's meetings
     todays_meetings = [m for m in meetings if m.get("date") == today_str and m.get("status", "").lower() != "cancelled"]
 
-    # Build priority actions
+    # Build scored call list (replaces old priority_actions)
+    import scoring
+    ranked_call_list = scoring.get_ranked_call_list(limit=10)
+    # Enrich with days idle
+    for item in ranked_call_list:
+        pname_lower = item["name"].strip().lower()
+        last = last_activity_map.get(pname_lower)
+        if last:
+            item["days_idle"] = (today - last).days
+        else:
+            item["days_idle"] = None
+        # Check if overdue
+        fu = item.get("next_followup", "")
+        if fu and fu != "None":
+            try:
+                fu_date = datetime.strptime(fu.split(" ")[0], "%Y-%m-%d").date()
+                item["is_overdue"] = fu_date < today
+                item["days_overdue"] = (today - fu_date).days if fu_date < today else 0
+            except (ValueError, IndexError):
+                item["is_overdue"] = False
+                item["days_overdue"] = 0
+        else:
+            item["is_overdue"] = False
+            item["days_overdue"] = 0
+
+    # Urgent tasks (overdue + due today)
     overdue_tasks = ctx["overdue_tasks"]
     due_today_tasks = [t for t in all_tasks if t.get("due_date") and t["due_date"] == today_str]
-
-    priority_actions = []
-
-    # Overdue follow-ups
-    for p in overdue:
-        fu = p["next_followup"].split(" ")[0] if p["next_followup"] else ""
-        try:
-            days_late = (today - datetime.strptime(fu, "%Y-%m-%d").date()).days
-        except (ValueError, IndexError):
-            days_late = 0
-        priority_actions.append({
-            "title": f"Call {p['name']}",
-            "detail": f"{p.get('product', '')} · {p.get('stage', '')} · {days_late} day{'s' if days_late != 1 else ''} overdue",
-            "urgency": "overdue" if days_late > 0 else "today",
-            "prospect_name": p["name"],
-            "action_type": "prospect",
-            "buttons": [
-                {"label": "Call", "primary": True, "action": "call"},
-                {"label": "SMS", "primary": False, "action": "sms"},
-            ],
-        })
-
-    # Due today tasks
-    for t in due_today_tasks:
-        priority_actions.append({
-            "title": t["title"],
-            "detail": (t.get("prospect", "") + " · " if t.get("prospect") else "") + "Due today",
-            "urgency": "today",
-            "action_type": "task",
-            "task_id": t["id"],
-            "buttons": [
-                {"label": "View", "primary": False, "action": "view"},
-            ],
-        })
-
-    # Overdue tasks
+    urgent_tasks = []
     for t in overdue_tasks[:3]:
         try:
             days_late = (today - datetime.strptime(t["due_date"], "%Y-%m-%d").date()).days
         except (ValueError, IndexError):
             days_late = 0
-        priority_actions.append({
-            "title": t["title"],
-            "detail": (t.get("prospect", "") + " · " if t.get("prospect") else "") + f"{days_late}d overdue",
-            "urgency": "overdue",
-            "action_type": "task",
-            "task_id": t["id"],
-            "buttons": [
-                {"label": "View", "primary": False, "action": "view"},
-            ],
-        })
-
-    # AI recommendations
-    ai_recs_raw = _build_ai_recommendations(active, overdue, overdue_tasks, stale_prospects, last_activity_map, today, meetings)
-    ai_recs = [{"level": r[0], "text": r[1], "prospect": r[2]} for r in ai_recs_raw]
+        urgent_tasks.append({**t, "days_late": days_late, "urgency": "overdue"})
+    for t in due_today_tasks:
+        urgent_tasks.append({**t, "days_late": 0, "urgency": "today"})
 
     # Recent activities
     recent_activities = []
@@ -983,7 +962,7 @@ def dashboard():
     except Exception:
         pending_drafts = []
 
-    action_count = len(overdue) + len(due_today_tasks) + len(overdue_tasks)
+    action_count = len(ranked_call_list) + len(urgent_tasks)
 
     ctx.update({
         "today_display": today.strftime("%A, %B %d"),
@@ -995,10 +974,10 @@ def dashboard():
         "premium_pct": premium_pct,
         "win_rate": win_rate,
         "win_rate_delta": 0,
-        "priority_actions": priority_actions,
+        "ranked_call_list": ranked_call_list,
+        "urgent_tasks": urgent_tasks,
         "todays_meetings": todays_meetings,
         "recent_activities": recent_activities,
-        "ai_recs": ai_recs,
         "pending_drafts": pending_drafts,
     })
 

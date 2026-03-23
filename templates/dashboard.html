@@ -6,7 +6,7 @@
 <div class="page-header">
     <div>
         <h1 class="page-title">Good morning, Marc</h1>
-        <p class="page-subtitle">{{ today_display }} &mdash; {{ action_count }} priority action{{ 's' if action_count != 1 else '' }} today</p>
+        <p class="page-subtitle">{{ today_display }} &mdash; {{ action_count }} action{{ 's' if action_count != 1 else '' }} today</p>
     </div>
     <div class="header-actions">
         <button class="btn btn-secondary" onclick="openProspectModal('add')">+ Add Prospect</button>
@@ -34,77 +34,97 @@
     </div>
     <div class="kpi-card">
         <div class="kpi-label">Win Rate</div>
-        <div class="kpi-value">{{ win_rate|int }}%
-            {% if win_rate_delta %}
-            <span class="kpi-delta {{ 'positive' if win_rate_delta > 0 else 'negative' }}">{{ '%+d' % win_rate_delta }}%</span>
-            {% endif %}
-        </div>
+        <div class="kpi-value">{{ win_rate|int }}%</div>
     </div>
 </div>
 
-<!-- Two column: Priority Actions + Meetings/Activity -->
+<!-- Two column: Call List + Meetings/Activity -->
 <div class="two-col">
-    <!-- Left: Priority Actions -->
+    <!-- Left: Who to Call Next (scored) -->
     <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-            <div class="card-title mb-0">Priority Actions</div>
-            {% if priority_actions|length > 3 %}
-            <button class="btn btn-sm btn-secondary" id="showAllActions" onclick="toggleShowAll('actionsList', this, {{ priority_actions|length }})">
-                Show all ({{ priority_actions|length }})
+            <div class="card-title mb-0">Who to Call Next</div>
+            {% if ranked_call_list|length > 5 %}
+            <button class="btn btn-sm btn-secondary" onclick="toggleShowAll('callList', this, {{ ranked_call_list|length }})">
+                Show all ({{ ranked_call_list|length }})
             </button>
             {% endif %}
         </div>
-        {% if priority_actions %}
-        <div id="actionsList">
-            {% for action in priority_actions %}
-            <div class="action-row {{ action.urgency }}" {% if loop.index > 3 %}style="display:none" data-extra{% endif %}>
-                <div class="action-dot {{ action.urgency }}"></div>
+        {% if ranked_call_list %}
+        <div id="callList">
+            {% for p in ranked_call_list %}
+            <div class="action-row {{ 'overdue' if p.is_overdue else '' }}" {% if loop.index > 5 %}style="display:none" data-extra{% endif %}>
+                <!-- Score badge -->
+                {% set scolor = 'var(--success)' if p.score >= 70 else 'var(--warning)' if p.score >= 40 else 'var(--danger)' %}
+                <div style="width:32px;height:32px;border-radius:50%;background:{{ scolor }};color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">{{ p.score }}</div>
                 <div style="flex:1;min-width:0">
-                    <div class="action-name">{{ action.title }}</div>
-                    <div class="action-detail">{{ action.detail }}</div>
+                    <div class="action-name">{{ p.name }}</div>
+                    <div class="action-detail">
+                        {{ p.product or '' }}{% if p.product and p.stage %} &middot; {% endif %}{{ p.stage or '' }}
+                        {% if p.is_overdue %} &middot; <span style="color:var(--danger)">{{ p.days_overdue }}d overdue</span>
+                        {% elif p.days_idle is not none %} &middot; {{ p.days_idle }}d idle{% endif %}
+                    </div>
+                    {% if p.action %}<div style="font-size:10px;color:var(--primary);margin-top:2px">{{ p.action }}</div>{% endif %}
                 </div>
-                <!-- Dropdown actions menu -->
+                <!-- Actions dropdown -->
                 <div class="dropdown" style="position:relative">
-                    {% if action.action_type == 'prospect' %}
                     <button class="btn btn-sm btn-primary" data-dropdown
                             onclick="event.stopPropagation();toggleActionMenu(this)">
                         Actions &#9662;
                     </button>
                     <div class="dropdown-menu right">
-                        <button class="dropdown-item" onclick="openLogModal('Call', {{ action.prospect_name|tojson|forceescape }});closeAllDropdowns()">
+                        <button class="dropdown-item" onclick="openLogModal('Call', {{ p.name|tojson|forceescape }});closeAllDropdowns()">
                             &#128222; Log Call
                         </button>
-                        <button class="dropdown-item" onclick="openLogModal('SMS', {{ action.prospect_name|tojson|forceescape }});closeAllDropdowns()">
+                        <button class="dropdown-item" onclick="openLogModal('SMS', {{ p.name|tojson|forceescape }});closeAllDropdowns()">
                             &#128172; Send SMS
                         </button>
-                        <button class="dropdown-item" onclick="openLogModal('Email', {{ action.prospect_name|tojson|forceescape }});closeAllDropdowns()">
+                        <button class="dropdown-item" onclick="openLogModal('Email', {{ p.name|tojson|forceescape }});closeAllDropdowns()">
                             &#9993; Send Email
                         </button>
                         <div class="dropdown-divider"></div>
-                        <button class="dropdown-item" onclick="quickReschedule({{ action.prospect_name|tojson|forceescape }}, 0);closeAllDropdowns()">
+                        <button class="dropdown-item" onclick="quickReschedule({{ p.name|tojson|forceescape }}, 0);closeAllDropdowns()">
                             &#128197; Reschedule Today
                         </button>
-                        <button class="dropdown-item" onclick="quickReschedule({{ action.prospect_name|tojson|forceescape }}, 1);closeAllDropdowns()">
+                        <button class="dropdown-item" onclick="quickReschedule({{ p.name|tojson|forceescape }}, 1);closeAllDropdowns()">
                             &#128197; Reschedule Tomorrow
                         </button>
-                        <button class="dropdown-item" onclick="quickReschedule({{ action.prospect_name|tojson|forceescape }}, 7);closeAllDropdowns()">
+                        <button class="dropdown-item" onclick="quickReschedule({{ p.name|tojson|forceescape }}, 7);closeAllDropdowns()">
                             &#128197; Reschedule +1 Week
                         </button>
                         <div class="dropdown-divider"></div>
-                        <button class="dropdown-item" onclick="openProspectDetail({{ action.prospect_name|tojson|forceescape }});closeAllDropdowns()">
+                        <button class="dropdown-item" onclick="openProspectDetail({{ p.name|tojson|forceescape }});closeAllDropdowns()">
                             &#128100; View Prospect
                         </button>
                     </div>
-                    {% elif action.action_type == 'task' %}
-                    <button class="btn btn-sm btn-secondary"
-                            onclick="openTaskModal({{ action.task_id }})">View</button>
-                    {% endif %}
                 </div>
             </div>
             {% endfor %}
         </div>
         {% else %}
-        <div class="text-muted" style="text-align:center;padding:20px">All clear! No urgent actions today.</div>
+        <div class="text-muted" style="text-align:center;padding:20px">No active prospects in pipeline.</div>
+        {% endif %}
+
+        <!-- Urgent Tasks (overdue + due today) -->
+        {% if urgent_tasks %}
+        <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);font-weight:500;margin-bottom:8px">Urgent Tasks</div>
+            {% for t in urgent_tasks %}
+            <div class="action-row {{ t.urgency }}">
+                <div class="action-dot {{ t.urgency }}"></div>
+                <div style="flex:1;min-width:0">
+                    <div class="action-name">{{ t.title }}</div>
+                    <div class="action-detail">
+                        {% if t.prospect %}{{ t.prospect }} &middot; {% endif %}
+                        {% if t.urgency == 'overdue' %}{{ t.days_late }}d overdue{% else %}Due today{% endif %}
+                    </div>
+                </div>
+                <button class="btn btn-secondary btn-sm"
+                        data-task-id="{{ t.id }}" data-title="{{ t.title|e }}"
+                        onclick="openTaskModal(this.dataset.taskId)">View</button>
+            </div>
+            {% endfor %}
+        </div>
         {% endif %}
     </div>
 
@@ -134,7 +154,7 @@
                 <div class="card-title mb-0">Recent Activity</div>
                 {% if recent_activities|length > 3 %}
                 <button class="btn btn-sm btn-secondary" onclick="toggleShowAll('activityList', this, {{ recent_activities|length }})">
-                    Show all ({{ recent_activities|length }})
+                    Show all
                 </button>
                 {% endif %}
             </div>
@@ -158,9 +178,6 @@
                         <button class="dropdown-item" onclick="openLogModal('Call', {{ a.prospect|tojson|forceescape }});closeAllDropdowns()">
                             &#128222; Log Call
                         </button>
-                        <button class="dropdown-item" onclick="openLogModal('Email', {{ a.prospect|tojson|forceescape }});closeAllDropdowns()">
-                            &#9993; Send Email
-                        </button>
                     </div>
                 </div>
                 {% endif %}
@@ -174,24 +191,7 @@
     </div>
 </div>
 
-<!-- AI Recommendations -->
-{% if ai_recs %}
-<div class="card">
-    <div style="display:flex;align-items:center;gap:6px;margin-bottom:12px">
-        <span style="font-size:14px">&#9883;</span>
-        <div class="card-title mb-0">AI Recommendations</div>
-    </div>
-    <div class="rec-grid">
-        {% for rec in ai_recs %}
-        <div class="rec-card {{ rec.level }}" {% if rec.prospect %}onclick="openProspectDetail({{ rec.prospect|tojson|forceescape }})" style="cursor:pointer"{% endif %}>
-            <div class="rec-text">{{ rec.text }}</div>
-        </div>
-        {% endfor %}
-    </div>
-</div>
-{% endif %}
-
-<!-- Pending Drafts -->
+<!-- Pending Drafts (approval queue) -->
 {% if pending_drafts %}
 <div class="card" style="border-top:3px solid #8b5cf6">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
@@ -212,14 +212,13 @@
             </div>
             <div style="font-size:12px;white-space:pre-wrap">{{ d.content[:200] }}{{ '...' if d.content|length > 200 else '' }}</div>
         </div>
-        <!-- Draft actions dropdown -->
         <div class="dropdown" style="position:relative;flex-shrink:0">
             <button class="btn btn-sm btn-secondary" data-dropdown
                     onclick="event.stopPropagation();toggleActionMenu(this)"
                     style="padding:4px 8px;font-size:10px">&#8943;</button>
             <div class="dropdown-menu right">
-                {% if d.prospect_id %}
-                <button class="dropdown-item" onclick="openProspectDetail({{ d.prospect_name|default('')|tojson|forceescape }});closeAllDropdowns()">
+                {% if d.prospect_name %}
+                <button class="dropdown-item" onclick="openProspectDetail({{ d.prospect_name|tojson|forceescape }});closeAllDropdowns()">
                     &#128100; View Prospect
                 </button>
                 {% endif %}
@@ -238,63 +237,43 @@
 {% endif %}
 
 <script>
-// Toggle show-all for collapsible sections
 function toggleShowAll(containerId, btn, total) {
-    const container = document.getElementById(containerId);
+    var container = document.getElementById(containerId);
     if (!container) return;
-    const extras = container.querySelectorAll('[data-extra]');
-    const isHidden = extras[0]?.style.display === 'none';
-    extras.forEach(el => el.style.display = isHidden ? '' : 'none');
+    var extras = container.querySelectorAll('[data-extra]');
+    var isHidden = extras[0] && extras[0].style.display === 'none';
+    extras.forEach(function(el) { el.style.display = isHidden ? '' : 'none'; });
     btn.textContent = isHidden ? 'Show less' : 'Show all (' + total + ')';
 }
 
-// Toggle action dropdown menu
 function toggleActionMenu(btn) {
-    const menu = btn.nextElementSibling || btn.parentElement.querySelector('.dropdown-menu');
+    var menu = btn.nextElementSibling || btn.parentElement.querySelector('.dropdown-menu');
     if (!menu) return;
-    const wasActive = menu.classList.contains('active');
+    var wasActive = menu.classList.contains('active');
     closeAllDropdowns();
     if (!wasActive) {
         menu.classList.add('active');
-        // Position check: flip up if near bottom
-        requestAnimationFrame(() => {
-            const rect = menu.getBoundingClientRect();
-            if (rect.bottom > window.innerHeight - 10) {
-                menu.classList.add('up');
-            } else {
-                menu.classList.remove('up');
-            }
+        requestAnimationFrame(function() {
+            var rect = menu.getBoundingClientRect();
+            if (rect.bottom > window.innerHeight - 10) menu.classList.add('up');
+            else menu.classList.remove('up');
         });
     }
 }
 
-// Copy draft text to clipboard
 function copyDraftText(btn) {
-    const text = btn.dataset.content;
+    var text = btn.dataset.content;
     if (navigator.clipboard) {
-        navigator.clipboard.writeText(text).then(() => showToast('Copied to clipboard', 'success'));
-    } else {
-        // Fallback
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        ta.remove();
-        showToast('Copied to clipboard', 'success');
+        navigator.clipboard.writeText(text).then(function() { showToast('Copied to clipboard', 'success'); });
     }
 }
 
-// Expand draft to show full text
 function expandDraft(btn) {
-    const full = btn.dataset.full;
-    const card = btn.closest('[data-extra], div[style*="padding"]') || btn.closest('.card > div');
+    var full = btn.dataset.full;
+    var card = btn.closest('[data-extra], div[style*="padding"]') || btn.closest('.card > div');
     if (!card) return;
-    const textDiv = card.querySelector('div[style*="white-space"]');
-    if (textDiv) {
-        textDiv.textContent = full;
-        textDiv.style.maxHeight = 'none';
-    }
+    var textDiv = card.querySelector('div[style*="white-space"]');
+    if (textDiv) { textDiv.textContent = full; textDiv.style.maxHeight = 'none'; }
     closeAllDropdowns();
 }
 </script>
