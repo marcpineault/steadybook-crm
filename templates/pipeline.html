@@ -200,13 +200,15 @@ function bulkChangeStage() {
         item.textContent = s;
         item.addEventListener('click', function() {
             menu.remove();
-            let done = 0;
-            names.forEach(name => {
-                fetch('/api/prospect/update', {
+            Promise.all(names.map(function(name) {
+                return fetch('/api/prospect/update', {
                     method: 'PUT', headers: _headers(),
                     body: JSON.stringify({ name: name, updates: { stage: s } })
-                }).then(() => { done++; if (done === names.length) { showToast(done + ' prospects → ' + s, 'success'); location.reload(); } });
-            });
+                }).then(function(r) { return r.json(); });
+            })).then(function(results) {
+                showToast(names.length + ' prospects \u2192 ' + s, 'success');
+                location.reload();
+            }).catch(function() { showToast('Error updating', 'error'); location.reload(); });
         });
         menu.appendChild(item);
     });
@@ -231,13 +233,15 @@ function bulkChangePriority() {
         item.appendChild(document.createTextNode(p.name));
         item.addEventListener('click', function() {
             menu.remove();
-            let done = 0;
-            names.forEach(name => {
-                fetch('/api/prospect/update', {
+            Promise.all(names.map(function(name) {
+                return fetch('/api/prospect/update', {
                     method: 'PUT', headers: _headers(),
                     body: JSON.stringify({ name: name, updates: { priority: p.name } })
-                }).then(() => { done++; if (done === names.length) { showToast(done + ' prospects → ' + p.name, 'success'); location.reload(); } });
-            });
+                }).then(function(r) { return r.json(); });
+            })).then(function(results) {
+                showToast(names.length + ' prospects \u2192 ' + p.name, 'success');
+                location.reload();
+            }).catch(function() { showToast('Error updating', 'error'); location.reload(); });
         });
         menu.appendChild(item);
     });
@@ -245,14 +249,20 @@ function bulkChangePriority() {
 }
 
 function bulkDelete() {
-    const names = getSelectedNames();
+    var names = getSelectedNames();
     if (!names.length) return;
     if (!confirm('Delete ' + names.length + ' prospect(s)? This cannot be undone.')) return;
-    let done = 0;
-    names.forEach(name => {
-        fetch('/api/prospect/' + encodeURIComponent(name), {
-            method: 'DELETE', headers: _headers()
-        }).then(() => { done++; if (done === names.length) { showToast(done + ' prospect(s) deleted', 'success'); location.reload(); } });
+    Promise.all(names.map(function(name) {
+        return fetch('/api/prospect/' + encodeURIComponent(name), {
+            method: 'DELETE', headers: _headers(false)
+        }).then(function(r) { return r.json(); });
+    })).then(function(results) {
+        var ok = results.filter(function(r) { return r.ok; }).length;
+        showToast(ok + ' prospect(s) deleted', 'success');
+        location.reload();
+    }).catch(function(e) {
+        showToast('Error deleting prospects: ' + e.message, 'error');
+        location.reload();
     });
 }
 
