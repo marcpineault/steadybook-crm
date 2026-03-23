@@ -305,7 +305,54 @@ def generate_reply(phone: str, inbound_body: str, prospect: dict | None = None):
         logger.exception("GPT reply generation failed for %s", _safe_phone(phone))
         return None
 
-    # Run delay + send in background so the webhook returns 204 immediately
+    # Check trust level — at level 1, queue for approval instead of auto-sending
+    try:
+        from bot import get_trust_level
+        trust = get_trust_level()
+    except Exception:
+        trust = 1  # default to safest
+
+    if trust <= 1:
+        # Queue for Marc's approval via Telegram
+        try:
+            import approval_queue as aq
+            first_name = prospect_name.split()[0] if prospect_name else "Unknown"
+            draft = aq.add_draft(
+                draft_type="sms_reply",
+                channel="sms_draft",
+                content=content,
+                context=f"Auto-reply to {first_name} ({phone}) — they said: \"{inbound_body[:100]}\"",
+                prospect_id=prospect_id,
+            )
+            # Send approval request to Telegram
+            import sys, asyncio
+            main_mod = sys.modules.get("__main__")
+            telegram_app = getattr(main_mod, "telegram_app", None)
+            bot_event_loop = getattr(main_mod, "bot_event_loop", None)
+            admin_chat_id = getattr(main_mod, "ADMIN_CHAT_ID", None) or os.environ.get("TELEGRAM_CHAT_ID", "")
+            bot_instance = getattr(telegram_app, "bot", None) if telegram_app else None
+            if bot_instance and admin_chat_id and bot_event_loop and bot_event_loop.is_running():
+                from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+                keyboard = InlineKeyboardMarkup([[
+                    InlineKeyboardButton("Approve & Send", callback_data=f"draft_approve_{draft['id']}"),
+                    InlineKeyboardButton("Skip", callback_data=f"draft_dismiss_{draft['id']}"),
+                ]])
+                text = (
+                    f"SMS REPLY DRAFT — {first_name}\n"
+                    f"They said: \"{inbound_body[:120]}\"\n\n"
+                    f"Draft: {content}"
+                )
+                asyncio.run_coroutine_threadsafe(
+                    bot_instance.send_message(chat_id=admin_chat_id, text=text, reply_markup=keyboard),
+                    bot_event_loop,
+                )
+            logger.info("SMS reply queued for approval (trust=%d) to %s", trust, _safe_phone(phone))
+            return True
+        except Exception:
+            logger.exception("Failed to queue SMS reply for approval — falling back to auto-send")
+            # Fall through to auto-send if approval queueing fails
+
+    # Trust level 2+ or approval queueing failed: auto-send with delay
     import time, threading
 
     def _delayed_send():
@@ -341,10 +388,9 @@ def generate_reply(phone: str, inbound_body: str, prospect: dict | None = None):
             bot_instance = getattr(telegram_app, "bot", None) if telegram_app else None
             if bot_instance and admin_chat_id and bot_event_loop and bot_event_loop.is_running():
                 first_name = prospect_name.split()[0] if prospect_name else "Unknown"
-                status = "✅ Sent" if sid else "❌ Failed"
                 note = (
-                    f"📱 {first_name}: \"{inbound_body[:100]}\"\n"
-                    f"↳ {status}: \"{content}\""
+                    f"SMS auto-replied to {first_name}: \"{inbound_body[:100]}\"\n"
+                    f"Reply: \"{content}\""
                 )
                 asyncio.run_coroutine_threadsafe(
                     bot_instance.send_message(chat_id=admin_chat_id, text=note),

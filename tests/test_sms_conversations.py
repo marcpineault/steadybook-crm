@@ -18,6 +18,9 @@ def setup_function():
     if os.path.exists(db_path):
         os.remove(db_path)
     db.init_db()
+    # Set trust level to 2 so generate_reply sends directly (not queued) in tests
+    with db.get_db() as conn:
+        conn.execute("INSERT OR REPLACE INTO trust_config (id, trust_level, changed_by) VALUES (1, 2, 'test')")
 
 
 def _seed_prospect(phone="5198001234"):

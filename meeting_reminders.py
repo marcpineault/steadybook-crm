@@ -176,42 +176,80 @@ def send_meeting_reminders(today: date | None = None) -> list[dict]:
         else:
             message = _build_morning_of_message(first_name, meeting_time)
 
-        # Send SMS
+        # Check trust level — at level 1, queue for approval
         try:
-            sid = sms_sender.send_sms(to=phone, body=message)
-            if sid is None:
-                logger.warning("SMS send failed for meeting reminder to %s", prospect_name)
-                continue
-
-            # Log to sms_conversations
-            prospect_id = prospect.get("id") if prospect else None
-            sms_conversations.log_message(
-                phone=phone,
-                body=message,
-                direction="outbound",
-                prospect_id=prospect_id,
-                prospect_name=prospect_name,
-                twilio_sid=sid,
-            )
-
-            # Mark as sent (prevents duplicate)
-            _mark_reminder_sent(meeting_id, reminder_type, phone)
-
-            sent.append({
-                "meeting_id": meeting_id,
-                "type": reminder_type,
-                "phone": phone,
-                "prospect": prospect_name,
-                "message": message,
-            })
-
-            logger.info(
-                "Sent %s reminder for meeting #%d (%s) to %s",
-                reminder_type, meeting_id, prospect_name, phone[-4:]
-            )
-
+            from bot import get_trust_level
+            trust = get_trust_level()
         except Exception:
-            logger.exception("Failed to send meeting reminder to %s", prospect_name)
+            trust = 1
+
+        prospect_id = prospect.get("id") if prospect else None
+
+        if trust <= 1:
+            # Queue for Marc's approval
+            try:
+                import approval_queue as aq
+                label = "Day-before" if reminder_type == "day_before" else "Morning-of"
+                draft = aq.add_draft(
+                    draft_type="meeting_reminder",
+                    channel="sms_draft",
+                    content=message,
+                    context=f"{label} meeting reminder for {prospect_name} ({phone})",
+                    prospect_id=prospect_id,
+                )
+
+                _mark_reminder_sent(meeting_id, reminder_type, phone)
+
+                sent.append({
+                    "meeting_id": meeting_id,
+                    "type": reminder_type,
+                    "phone": phone,
+                    "prospect": prospect_name,
+                    "message": message,
+                    "queued_for_approval": True,
+                    "queue_id": draft["id"],
+                })
+
+                logger.info(
+                    "Queued %s reminder for meeting #%d (%s) for approval",
+                    reminder_type, meeting_id, prospect_name
+                )
+            except Exception:
+                logger.exception("Failed to queue meeting reminder for approval to %s", prospect_name)
+        else:
+            # Trust level 2+: send directly
+            try:
+                sid = sms_sender.send_sms(to=phone, body=message)
+                if sid is None:
+                    logger.warning("SMS send failed for meeting reminder to %s", prospect_name)
+                    continue
+
+                sms_conversations.log_message(
+                    phone=phone,
+                    body=message,
+                    direction="outbound",
+                    prospect_id=prospect_id,
+                    prospect_name=prospect_name,
+                    twilio_sid=sid,
+                )
+
+                _mark_reminder_sent(meeting_id, reminder_type, phone)
+
+                sent.append({
+                    "meeting_id": meeting_id,
+                    "type": reminder_type,
+                    "phone": phone,
+                    "prospect": prospect_name,
+                    "message": message,
+                })
+
+                logger.info(
+                    "Sent %s reminder for meeting #%d (%s) to %s",
+                    reminder_type, meeting_id, prospect_name, phone[-4:]
+                )
+
+            except Exception:
+                logger.exception("Failed to send meeting reminder to %s", prospect_name)
 
     return sent
 

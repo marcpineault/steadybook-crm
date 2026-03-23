@@ -1144,11 +1144,30 @@ async def _send_meeting_reminders_job():
         import meeting_reminders
         sent = meeting_reminders.send_meeting_reminders()
         if sent and _bot and CHAT_ID:
-            lines = [f"Sent {len(sent)} meeting reminder(s):"]
-            for r in sent:
+            # Send approval buttons for queued reminders
+            queued = [r for r in sent if r.get("queued_for_approval")]
+            direct = [r for r in sent if not r.get("queued_for_approval")]
+
+            for r in queued:
+                from telegram import InlineKeyboardButton, InlineKeyboardMarkup
                 label = "Day-before" if r["type"] == "day_before" else "Morning-of"
-                lines.append(f"  {label}: {r['prospect']}")
-            await _bot.send_message(chat_id=CHAT_ID, text="\n".join(lines))
+                keyboard = InlineKeyboardMarkup([[
+                    InlineKeyboardButton("Send", callback_data=f"draft_approve_{r['queue_id']}"),
+                    InlineKeyboardButton("Skip", callback_data=f"draft_dismiss_{r['queue_id']}"),
+                ]])
+                text = (
+                    f"MEETING REMINDER — {r['prospect']}\n"
+                    f"{label} reminder\n\n"
+                    f"{r['message']}"
+                )
+                await _bot.send_message(chat_id=CHAT_ID, text=text, reply_markup=keyboard)
+
+            if direct:
+                lines = [f"Sent {len(direct)} meeting reminder(s):"]
+                for r in direct:
+                    label = "Day-before" if r["type"] == "day_before" else "Morning-of"
+                    lines.append(f"  {label}: {r['prospect']}")
+                await _bot.send_message(chat_id=CHAT_ID, text="\n".join(lines))
     except Exception:
         logger.exception("meeting_reminders job failed")
 

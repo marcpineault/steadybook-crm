@@ -18,6 +18,9 @@ def fresh_db(tmp_path, monkeypatch):
     importlib.reload(meeting_reminders)
     db.init_db()
     meeting_reminders._ensure_table()
+    # Set trust level to 2 so reminders send directly (not queued) for testing
+    with db.get_db() as conn:
+        conn.execute("INSERT INTO trust_config (trust_level, changed_by) VALUES (2, 'test')")
     yield
 
 
@@ -271,3 +274,29 @@ class TestReminderStats:
 
         stats = meeting_reminders.get_reminder_stats()
         assert stats["total_sent"] == 1
+
+
+class TestApprovalQueueFlow:
+    """Test that at trust level 1, reminders go through approval queue."""
+
+    def test_queues_for_approval_at_trust_1(self):
+        """At trust level 1, reminders should be queued, not sent directly."""
+        # Set trust to 1
+        with db.get_db() as conn:
+            conn.execute("DELETE FROM trust_config")
+            conn.execute("INSERT INTO trust_config (trust_level, changed_by) VALUES (1, 'test')")
+
+        today = date(2026, 3, 23)
+        tomorrow = (today + timedelta(days=1)).strftime("%Y-%m-%d")
+        _add_prospect_with_phone("Queue Test", "+15195558888")
+        _add_meeting("Queue Test", tomorrow, time="3:00 PM")
+
+        with patch("meeting_reminders.sms_sender.send_sms") as mock_send:
+            sent = meeting_reminders.send_meeting_reminders(today=today)
+
+        # Should NOT have called send_sms directly
+        mock_send.assert_not_called()
+        # Should have queued
+        assert len(sent) == 1
+        assert sent[0].get("queued_for_approval") is True
+        assert sent[0].get("queue_id") is not None
