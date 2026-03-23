@@ -250,19 +250,23 @@ function bulkChangePriority() {
 
 function bulkDelete() {
     var names = getSelectedNames();
-    if (!names.length) return;
+    if (!names.length) { showToast('No prospects selected', 'error'); return; }
     if (!confirm('Delete ' + names.length + ' prospect(s)? This cannot be undone.')) return;
+    showToast('Deleting ' + names.length + ' prospect(s)...', 'info');
     Promise.all(names.map(function(name) {
         return fetch('/api/prospect/' + encodeURIComponent(name), {
-            method: 'DELETE', headers: _headers(false)
-        }).then(function(r) { return r.json(); });
+            method: 'DELETE',
+            headers: { 'X-CSRF-Token': CSRF }
+        }).then(function(r) {
+            if (!r.ok) throw new Error(name + ': ' + r.status);
+            return r.json();
+        });
     })).then(function(results) {
-        var ok = results.filter(function(r) { return r.ok; }).length;
-        showToast(ok + ' prospect(s) deleted', 'success');
-        location.reload();
+        showToast(results.length + ' prospect(s) deleted', 'success');
+        setTimeout(function() { location.reload(); }, 500);
     }).catch(function(e) {
-        showToast('Error deleting prospects: ' + e.message, 'error');
-        location.reload();
+        showToast('Delete error: ' + e.message, 'error');
+        setTimeout(function() { location.reload(); }, 1500);
     });
 }
 
