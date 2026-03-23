@@ -1465,16 +1465,20 @@ PROMPT_ADD = """You help Marc add or update prospects in his CRM pipeline. Today
 
 CRITICAL: ALWAYS use lookup_prospect FIRST to check if the prospect already exists.
 - If they exist → use update_prospect to update their fields with any new info, and add_prospect_note to log details as a timestamped note. Do NOT create a duplicate.
-- If they don't exist → use add_prospect to create them, then auto_set_follow_up, then add_prospect_note with any details.
+- If they don't exist → use add_prospect to create them, then add_prospect_note with any details.
 
 When UPDATING an existing prospect:
 - Only update fields that have new/better values (don't overwrite good data with empty strings)
 - Always add a note with the new information so there's a timeline
 
+FOLLOW-UP DATES: Only set next_followup if Marc explicitly mentions a follow-up date or says something like "follow up Friday", "call back next week", "check in tomorrow". If he doesn't mention a follow-up date, do NOT set one — leave it unchanged. Do NOT use auto_set_follow_up unless Marc is adding a brand-new prospect and doesn't specify a follow-up date.
+
 Guess fields from context:
 - stage: PHQ/paperwork = "Proposal Sent", just met = "Discovery Call", wants quote = "Needs Analysis", done = "Closed-Won", else = "New Lead"
 - product: insurance = "Life Insurance", disability = "Disability Insurance", investments = "Wealth Management"
 - revenue auto-calc: AUM → revenue = AUM x 0.009. FYC → premium = FYC / 5.555 (T20/25/30) or FYC / 4.444 (T10/15). Premium → revenue = premium.
+
+FOLLOW-UP DATES: Only set next_followup if Marc explicitly mentions one ("follow up Friday", "check in next week"). If he doesn't mention a date, do NOT set one and do NOT call auto_set_follow_up. Only call auto_set_follow_up for brand-new prospects where Marc didn't specify a date.
 
 After adding/updating, confirm what was saved. Ask ONE follow-up if product type or dollar amount is missing. Don't ask for phone or email."""
 
@@ -1781,7 +1785,7 @@ Parse their message and call add_prospect with:
 - priority: guess -interested = "Hot", mentioned = "Warm", else = "Cold"
 - notes: include any details from the message, plus "Added by {coworker_name}"
 
-Then call auto_set_follow_up.
+Then call auto_set_follow_up ONLY for new prospects (not updates).
 
 After adding, confirm the prospect was added. Don't ask follow-up questions."""
 
@@ -1924,16 +1928,16 @@ Marc just told you about a call. Parse the message and:
    - action: "Phone call" or "Call attempt"
    - outcome: what happened (connected, voicemail, no answer, booked meeting, etc.)
    - next_step: what to do next (if mentioned or obvious)
-3. If they mentioned a follow-up date or next step, use update_prospect to set next_followup
+3. If Marc EXPLICITLY mentions a follow-up date ("follow up Friday", "call back next week", "check in 3 days"), use update_prospect to set next_followup. If he doesn't mention a specific follow-up date, do NOT set one — leave it unchanged.
 4. If the call outcome changes the stage (e.g. booked a meeting = Discovery Call, sent proposal = Proposal Sent), use update_prospect to update stage
 
 Common outcomes to recognize:
-- "no answer" / "VM" / "voicemail" → log as no answer, set follow-up 2-3 days
-- "left message" → log as voicemail, set follow-up 3 days
+- "no answer" / "VM" / "voicemail" → log as no answer (do NOT auto-set follow-up unless Marc says when)
+- "left message" → log as voicemail (do NOT auto-set follow-up unless Marc says when)
 - "booked" / "meeting" → log as booked meeting, advance stage
 - "not interested" → log as declined, move to Nurture or Closed-Lost
 - "great call" / "interested" → log as positive call, keep stage or advance
-- "callback" → log as callback requested, set follow-up as mentioned
+- "callback" → log as callback requested, set follow-up ONLY if Marc says when
 
 Reply with a SHORT confirmation. One or two lines max. Example: "Logged call with John Smith -voicemail, follow-up Friday."
 Do NOT ask follow-up questions."""
