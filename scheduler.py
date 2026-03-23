@@ -875,11 +875,13 @@ async def check_cold_outreach_followups():
         import os
 
         # Follow-up schedule: (outbound_count_threshold, days_since_first, prompt_key)
-        # TODO: restore to (1, 3, ...), (2, 7, ...), (3, 14, ...) for production
+        # Touch 1: 3 days after initial text, gentle nudge
+        # Touch 2: 7 days after initial text, value angle
+        # Touch 3: 14 days after initial text, final soft close
         FOLLOWUP_SCHEDULE = [
-            (1, 0, "nudge"),
-            (2, 0, "value"),
-            (3, 0, "final"),
+            (1, 3, "nudge"),
+            (2, 7, "value"),
+            (3, 14, "final"),
         ]
 
         FOLLOWUP_PROMPTS = {
@@ -1136,6 +1138,21 @@ async def _check_cold_agents_job():
         logger.exception("check_cold_agents job failed")
 
 
+async def _send_meeting_reminders_job():
+    """Send meeting confirmation SMS reminders and notify Marc."""
+    try:
+        import meeting_reminders
+        sent = meeting_reminders.send_meeting_reminders()
+        if sent and _bot and CHAT_ID:
+            lines = [f"Sent {len(sent)} meeting reminder(s):"]
+            for r in sent:
+                label = "Day-before" if r["type"] == "day_before" else "Morning-of"
+                lines.append(f"  {label}: {r['prospect']}")
+            await _bot.send_message(chat_id=CHAT_ID, text="\n".join(lines))
+    except Exception:
+        logger.exception("meeting_reminders job failed")
+
+
 # ── Scheduler entry point ──
 
 def start_scheduler(telegram_app, event_loop=None):
@@ -1311,5 +1328,15 @@ def start_scheduler(telegram_app, event_loop=None):
         name="SMS Agent Cold Check",
     )
 
+    # Meeting confirmation reminders — day before at 6 PM, morning of at 9 AM
+    scheduler.add_job(
+        _send_meeting_reminders_job,
+        "cron",
+        hour="9,18",
+        minute=0,
+        id="meeting_reminders",
+        name="Meeting Confirmation SMS",
+    )
+
     scheduler.start()
-    logger.info("Scheduler started -briefing 8AM (weekdays), nag 9AM+2PM, midday 12:30PM, EOD 5:30PM, weekly Sun 6:30PM, task reminders every 60s, meeting prep hourly, backup 11PM, watchdog 8:45AM, webhook check every 6h, booking nurture every 15min, cold follow-ups 9:30AM daily ET, cold agents every 6h.")
+    logger.info("Scheduler started -briefing 8AM (weekdays), nag 9AM+2PM, midday 12:30PM, EOD 5:30PM, weekly Sun 6:30PM, task reminders every 60s, meeting prep hourly, backup 11PM, watchdog 8:45AM, webhook check every 6h, booking nurture every 15min, cold follow-ups 9:30AM daily ET, cold agents every 6h, meeting reminders 9AM+6PM.")
