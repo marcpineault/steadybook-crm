@@ -208,7 +208,8 @@
             </div>
         </div>
         <div class="chat-panel-composer">
-            <input type="text" id="chatInput" placeholder="Type your message..." onkeydown="if(event.key==='Enter')sendChatMessage()">
+            <input type="text" id="chatInput" placeholder="Type or tap mic to talk..." onkeydown="if(event.key==='Enter')sendChatMessage()">
+            <button id="voiceBtn" onclick="toggleVoiceInput()" title="Voice input" style="background:none;border:1px solid var(--border);border-radius:8px;padding:8px 10px;cursor:pointer;font-size:16px;flex-shrink:0">&#127908;</button>
             <button onclick="sendChatMessage()">Send</button>
         </div>
     </div>
@@ -238,6 +239,82 @@
     document.querySelectorAll('.sidebar-item').forEach(function(item) {
         item.addEventListener('click', closeMobileMenu);
     });
+
+    // Voice input for AI chat (Web Speech API)
+    let _voiceRecognition = null;
+    let _isRecording = false;
+
+    function toggleVoiceInput() {
+        const btn = document.getElementById('voiceBtn');
+        if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+            showToast('Voice input not supported in this browser', 'error');
+            return;
+        }
+
+        if (_isRecording) {
+            // Stop recording
+            if (_voiceRecognition) _voiceRecognition.stop();
+            _isRecording = false;
+            btn.style.background = 'none';
+            btn.style.borderColor = 'var(--border)';
+            btn.textContent = '\u{1F3A4}';
+            return;
+        }
+
+        // Start recording
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        _voiceRecognition = new SpeechRecognition();
+        _voiceRecognition.continuous = false;
+        _voiceRecognition.interimResults = true;
+        _voiceRecognition.lang = 'en-CA';
+
+        _isRecording = true;
+        btn.style.background = 'var(--danger)';
+        btn.style.borderColor = 'var(--danger)';
+        btn.style.color = '#fff';
+        btn.textContent = '\u23F9';
+
+        const input = document.getElementById('chatInput');
+        let finalTranscript = '';
+
+        _voiceRecognition.onresult = function(event) {
+            let interim = '';
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+                if (event.results[i].isFinal) {
+                    finalTranscript += event.results[i][0].transcript;
+                } else {
+                    interim += event.results[i][0].transcript;
+                }
+            }
+            input.value = finalTranscript + interim;
+        };
+
+        _voiceRecognition.onend = function() {
+            _isRecording = false;
+            btn.style.background = 'none';
+            btn.style.borderColor = 'var(--border)';
+            btn.style.color = '';
+            btn.textContent = '\u{1F3A4}';
+            if (finalTranscript.trim()) {
+                input.value = finalTranscript.trim();
+                input.focus();
+            }
+        };
+
+        _voiceRecognition.onerror = function(event) {
+            _isRecording = false;
+            btn.style.background = 'none';
+            btn.style.borderColor = 'var(--border)';
+            btn.style.color = '';
+            btn.textContent = '\u{1F3A4}';
+            if (event.error !== 'aborted') {
+                showToast('Voice error: ' + event.error, 'error');
+            }
+        };
+
+        _voiceRecognition.start();
+        showToast('Listening... speak now', 'info');
+    }
     </script>
     {% block scripts %}{% endblock %}
 </body>

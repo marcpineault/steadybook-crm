@@ -19,8 +19,9 @@
             </div>
         </div>
         <div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px">
-            <input type="text" class="form-input" id="fullChatInput" placeholder="Type your message..." style="margin:0;flex:1"
+            <input type="text" class="form-input" id="fullChatInput" placeholder="Type or tap mic to talk..." style="margin:0;flex:1"
                    onkeydown="if(event.key==='Enter')sendFullChat()">
+            <button id="fullVoiceBtn" onclick="toggleFullChatVoice()" title="Voice input" style="background:none;border:1px solid var(--border);border-radius:8px;padding:8px 12px;cursor:pointer;font-size:16px">&#127908;</button>
             <button class="btn btn-primary" onclick="sendFullChat()">Send</button>
         </div>
     </div>
@@ -61,6 +62,63 @@ function sendFullChat() {
         if (ti) ti.remove();
         container.innerHTML += '<div class="msg-bubble msg-inbound" style="color:var(--danger)">Error connecting to AI</div>';
     });
+}
+
+// Voice input for full chat page
+let _fullVoiceRec = null;
+let _fullIsRecording = false;
+function toggleFullChatVoice() {
+    const btn = document.getElementById('fullVoiceBtn');
+    if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+        showToast('Voice input not supported in this browser', 'error');
+        return;
+    }
+    if (_fullIsRecording) {
+        if (_fullVoiceRec) _fullVoiceRec.stop();
+        _fullIsRecording = false;
+        btn.style.background = 'none';
+        btn.style.borderColor = 'var(--border)';
+        btn.textContent = '\u{1F3A4}';
+        return;
+    }
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    _fullVoiceRec = new SpeechRecognition();
+    _fullVoiceRec.continuous = false;
+    _fullVoiceRec.interimResults = true;
+    _fullVoiceRec.lang = 'en-CA';
+    _fullIsRecording = true;
+    btn.style.background = 'var(--danger)';
+    btn.style.borderColor = 'var(--danger)';
+    btn.style.color = '#fff';
+    btn.textContent = '\u23F9';
+    const input = document.getElementById('fullChatInput');
+    let finalTranscript = '';
+    _fullVoiceRec.onresult = function(event) {
+        let interim = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+            if (event.results[i].isFinal) finalTranscript += event.results[i][0].transcript;
+            else interim += event.results[i][0].transcript;
+        }
+        input.value = finalTranscript + interim;
+    };
+    _fullVoiceRec.onend = function() {
+        _fullIsRecording = false;
+        btn.style.background = 'none';
+        btn.style.borderColor = 'var(--border)';
+        btn.style.color = '';
+        btn.textContent = '\u{1F3A4}';
+        if (finalTranscript.trim()) { input.value = finalTranscript.trim(); input.focus(); }
+    };
+    _fullVoiceRec.onerror = function(event) {
+        _fullIsRecording = false;
+        btn.style.background = 'none';
+        btn.style.borderColor = 'var(--border)';
+        btn.style.color = '';
+        btn.textContent = '\u{1F3A4}';
+        if (event.error !== 'aborted') showToast('Voice error: ' + event.error, 'error');
+    };
+    _fullVoiceRec.start();
+    showToast('Listening... speak now', 'info');
 }
 </script>
 {% endblock %}

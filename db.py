@@ -464,6 +464,22 @@ def _migrate_sms_agent():
                 WHERE direction = 'inbound' AND twilio_sid != ''
         """)
 
+        # Prospect notes timeline
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS prospect_notes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                prospect_id INTEGER NOT NULL,
+                content TEXT NOT NULL,
+                created_by TEXT DEFAULT '',
+                created_at TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY (prospect_id) REFERENCES prospects(id)
+            )
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_prospect_notes_prospect
+                ON prospect_notes(prospect_id, created_at DESC)
+        """)
+
 
 def _migrate_phase6():
     """Add Phase 6 columns if they don't exist (safe to run repeatedly)."""
@@ -750,6 +766,42 @@ def read_activities(limit: int = 100):
             "SELECT * FROM activities ORDER BY id DESC LIMIT ?", (limit,)
         ).fetchall()
     return _rows_to_dicts(rows)
+
+
+# ── Prospect Notes ──
+
+def add_prospect_note(prospect_id: int, content: str, created_by: str = "") -> dict | None:
+    """Add a note to a prospect's timeline. Returns the note dict."""
+    content = content.strip()
+    if not content:
+        return None
+    with get_db() as conn:
+        cursor = conn.execute(
+            "INSERT INTO prospect_notes (prospect_id, content, created_by) VALUES (?, ?, ?)",
+            (prospect_id, content, created_by),
+        )
+        row = conn.execute("SELECT * FROM prospect_notes WHERE id = ?", (cursor.lastrowid,)).fetchone()
+    return _row_to_dict(row) if row else None
+
+
+def get_prospect_notes(prospect_id: int, limit: int = 50) -> list[dict]:
+    """Get notes for a prospect, newest first."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM prospect_notes WHERE prospect_id = ? ORDER BY created_at DESC, id DESC LIMIT ?",
+            (prospect_id, limit),
+        ).fetchall()
+    return _rows_to_dicts(rows)
+
+
+def delete_prospect_note(note_id: int) -> str:
+    """Delete a note by ID."""
+    with get_db() as conn:
+        row = conn.execute("SELECT id FROM prospect_notes WHERE id = ?", (note_id,)).fetchone()
+        if not row:
+            return "Note not found."
+        conn.execute("DELETE FROM prospect_notes WHERE id = ?", (note_id,))
+    return "Note deleted."
 
 
 # ── Meetings CRUD ──

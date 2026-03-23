@@ -39,10 +39,20 @@
                 <div><span class="text-muted">First Contact:</span> <span id="prospectViewFirstContact"></span></div>
             </div>
 
-            <!-- Notes -->
+            <!-- Notes Timeline -->
             <div style="margin-bottom:16px">
-                <div class="text-muted" style="font-size:10px;margin-bottom:4px">NOTES</div>
-                <div id="prospectViewNotes" style="font-size:12px;color:var(--text-primary);white-space:pre-wrap;padding:8px;background:var(--bg-subtle);border-radius:6px;min-height:40px"></div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                    <div class="text-muted" style="font-size:10px">NOTES</div>
+                </div>
+                <!-- Add note input -->
+                <div style="display:flex;gap:6px;margin-bottom:10px">
+                    <input type="text" class="form-input" id="newNoteInput" placeholder="Add a note..." style="margin:0;flex:1;font-size:12px" onkeydown="if(event.key==='Enter')addProspectNote()">
+                    <button class="btn btn-primary btn-sm" onclick="addProspectNote()">Add</button>
+                </div>
+                <!-- Notes list -->
+                <div id="prospectViewNotes" style="font-size:12px"></div>
+                <!-- Legacy notes (old single blob field) -->
+                <div id="prospectViewLegacyNotes" style="display:none;margin-top:8px;padding:8px;background:var(--bg-subtle);border-radius:6px;font-size:11px;color:var(--text-secondary);white-space:pre-wrap"></div>
             </div>
 
             <!-- Activity Timeline -->

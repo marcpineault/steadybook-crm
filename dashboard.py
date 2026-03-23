@@ -296,14 +296,40 @@ def api_prospect_detail(name):
                 pass
     health = _calc_health_score(prospect, _lam, _today)
     next_action = STAGE_NEXT_ACTION.get(prospect.get("stage", ""), "Keep following up")
+    notes = db.get_prospect_notes(prospect["id"], limit=50)
     return jsonify({
         "prospect": prospect,
         "activities": prospect_activities[:20],
         "interactions": interactions[:20],
         "tasks": tasks,
+        "notes": notes,
         "health_score": health,
         "next_action": next_action,
     })
+
+
+@app.route("/api/prospect/<int:prospect_id>/notes", methods=["POST"])
+@_require_auth
+def api_add_note(prospect_id):
+    """Add a note to a prospect's timeline."""
+    data = request.get_json(silent=True) or {}
+    content = (data.get("content") or "").strip()
+    if not content:
+        return jsonify({"error": "Content required"}), 400
+    note = db.add_prospect_note(prospect_id, content, created_by="marc")
+    if not note:
+        return jsonify({"error": "Could not add note"}), 400
+    return jsonify({"ok": True, "note": note})
+
+
+@app.route("/api/note/<int:note_id>", methods=["DELETE"])
+@_require_auth
+def api_delete_note(note_id):
+    """Delete a prospect note."""
+    result = db.delete_prospect_note(note_id)
+    if "not found" in result.lower():
+        return jsonify({"error": result}), 404
+    return jsonify({"ok": True, "message": result})
 
 
 @app.route("/api/task/<int:task_id>/complete", methods=["PUT"])

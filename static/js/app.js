@@ -124,7 +124,59 @@ function populateProspectView(data) {
     document.getElementById('prospectViewRevenue').textContent = p.revenue || '—';
     document.getElementById('prospectViewFollowup').textContent = (p.next_followup || '').split(' ')[0] || '—';
     document.getElementById('prospectViewFirstContact').textContent = (p.first_contact || '').split(' ')[0] || '—';
-    document.getElementById('prospectViewNotes').textContent = p.notes || 'No notes';
+    // Notes timeline
+    const notesDiv = document.getElementById('prospectViewNotes');
+    notesDiv.textContent = '';
+    const notes = data.notes || [];
+    if (notes.length === 0) {
+        const emptyNote = document.createElement('div');
+        emptyNote.className = 'text-muted';
+        emptyNote.style.cssText = 'text-align:center;padding:8px;font-size:11px';
+        emptyNote.textContent = 'No notes yet';
+        notesDiv.appendChild(emptyNote);
+    } else {
+        notes.forEach(n => {
+            const noteItem = document.createElement('div');
+            noteItem.style.cssText = 'display:flex;gap:8px;align-items:flex-start;padding:8px 10px;margin-bottom:4px;background:var(--bg-subtle);border-radius:6px';
+            noteItem.dataset.noteId = n.id;
+
+            const noteContent = document.createElement('div');
+            noteContent.style.cssText = 'flex:1;min-width:0';
+            const noteText = document.createElement('div');
+            noteText.style.cssText = 'font-size:12px;color:var(--text-primary);white-space:pre-wrap;word-break:break-word';
+            noteText.textContent = n.content;
+            const noteTime = document.createElement('div');
+            noteTime.style.cssText = 'font-size:9px;color:var(--text-muted);margin-top:2px';
+            noteTime.textContent = (n.created_at || '').substring(0, 16);
+            noteContent.appendChild(noteText);
+            noteContent.appendChild(noteTime);
+
+            const deleteBtn = document.createElement('button');
+            deleteBtn.style.cssText = 'background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:12px;padding:0 2px;flex-shrink:0;opacity:0.5';
+            deleteBtn.textContent = '\u00d7';
+            deleteBtn.title = 'Delete note';
+            deleteBtn.addEventListener('mouseenter', () => deleteBtn.style.opacity = '1');
+            deleteBtn.addEventListener('mouseleave', () => deleteBtn.style.opacity = '0.5');
+            deleteBtn.addEventListener('click', () => deleteProspectNote(n.id, noteItem));
+
+            noteItem.appendChild(noteContent);
+            noteItem.appendChild(deleteBtn);
+            notesDiv.appendChild(noteItem);
+        });
+    }
+
+    // Legacy notes (old single blob from prospect.notes field)
+    const legacyDiv = document.getElementById('prospectViewLegacyNotes');
+    if (p.notes && p.notes.trim()) {
+        legacyDiv.style.display = '';
+        legacyDiv.textContent = p.notes;
+    } else {
+        legacyDiv.style.display = 'none';
+    }
+
+    // Clear the add note input
+    const noteInput = document.getElementById('newNoteInput');
+    if (noteInput) noteInput.value = '';
 
     // Activities
     const actDiv = document.getElementById('prospectViewActivities');
@@ -329,6 +381,43 @@ function doMerge() {
         closeProspectModal();
         location.reload();
     });
+}
+
+// ── Prospect Notes ──
+function addProspectNote() {
+    const input = document.getElementById('newNoteInput');
+    const content = input.value.trim();
+    if (!content) return;
+    const p = _currentProspect?.prospect || _currentProspect;
+    if (!p || !p.id) { showToast('No prospect selected', 'error'); return; }
+    input.value = '';
+    input.disabled = true;
+    fetch('/api/prospect/' + p.id + '/notes', {
+        method: 'POST', headers: _headers(),
+        body: JSON.stringify({ content: content })
+    }).then(r => r.json()).then(res => {
+        input.disabled = false;
+        if (res.error) { showToast(res.error, 'error'); return; }
+        showToast('Note added', 'success');
+        // Refresh the prospect detail to show the new note
+        openProspectDetail(p.name);
+    }).catch(e => {
+        input.disabled = false;
+        showToast('Error adding note', 'error');
+    });
+}
+
+function deleteProspectNote(noteId, noteElement) {
+    fetch('/api/note/' + noteId, {
+        method: 'DELETE', headers: _headers()
+    }).then(r => r.json()).then(res => {
+        if (res.error) { showToast(res.error, 'error'); return; }
+        if (noteElement) {
+            noteElement.style.opacity = '0.3';
+            setTimeout(() => noteElement.remove(), 200);
+        }
+        showToast('Note deleted', 'success');
+    }).catch(e => showToast('Error deleting note', 'error'));
 }
 
 // ── Dropdown menus ──
