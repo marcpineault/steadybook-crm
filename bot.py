@@ -218,6 +218,17 @@ def delete_prospect(name: str) -> str:
     return db.delete_prospect(name)
 
 
+def add_prospect_note(prospect_name: str, content: str) -> str:
+    """Add a timestamped note to a prospect's notes timeline."""
+    prospect = db.get_prospect_by_name(prospect_name)
+    if not prospect:
+        return f"Prospect '{prospect_name}' not found."
+    note = db.add_prospect_note(prospect["id"], content, created_by="marc")
+    if note:
+        return f"Note added to {prospect_name}'s timeline."
+    return "Could not add note."
+
+
 def add_activity(data: dict) -> str:
     """Add entry to activity log (via SQLite)."""
     return db.add_activity(data)
@@ -1307,6 +1318,10 @@ TOOLS = [
     _tool("delete_prospect", "Delete a prospect from the pipeline by name.", {
         "name": {"type": "string", "description": "Prospect name to delete"},
     }, ["name"]),
+    _tool("add_prospect_note", "Add a timestamped note to a prospect's notes timeline. Use this whenever Marc shares info about a prospect.", {
+        "prospect_name": {"type": "string", "description": "Prospect name"},
+        "content": {"type": "string", "description": "The note content to add"},
+    }, ["prospect_name", "content"]),
     _tool("add_activity", "Log an activity in the Activity Log.", {
         "prospect": {"type": "string"}, "action": {"type": "string"},
         "outcome": {"type": "string"}, "next_step": {"type": "string"}, "notes": {"type": "string"},
@@ -1404,6 +1419,7 @@ TOOL_FUNCTIONS = {
     "add_prospect": lambda args: add_prospect(args),
     "update_prospect": lambda args: update_prospect(args["name"], args.get("updates") or {k: v for k, v in args.items() if k != "name"}),
     "delete_prospect": lambda args: delete_prospect(args["name"]),
+    "add_prospect_note": lambda args: add_prospect_note(args["prospect_name"], args["content"]),
     "add_activity": lambda args: add_activity(args),
     "get_activities": lambda args: get_activities(args.get("date_filter", ""), args.get("prospect", "")),
     "get_overdue": lambda _: get_overdue(),
@@ -1443,18 +1459,24 @@ For term life: call get_term_quote.
 
 If something critical is missing (age, gender, occupation, income), ask for it. Do NOT add prospects or draft emails. Just get quotes."""
 
-PROMPT_ADD = """You help Marc add prospects to his CRM pipeline. Today is {today}.
+PROMPT_ADD = """You help Marc add or update prospects in his CRM pipeline. Today is {today}.
 
 {formatting}
 
-Parse Marc's message and call add_prospect, then auto_set_follow_up.
+CRITICAL: ALWAYS use lookup_prospect FIRST to check if the prospect already exists.
+- If they exist → use update_prospect to update their fields with any new info, and add_prospect_note to log details as a timestamped note. Do NOT create a duplicate.
+- If they don't exist → use add_prospect to create them, then auto_set_follow_up, then add_prospect_note with any details.
+
+When UPDATING an existing prospect:
+- Only update fields that have new/better values (don't overwrite good data with empty strings)
+- Always add a note with the new information so there's a timeline
 
 Guess fields from context:
 - stage: PHQ/paperwork = "Proposal Sent", just met = "Discovery Call", wants quote = "Needs Analysis", done = "Closed-Won", else = "New Lead"
 - product: insurance = "Life Insurance", disability = "Disability Insurance", investments = "Wealth Management"
 - revenue auto-calc: AUM → revenue = AUM x 0.009. FYC → premium = FYC / 5.555 (T20/25/30) or FYC / 4.444 (T10/15). Premium → revenue = premium.
 
-After adding, ask ONE follow-up if product type or dollar amount is missing. Don't ask for phone or email."""
+After adding/updating, confirm what was saved. Ask ONE follow-up if product type or dollar amount is missing. Don't ask for phone or email."""
 
 PROMPT_GENERAL = """You are Marc's sales CRM assistant. He is a financial planner in London, Ontario. Today is {today}. Current time is {now} Eastern Time (ET).
 
@@ -1470,6 +1492,13 @@ OUTREACH PREFERENCE: When Marc says "follow up with X" or "reach out to X" witho
 
 NAMES: Always use first name only when referring to prospects or clients in replies. Never use full names.
 
+PROSPECT UPDATES: When Marc shares info about someone (phone number, email, product interest, notes from a call, personal details), ALWAYS:
+1. Use lookup_prospect FIRST to check if they already exist
+2. If found → use update_prospect to update their fields AND add_prospect_note to log the new info as a timestamped note
+3. If not found → use add_prospect to create them, then add_prospect_note with the details
+4. NEVER silently ignore new information. Every piece of info Marc shares should be saved.
+5. When updating, MERGE data — don't overwrite existing notes/fields with empty values.
+
 Commands Marc might use:
 - move/update prospect stages
 - delete prospects
@@ -1479,7 +1508,8 @@ Commands Marc might use:
 - draft emails
 - process meeting transcripts
 - mark priorities
-- create tasks and reminders (remind me, todo, I need to...)"""
+- create tasks and reminders (remind me, todo, I need to...)
+- share prospect info (phone, email, details from calls, personal notes)"""
 
 PROMPT_COWORKER = """You are an assistant for Marc's insurance team at Co-operators in London, Ontario. Today is {today}.
 
@@ -1813,7 +1843,7 @@ async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"/add: {user_msg}")
 
     try:
-        add_tools = [t for t in TOOLS if t["function"]["name"] in ("add_prospect", "auto_set_follow_up")]
+        add_tools = [t for t in TOOLS if t["function"]["name"] in ("add_prospect", "auto_set_follow_up", "lookup_prospect", "update_prospect", "add_prospect_note")]
 
         messages = [{"role": "system", "content": _build_prompt(PROMPT_ADD)}]
         messages.append({"role": "user", "content": user_msg})
