@@ -648,9 +648,21 @@ function sendConvMessage() {
     });
 }
 
-// ── Chat Widget ──
+// ── Chat Widget (slide-over panel) ──
 function toggleChat() {
-    document.getElementById('chatPanel').classList.toggle('hidden');
+    const panel = document.getElementById('chatPanel');
+    const backdrop = document.getElementById('chatBackdrop');
+    const isOpen = panel.classList.contains('open');
+    if (isOpen) {
+        panel.classList.remove('open');
+        if (backdrop) backdrop.classList.remove('active');
+        document.body.style.overflow = '';
+    } else {
+        panel.classList.add('open');
+        if (backdrop) backdrop.classList.add('active');
+        // Focus the input when panel opens
+        setTimeout(() => document.getElementById('chatInput')?.focus(), 300);
+    }
 }
 
 function sendChatMessage() {
@@ -659,31 +671,67 @@ function sendChatMessage() {
     if (!msg) return;
     input.value = '';
     const container = document.getElementById('chatMessages');
+
+    // Clear empty state if present
+    const emptyState = container.querySelector('.chat-empty');
+    if (emptyState) emptyState.remove();
+
+    // Add outbound message
+    const outMsg = document.createElement('div');
+    outMsg.className = 'chat-msg outbound';
     const outBubble = document.createElement('div');
-    outBubble.className = 'msg-bubble msg-outbound';
+    outBubble.className = 'chat-bubble';
     outBubble.textContent = msg;
-    container.appendChild(outBubble);
+    outMsg.appendChild(outBubble);
+    container.appendChild(outMsg);
+    container.scrollTop = container.scrollHeight;
+
+    // Add typing indicator
+    const typingMsg = document.createElement('div');
+    typingMsg.className = 'chat-msg inbound';
+    typingMsg.id = 'chatTyping';
+    const typingBubble = document.createElement('div');
+    typingBubble.className = 'chat-bubble';
+    const typingSpan = document.createElement('span');
+    typingSpan.className = 'typing';
+    typingSpan.textContent = 'Thinking...';
+    typingBubble.appendChild(typingSpan);
+    typingMsg.appendChild(typingBubble);
+    container.appendChild(typingMsg);
     container.scrollTop = container.scrollHeight;
 
     fetch('/api/chat', {
         method: 'POST', headers: _headers(), body: JSON.stringify({ message: msg })
     }).then(r => r.json()).then(res => {
+        // Remove typing indicator
+        const typing = document.getElementById('chatTyping');
+        if (typing) typing.remove();
+
+        const inMsg = document.createElement('div');
+        inMsg.className = 'chat-msg inbound';
         const inBubble = document.createElement('div');
-        inBubble.className = 'msg-bubble msg-inbound';
+        inBubble.className = 'chat-bubble';
         if (res.reply) {
             inBubble.textContent = res.reply;
         } else if (res.error) {
             inBubble.style.color = 'var(--danger)';
             inBubble.textContent = res.error;
         }
-        container.appendChild(inBubble);
+        inMsg.appendChild(inBubble);
+        container.appendChild(inMsg);
         container.scrollTop = container.scrollHeight;
     }).catch(e => {
+        const typing = document.getElementById('chatTyping');
+        if (typing) typing.remove();
+
+        const errMsg = document.createElement('div');
+        errMsg.className = 'chat-msg inbound';
         const errBubble = document.createElement('div');
-        errBubble.className = 'msg-bubble msg-inbound';
+        errBubble.className = 'chat-bubble';
         errBubble.style.color = 'var(--danger)';
-        errBubble.textContent = 'Error connecting';
-        container.appendChild(errBubble);
+        errBubble.textContent = 'Error connecting to AI';
+        errMsg.appendChild(errBubble);
+        container.appendChild(errMsg);
     });
 }
 
@@ -698,7 +746,9 @@ document.addEventListener('click', function(e) {
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
         document.querySelectorAll('.modal-overlay.active').forEach(m => m.classList.remove('active'));
-        document.getElementById('chatPanel')?.classList.add('hidden');
+        if (document.getElementById('chatPanel')?.classList.contains('open')) {
+            toggleChat();
+        }
     }
 });
 
