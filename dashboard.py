@@ -437,6 +437,59 @@ def api_send_sms(phone):
     return jsonify({"ok": True, "sid": sid})
 
 
+@app.route("/api/draft/<int:draft_id>/approve", methods=["POST"])
+@_require_auth
+def api_approve_draft(draft_id):
+    """Approve a pending draft and trigger sending."""
+    import approval_queue as aq
+    draft = aq.get_draft_by_id(draft_id)
+    if not draft:
+        return jsonify({"error": "Draft not found"}), 404
+    if draft.get("status") != "pending":
+        return jsonify({"error": "Draft already processed"}), 400
+
+    aq.update_draft_status(draft_id, "approved")
+
+    # Trigger SMS send if it's an SMS draft
+    sent = False
+    if draft.get("channel") == "sms_draft" and draft.get("prospect_id"):
+        try:
+            import sms_sender, sms_conversations as _sms_conv
+            with db.get_db() as conn:
+                prow = conn.execute("SELECT phone, name FROM prospects WHERE id = ?", (draft["prospect_id"],)).fetchone()
+            if prow and prow["phone"]:
+                sid = sms_sender.send_sms(to=prow["phone"], body=draft["content"])
+                if sid:
+                    _sms_conv.log_message(
+                        phone=prow["phone"], body=draft["content"], direction="outbound",
+                        prospect_id=draft["prospect_id"], prospect_name=prow["name"], twilio_sid=sid,
+                    )
+                    sent = True
+                    # Activate SMS agent mission if this is an opener
+                    if draft.get("type") == "sms_agent":
+                        try:
+                            import sms_agent
+                            sms_agent.activate_mission_by_phone(prow["phone"])
+                        except Exception:
+                            pass
+        except Exception:
+            logging.getLogger(__name__).exception("Draft send failed for #%d", draft_id)
+
+    return jsonify({"ok": True, "sent": sent, "message": "Approved" + (" & sent" if sent else "")})
+
+
+@app.route("/api/draft/<int:draft_id>/dismiss", methods=["POST"])
+@_require_auth
+def api_dismiss_draft(draft_id):
+    """Dismiss/skip a pending draft."""
+    import approval_queue as aq
+    draft = aq.get_draft_by_id(draft_id)
+    if not draft:
+        return jsonify({"error": "Draft not found"}), 404
+    aq.update_draft_status(draft_id, "dismissed")
+    return jsonify({"ok": True, "message": "Draft dismissed"})
+
+
 @app.route("/api/trust", methods=["GET"])
 @_require_auth
 def api_get_trust():
@@ -1065,10 +1118,26 @@ def pipeline():
             except (ValueError, IndexError):
                 pass
 
-    # Health scores
-    health_scores = {}
+    # Prospect scores (from scoring.py — replaces old health_score)
+    import scoring
+    _avg_stage_days = {}
     for p in active:
-        health_scores[p["name"]] = _calc_health_score(p, last_activity_map, today)
+        s = (p.get("stage") or "").strip()
+        fc = p.get("first_contact", "")
+        if s and fc and fc != "None":
+            try:
+                days = (today - datetime.strptime(fc.split(" ")[0], "%Y-%m-%d").date()).days
+                if s not in _avg_stage_days:
+                    _avg_stage_days[s] = []
+                _avg_stage_days[s].append(days)
+            except (ValueError, IndexError):
+                pass
+    avg_stage_days = {s: sum(d) / len(d) for s, d in _avg_stage_days.items()}
+
+    prospect_scores = {}
+    for p in active:
+        score_data = scoring.score_prospect(p, avg_stage_days)
+        prospect_scores[p["name"]] = score_data
 
     # Today's meetings lookup
     todays_meetings = {m.get("prospect", "").lower(): m for m in meetings if m.get("date") == today_str and m.get("status", "").lower() != "cancelled"}
@@ -1101,6 +1170,16 @@ def pipeline():
             meeting_today = pname_lower in todays_meetings
             meeting_time = todays_meetings.get(pname_lower, {}).get("time", "") if meeting_today else ""
 
+            # Score + days in stage
+            score_data = prospect_scores.get(p["name"], {})
+            days_in_stage = 0
+            fc = p.get("first_contact", "")
+            if fc and fc != "None":
+                try:
+                    days_in_stage = (today - datetime.strptime(fc.split(" ")[0], "%Y-%m-%d").date()).days
+                except (ValueError, IndexError):
+                    pass
+
             enriched.append({
                 **p,
                 "overdue_days": overdue_days,
@@ -1109,7 +1188,11 @@ def pipeline():
                 "meeting_time": meeting_time,
                 "aum_fmt": fmt_money_full(p.get("aum", 0)),
                 "last_touch_relative": _relative_time(last_touch.strftime("%Y-%m-%d") if last_touch else "", today),
+                "score": score_data.get("score", 0),
+                "days_in_stage": days_in_stage,
             })
+        # Sort by score within column (highest first)
+        enriched.sort(key=lambda x: x.get("score", 0), reverse=True)
         kanban_cols.append((stage, enriched))
 
     # Build table data (active prospects enriched)
@@ -1142,9 +1225,10 @@ def pipeline():
         else:
             last_touch_html = '<span class="text-muted">—</span>'
 
+        score_data = prospect_scores.get(p["name"], {})
         active_prospects.append({
             **p,
-            "health": health_scores.get(p["name"], 50),
+            "health": score_data.get("score", 50),
             "is_overdue": is_overdue,
             "followup_display": followup_display,
             "last_touch_html": last_touch_html,

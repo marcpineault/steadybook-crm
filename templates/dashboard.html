@@ -253,23 +253,9 @@
             </div>
             <div style="font-size:12px;white-space:pre-wrap">{{ d.content[:200] }}{{ '...' if d.content|length > 200 else '' }}</div>
         </div>
-        <div class="dropdown" style="position:relative;flex-shrink:0">
-            <button class="btn btn-sm btn-secondary" data-dropdown
-                    onclick="event.stopPropagation();toggleActionMenu(this)"
-                    style="padding:4px 8px;font-size:10px">&#8943;</button>
-            <div class="dropdown-menu right">
-                {% if d.prospect_name %}
-                <button class="dropdown-item" onclick="openProspectDetail({{ d.prospect_name|tojson|forceescape }});closeAllDropdowns()">
-                    &#128100; View Prospect
-                </button>
-                {% endif %}
-                <button class="dropdown-item" onclick="copyDraftText(this);closeAllDropdowns()" data-content="{{ d.content|e }}">
-                    &#128203; Copy Text
-                </button>
-                <button class="dropdown-item" onclick="expandDraft(this)" data-full="{{ d.content|e }}">
-                    &#128196; Read Full Draft
-                </button>
-            </div>
+        <div style="display:flex;gap:4px;flex-shrink:0;align-items:flex-start">
+            <button class="btn btn-sm btn-primary" onclick="approveDraft({{ d.id }}, this)" style="padding:4px 10px;font-size:10px">Approve</button>
+            <button class="btn btn-sm btn-secondary" onclick="dismissDraft({{ d.id }}, this)" style="padding:4px 10px;font-size:10px">Skip</button>
         </div>
     </div>
     {% endfor %}
@@ -307,6 +293,33 @@ function copyDraftText(btn) {
     if (navigator.clipboard) {
         navigator.clipboard.writeText(text).then(function() { showToast('Copied to clipboard', 'success'); });
     }
+}
+
+function approveDraft(draftId, btn) {
+    btn.disabled = true;
+    btn.textContent = '...';
+    fetch('/api/draft/' + draftId + '/approve', {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': CSRF }
+    }).then(function(r) { return r.json(); }).then(function(res) {
+        if (res.error) { showToast(res.error, 'error'); btn.disabled = false; btn.textContent = 'Approve'; return; }
+        showToast(res.message, 'success');
+        var card = btn.closest('[data-extra], div[style*="padding:10px"]');
+        if (card) { card.style.opacity = '0.3'; setTimeout(function() { card.remove(); }, 300); }
+    }).catch(function() { showToast('Error approving', 'error'); btn.disabled = false; btn.textContent = 'Approve'; });
+}
+
+function dismissDraft(draftId, btn) {
+    btn.disabled = true;
+    fetch('/api/draft/' + draftId + '/dismiss', {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': CSRF }
+    }).then(function(r) { return r.json(); }).then(function(res) {
+        if (res.error) { showToast(res.error, 'error'); btn.disabled = false; return; }
+        showToast('Draft skipped', 'info');
+        var card = btn.closest('[data-extra], div[style*="padding:10px"]');
+        if (card) { card.style.opacity = '0.3'; setTimeout(function() { card.remove(); }, 300); }
+    }).catch(function() { showToast('Error dismissing', 'error'); btn.disabled = false; });
 }
 
 function expandDraft(btn) {

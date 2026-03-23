@@ -48,7 +48,11 @@
                 <div class="kanban-card" draggable="true"
                      data-name="{{ p.name|e }}" data-priority="{{ p.priority|lower }}"
                      style="border-left-color:{{ pri_color }}">
-                    <div class="kanban-card-name">{{ p.name }}</div>
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start">
+                        <div class="kanban-card-name">{{ p.name }}</div>
+                        {% set scolor = 'var(--success)' if p.score >= 70 else 'var(--warning)' if p.score >= 40 else 'var(--danger)' %}
+                        <span style="font-size:9px;font-weight:700;color:{{ scolor }};flex-shrink:0">{{ p.score }}</span>
+                    </div>
                     {% if p.product %}<div class="kanban-card-product">{{ p.product }}</div>{% endif %}
                     {% if p.overdue_days %}
                     <div class="kanban-card-alert overdue">{{ p.overdue_days }}d overdue</div>
@@ -59,11 +63,10 @@
                     {% endif %}
                     <div class="kanban-card-meta">
                         <span class="badge badge-{{ p.priority|lower }}">{{ p.priority }}</span>
-                        {% if p.aum_fmt and p.aum_fmt != '$0' %}
-                        <span class="text-muted" style="font-size:9px">{{ p.aum_fmt }}</span>
-                        {% else %}
-                        <span class="text-muted" style="font-size:9px">{{ p.last_touch_relative }}</span>
-                        {% endif %}
+                        <span class="text-muted" style="font-size:9px">
+                            {% if p.days_in_stage %}{{ p.days_in_stage }}d{% endif %}
+                            {% if p.aum_fmt and p.aum_fmt != '$0' %} &middot; {{ p.aum_fmt }}{% endif %}
+                        </span>
                     </div>
                 </div>
                 {% endfor %}
@@ -82,7 +85,7 @@
                     <tr>
                         <th style="width:30px"><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)" title="Select all"></th>
                         <th class="sortable" data-sort-type="text">Name</th>
-                        <th class="sortable" data-sort-type="number">Health</th>
+                        <th class="sortable" data-sort-type="number">Score</th>
                         <th class="sortable" data-sort-type="text">Priority</th>
                         <th class="sortable" data-sort-type="text">Stage</th>
                         <th class="sortable" data-sort-type="text">Product</th>
