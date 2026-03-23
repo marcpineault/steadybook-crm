@@ -1,0 +1,166 @@
+<!-- Prospect Modal (View / Edit / Add) -->
+<div class="modal-overlay" id="prospectModal">
+    <div class="modal" style="max-width:560px">
+        <button class="modal-close" onclick="closeProspectModal()">&times;</button>
+
+        <!-- View Mode -->
+        <div id="prospectView">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+                <div>
+                    <h2 class="modal-title mb-0" id="prospectViewName"></h2>
+                    <div class="text-muted" style="font-size:11px" id="prospectViewMeta"></div>
+                </div>
+                <div style="margin-left:auto;display:flex;gap:6px">
+                    <span class="badge" id="prospectViewPriority"></span>
+                    <span class="badge" id="prospectViewStage"></span>
+                </div>
+            </div>
+            <div id="prospectViewHealth" style="margin-bottom:12px"></div>
+            <div id="prospectViewNextAction" style="margin-bottom:16px;padding:8px 12px;background:var(--bg-subtle);border-radius:6px;font-size:11px;color:var(--text-secondary)"></div>
+
+            <!-- Quick Actions -->
+            <div style="display:flex;gap:6px;margin-bottom:16px">
+                <button class="btn btn-primary btn-sm" onclick="prospectAction('call')">&#128222; Call</button>
+                <button class="btn btn-secondary btn-sm" onclick="prospectAction('sms')">&#9993; SMS</button>
+                <button class="btn btn-secondary btn-sm" onclick="prospectAction('email')">&#9993; Email</button>
+                <button class="btn btn-secondary btn-sm" onclick="prospectAction('reschedule')">&#128197; Reschedule</button>
+                <button class="btn btn-secondary btn-sm" onclick="switchToEditMode()" style="margin-left:auto">&#9998; Edit</button>
+            </div>
+
+            <!-- Detail fields -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;font-size:12px">
+                <div><span class="text-muted">Phone:</span> <span id="prospectViewPhone"></span></div>
+                <div><span class="text-muted">Email:</span> <span id="prospectViewEmail"></span></div>
+                <div><span class="text-muted">Product:</span> <span id="prospectViewProduct"></span></div>
+                <div><span class="text-muted">Source:</span> <span id="prospectViewSource"></span></div>
+                <div><span class="text-muted">AUM:</span> <span id="prospectViewAum"></span></div>
+                <div><span class="text-muted">Revenue:</span> <span id="prospectViewRevenue"></span></div>
+                <div><span class="text-muted">Follow-up:</span> <span id="prospectViewFollowup"></span></div>
+                <div><span class="text-muted">First Contact:</span> <span id="prospectViewFirstContact"></span></div>
+            </div>
+
+            <!-- Notes -->
+            <div style="margin-bottom:16px">
+                <div class="text-muted" style="font-size:10px;margin-bottom:4px">NOTES</div>
+                <div id="prospectViewNotes" style="font-size:12px;color:var(--text-primary);white-space:pre-wrap;padding:8px;background:var(--bg-subtle);border-radius:6px;min-height:40px"></div>
+            </div>
+
+            <!-- Activity Timeline -->
+            <div>
+                <div class="text-muted" style="font-size:10px;margin-bottom:8px">RECENT ACTIVITY</div>
+                <div id="prospectViewActivities" style="font-size:11px"></div>
+            </div>
+
+            <!-- Tasks -->
+            <div style="margin-top:12px">
+                <div class="text-muted" style="font-size:10px;margin-bottom:8px">TASKS</div>
+                <div id="prospectViewTasks" style="font-size:11px"></div>
+            </div>
+
+            <!-- Merge Section (collapsible) -->
+            <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
+                <button class="btn btn-secondary btn-sm" onclick="toggleMergeSection()">Merge with another prospect</button>
+                <div id="mergeSection" class="hidden" style="margin-top:8px">
+                    <div class="form-group">
+                        <label class="form-label">Merge into this prospect from:</label>
+                        <input type="text" class="form-input" id="mergeName" placeholder="Name to merge">
+                    </div>
+                    <button class="btn btn-danger btn-sm" onclick="doMerge()">Merge</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Edit / Add Mode -->
+        <div id="prospectEdit" class="hidden">
+            <h2 class="modal-title" id="prospectEditTitle">Edit Prospect</h2>
+            <form id="prospectForm" onsubmit="return saveProspect(event)">
+                <input type="hidden" id="prospectOriginalName" value="">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                    <div class="form-group">
+                        <label class="form-label">Name *</label>
+                        <input type="text" class="form-input" id="pName" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Phone</label>
+                        <input type="text" class="form-input" id="pPhone">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Email</label>
+                        <input type="email" class="form-input" id="pEmail">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Product</label>
+                        <input type="text" class="form-input" id="pProduct" list="productList">
+                        <datalist id="productList">
+                            <option value="Life Insurance">
+                            <option value="Disability Insurance">
+                            <option value="Wealth Management">
+                            <option value="Home Insurance">
+                            <option value="Auto Insurance">
+                            <option value="Commercial Insurance">
+                            <option value="Term 10">
+                            <option value="Term 20">
+                            <option value="Term 30">
+                        </datalist>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Stage</label>
+                        <select class="form-input form-select" id="pStage">
+                            <option value="New Lead">New Lead</option>
+                            <option value="Contacted">Contacted</option>
+                            <option value="Discovery Call">Discovery Call</option>
+                            <option value="Needs Analysis">Needs Analysis</option>
+                            <option value="Plan Presentation">Plan Presentation</option>
+                            <option value="Proposal Sent">Proposal Sent</option>
+                            <option value="Negotiation">Negotiation</option>
+                            <option value="Nurture">Nurture</option>
+                            <option value="Closed-Won">Closed-Won</option>
+                            <option value="Closed-Lost">Closed-Lost</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Priority</label>
+                        <select class="form-input form-select" id="pPriority">
+                            <option value="Hot">Hot</option>
+                            <option value="Warm">Warm</option>
+                            <option value="Cold">Cold</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">AUM</label>
+                        <input type="text" class="form-input" id="pAum" placeholder="e.g. 500K">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Revenue / Premium</label>
+                        <input type="text" class="form-input" id="pRevenue" placeholder="e.g. 5000">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Source</label>
+                        <input type="text" class="form-input" id="pSource" list="sourceList">
+                        <datalist id="sourceList">
+                            <option value="Referral">
+                            <option value="Cold Call">
+                            <option value="Networking Event">
+                            <option value="Website">
+                            <option value="Walk-in">
+                            <option value="Social Media">
+                        </datalist>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Next Follow-up</label>
+                        <input type="date" class="form-input" id="pFollowup">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Notes</label>
+                    <textarea class="form-input form-textarea" id="pNotes" rows="3"></textarea>
+                </div>
+                <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+                    <button type="button" class="btn btn-secondary" onclick="cancelProspectEdit()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save</button>
+                    <button type="button" class="btn btn-danger" id="prospectDeleteBtn" onclick="deleteProspect()" style="margin-left:auto">Delete</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

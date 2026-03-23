@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Pipeline{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Pipeline</h1>
+        <p class="page-subtitle">{{ active_count }} active deals &middot; {{ total_pipeline_fmt }} AUM</p>
+    </div>
+    <div class="header-actions">
+        <input type="text" class="form-input" style="width:200px" placeholder="Search prospects..." oninput="filterProspects(this.value)">
+        <div class="view-toggle">
+            <button class="view-toggle-btn active" onclick="togglePipelineView('kanban')">Kanban</button>
+            <button class="view-toggle-btn" onclick="togglePipelineView('table')">Table</button>
+        </div>
+        <button class="btn btn-primary" onclick="openProspectModal('add')">+ Add</button>
+    </div>
+</div>
+
+<!-- Kanban View -->
+<div id="kanbanView">
+    <div class="kanban-board">
+        {% for stage, prospects_in_stage in kanban_cols %}
+        <div class="kanban-col" data-stage="{{ stage }}"
+             ondragover="onDragOver(event)" ondragleave="onDragLeave(event)"
+             ondrop="onDrop(event, '{{ stage }}')">
+            <div class="kanban-col-header">
+                <div class="kanban-col-dot" style="background:{{ stage_colors[stage][0] if stage in stage_colors else '#94a3b8' }}"></div>
+                <div class="kanban-col-title">{{ stage }}</div>
+                <div class="kanban-col-count">{{ prospects_in_stage|length }}</div>
+            </div>
+            <div class="kanban-cards">
+                {% if not prospects_in_stage %}
+                <div class="text-muted" style="text-align:center;padding:16px;font-size:11px;font-style:italic">No prospects</div>
+                {% endif %}
+                {% for p in prospects_in_stage %}
+                {% set pri_color = priority_colors.get(p.priority, '#94a3b8') %}
+                <div class="kanban-card" draggable="true"
+                     ondragstart="onDragStart(event, '{{ p.name|e }}')"
+                     ondragend="onDragEnd(event)"
+                     onclick="onCardClick(event, '{{ p.name|e }}')"
+                     style="border-left-color:{{ pri_color }}">
+                    <div class="kanban-card-name">{{ p.name }}</div>
+                    <div class="kanban-card-product">{{ p.product or '' }}</div>
+                    {% if p.overdue_days %}
+                    <div class="kanban-card-alert overdue">{{ p.overdue_days }} day{{ 's' if p.overdue_days != 1 else '' }} overdue</div>
+                    {% elif p.meeting_today %}
+                    <div class="kanban-card-alert meeting">Meeting at {{ p.meeting_time }}</div>
+                    {% elif p.followup_today %}
+                    <div class="kanban-card-alert" style="color:var(--warning)">Follow-up due today</div>
+                    {% endif %}
+                    <div class="kanban-card-meta">
+                        <span class="badge badge-{{ p.priority|lower }}">{{ p.priority }}</span>
+                        {% if p.aum_fmt and p.aum_fmt != '$0' %}
+                        <span class="text-muted" style="font-size:9px">{{ p.aum_fmt }}</span>
+                        {% else %}
+                        <span class="text-muted" style="font-size:9px">{{ p.last_touch_relative }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Table View -->
+<div id="tableView" class="hidden">
+    <div class="card" style="padding:0;overflow:hidden">
+        <div class="table-wrap">
+            <table class="pipeline-table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Health</th>
+                        <th>Priority</th>
+                        <th>Stage</th>
+                        <th>Product</th>
+                        <th>AUM</th>
+                        <th>Revenue</th>
+                        <th>Follow-up</th>
+                        <th>Last Touch</th>
+                        <th>Notes</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in active_prospects %}
+                    <tr onclick="openProspectDetail('{{ p.name|e }}')" style="cursor:pointer">
+                        <td class="name-cell">{{ p.name }}</td>
+                        <td style="text-align:center">
+                            {% set hcolor = 'var(--success)' if p.health >= 70 else 'var(--warning)' if p.health >= 40 else 'var(--danger)' %}
+                            <span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;color:#fff;background:{{ hcolor }}">{{ p.health }}</span>
+                        </td>
+                        <td><span class="badge badge-{{ p.priority|lower }}">{{ p.priority }}</span></td>
+                        <td><span class="badge badge-info" onclick="event.stopPropagation();changeStage(event,'{{ p.name|e }}')" style="cursor:pointer" title="Click to change">{{ p.stage }}</span></td>
+                        <td>{{ p.product or '' }}</td>
+                        <td class="money">{{ p.aum_fmt }}</td>
+                        <td class="money">{{ p.revenue_fmt }}</td>
+                        <td class="{{ 'text-danger font-bold' if p.is_overdue else '' }}">{{ p.followup_display }}</td>
+                        <td>{{ p.last_touch_html|safe }}</td>
+                        <td class="notes">{{ (p.notes or '')[:60] }}{{ '...' if (p.notes or '')|length > 60 else '' }}</td>
+                        <td style="text-align:center;white-space:nowrap" onclick="event.stopPropagation()">
+                            <button onclick="openLogModal('Call','{{ p.name|e }}')" title="Log Call" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px">&#128222;</button>
+                            <button onclick="openLogModal('Email','{{ p.name|e }}')" title="Log Email" style="background:none;border:none;cursor:pointer;font-size:14px;padding:2px">&#9993;</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

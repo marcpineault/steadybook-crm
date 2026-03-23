@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Calm Money — Lead Intake</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: #f8f9fb;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 1rem;
+        }
+        .card {
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 2rem;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+        }
+        h1 {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #1a1a2e;
+            text-align: center;
+            margin-bottom: 0.2rem;
+        }
+        .sub {
+            color: #94a3b8;
+            font-size: 0.85rem;
+            margin-bottom: 1.5rem;
+            text-align: center;
+        }
+        .msg-success {
+            background: #f0fdf4;
+            border: 1px solid #27ae60;
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            margin-bottom: 1rem;
+            color: #166534;
+            font-size: 0.9rem;
+        }
+        .msg-error {
+            background: #fef2f2;
+            border: 1px solid #dc2626;
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            margin-bottom: 1rem;
+            color: #991b1b;
+            font-size: 0.9rem;
+        }
+        label {
+            display: block;
+            font-size: 0.85rem;
+            color: #64748b;
+            margin-bottom: 0.3rem;
+            font-weight: 500;
+        }
+        input {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            background: #fff;
+            color: #1a1a2e;
+            font-size: 1rem;
+            margin-bottom: 1rem;
+            outline: none;
+            font-family: inherit;
+            -webkit-appearance: none;
+        }
+        input:focus {
+            border-color: #2563eb;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+        button {
+            width: 100%;
+            padding: 0.85rem;
+            border: none;
+            border-radius: 8px;
+            background: #2563eb;
+            color: #fff;
+            font-size: 1.05rem;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        button:hover {
+            background: #1d4ed8;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>Lead Intake</h1>
+        <p class="sub">{{ today_display }}</p>
+        {% if message and msg_type == 'success' %}
+        <div class="msg-success">{{ message }}</div>
+        {% elif message and msg_type == 'error' %}
+        <div class="msg-error">{{ message }}</div>
+        {% endif %}
+        <form method="POST" action="/intake/event">
+            <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+            <label for="name">Name *</label>
+            <input type="text" id="name" name="name" placeholder="Full name" autocomplete="name" maxlength="200" required autofocus>
+            <label for="phone">Phone</label>
+            <input type="tel" id="phone" name="phone" placeholder="Phone number" autocomplete="tel" inputmode="tel" maxlength="30">
+            <label for="email">Email</label>
+            <input type="email" id="email" name="email" placeholder="Email address" autocomplete="email" inputmode="email" maxlength="254">
+            <button type="submit">Submit</button>
+        </form>
+    </div>
+</body>
+</html>

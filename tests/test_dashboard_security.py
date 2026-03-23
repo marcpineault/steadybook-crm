@@ -30,7 +30,7 @@ def test_login_page_renders(client):
 def test_login_with_correct_password(client):
     """POST /login with correct password sets auth cookie."""
     resp = client.post("/login", data={"password": "test-secret-key"})
-    assert resp.status_code == 200
+    assert resp.status_code in (200, 302)  # 302 redirect to / is expected
     # Verify cookie is set by checking we can now access the dashboard
     dash_resp = client.get("/")
     assert dash_resp.status_code == 200

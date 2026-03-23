@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}Tasks{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Tasks</h1>
+        <p class="page-subtitle">{{ total_pending }} pending{% if overdue_tasks %} &middot; {{ overdue_tasks|length }} overdue{% endif %}</p>
+    </div>
+    <div class="header-actions">
+        <button class="btn btn-primary" onclick="openTaskModal()">+ Add Task</button>
+    </div>
+</div>
+
+<!-- Overdue -->
+{% if overdue_tasks %}
+<div class="card" style="border-top:3px solid var(--danger)">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <div class="card-title mb-0" style="color:var(--danger)">Overdue</div>
+        <span class="badge badge-danger">{{ overdue_tasks|length }}</span>
+    </div>
+    <table style="width:100%">
+        <tbody>
+            {% for t in overdue_tasks %}
+            <tr class="table-row-overdue">
+                <td style="width:30px;text-align:center"><input type="checkbox" onchange="completeTask({{ t.id }}, this)" style="width:16px;height:16px;cursor:pointer"></td>
+                <td class="name-cell" onclick="openTaskModal({{ t.id }},'{{ t.title|e }}','{{ t.prospect|e }}','{{ t.due_date }}','{{ (t.remind_at or '')|replace(' ','T') }}','{{ (t.notes or '')|e }}')">
+                    {{ t.title }}{% if t.remind_at %} <span style="color:var(--warning)">&#9200;</span>{% endif %}
+                </td>
+                <td>{% if t.prospect %}<a href="javascript:void(0)" onclick="event.stopPropagation();openProspectDetail('{{ t.prospect|e }}')" style="color:var(--primary);text-decoration:none">{{ t.prospect }}</a>{% endif %}</td>
+                <td>{{ t.due_date }} <span class="text-danger">({{ t.days_late }}d late)</span></td>
+                <td style="text-align:center"><button onclick="deleteTask({{ t.id }})" class="btn btn-sm" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:14px">&times;</button></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<!-- Due Today -->
+{% if due_today_tasks %}
+<div class="card" style="border-top:3px solid var(--warning)">
+    <div class="card-title" style="color:var(--warning)">Due Today</div>
+    <table style="width:100%">
+        <tbody>
+            {% for t in due_today_tasks %}
+            <tr class="table-row-today">
+                <td style="width:30px;text-align:center"><input type="checkbox" onchange="completeTask({{ t.id }}, this)" style="width:16px;height:16px;cursor:pointer"></td>
+                <td class="name-cell" onclick="openTaskModal({{ t.id }},'{{ t.title|e }}','{{ t.prospect|e }}','{{ t.due_date }}','{{ (t.remind_at or '')|replace(' ','T') }}','{{ (t.notes or '')|e }}')">
+                    {{ t.title }}{% if t.remind_at %} <span style="color:var(--warning)">&#9200;</span>{% endif %}
+                </td>
+                <td>{% if t.prospect %}<a href="javascript:void(0)" onclick="event.stopPropagation();openProspectDetail('{{ t.prospect|e }}')" style="color:var(--primary);text-decoration:none">{{ t.prospect }}</a>{% endif %}</td>
+                <td style="text-align:center"><button onclick="deleteTask({{ t.id }})" class="btn btn-sm" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:14px">&times;</button></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<!-- Upcoming -->
+<div class="card">
+    <div class="card-title">Upcoming & No Date</div>
+    {% if upcoming_tasks %}
+    <table style="width:100%">
+        <tbody>
+            {% for t in upcoming_tasks %}
+            <tr>
+                <td style="width:30px;text-align:center"><input type="checkbox" onchange="completeTask({{ t.id }}, this)" style="width:16px;height:16px;cursor:pointer"></td>
+                <td class="name-cell" onclick="openTaskModal({{ t.id }},'{{ t.title|e }}','{{ t.prospect|e }}','{{ t.due_date or '' }}','{{ (t.remind_at or '')|replace(' ','T') }}','{{ (t.notes or '')|e }}')">
+                    {{ t.title }}{% if t.remind_at %} <span style="color:var(--warning)">&#9200;</span>{% endif %}
+                </td>
+                <td>{% if t.prospect %}<a href="javascript:void(0)" onclick="event.stopPropagation();openProspectDetail('{{ t.prospect|e }}')" style="color:var(--primary);text-decoration:none">{{ t.prospect }}</a>{% endif %}</td>
+                <td>{{ t.due_date or 'No date' }}</td>
+                <td style="text-align:center"><button onclick="deleteTask({{ t.id }})" class="btn btn-sm" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:14px">&times;</button></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="text-muted" style="text-align:center;padding:20px">No upcoming tasks</div>
+    {% endif %}
+</div>
+
+<!-- Recently Completed -->
+{% if completed_tasks %}
+<div class="card">
+    <details>
+        <summary class="card-title" style="cursor:pointer;user-select:none">Recently Completed ({{ completed_tasks|length }})</summary>
+        <table style="width:100%;margin-top:8px">
+            <tbody>
+                {% for t in completed_tasks %}
+                <tr style="opacity:0.5">
+                    <td style="width:30px;text-align:center;color:var(--success)">&#10003;</td>
+                    <td style="text-decoration:line-through;color:var(--text-muted)">{{ t.title }}</td>
+                    <td>{{ t.prospect or '' }}</td>
+                    <td>{{ (t.completed_at or '')[:10] }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </details>
+</div>
+{% endif %}
+{% endblock %}

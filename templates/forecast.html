@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}Forecast{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Revenue Forecast</h1>
+        <p class="page-subtitle">{{ today_display }} &middot; Day {{ days_elapsed }} of {{ days_total }}</p>
+    </div>
+</div>
+
+<!-- KPI Row -->
+<div class="kpi-grid" style="grid-template-columns:repeat(3, 1fr)">
+    <div class="kpi-card">
+        <div class="kpi-label">Premium YTD</div>
+        <div class="kpi-value">{{ forecast_revenue_fmt }}</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Total AUM</div>
+        <div class="kpi-value">{{ forecast_aum_fmt }}</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">FYC (Won)</div>
+        <div class="kpi-value">{{ won_fyc_fmt }}</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Projected Premium</div>
+        <div class="kpi-value">{{ projected_revenue_fmt }}</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Projected AUM</div>
+        <div class="kpi-value">{{ projected_aum_fmt }}</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Projected FYC</div>
+        <div class="kpi-value">{{ projected_fyc_fmt }}</div>
+    </div>
+</div>
+
+<!-- Progress Bars -->
+<div class="two-col">
+    <div class="card">
+        <div class="card-title">Premium Target: {{ premium_target_fmt }}</div>
+        <div class="progress-bar">
+            <div class="progress-fill {{ 'success' if premium_on_pace else 'danger' }}" style="width:{{ [premium_pct, 100]|min }}%"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:10px">
+            <span class="text-muted">{{ premium_pct|int }}% achieved</span>
+            <span class="{{ 'text-success' if premium_on_pace else 'text-danger' }}">{{ 'On pace' if premium_on_pace else 'Off pace' }} ({{ premium_pace_fmt }}/yr)</span>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-title">AUM Target: {{ aum_target_fmt }}</div>
+        <div class="progress-bar">
+            <div class="progress-fill {{ 'success' if aum_on_pace else 'danger' }}" style="width:{{ [aum_pct, 100]|min }}%"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:10px">
+            <span class="text-muted">{{ aum_pct|int }}% achieved</span>
+            <span class="{{ 'text-success' if aum_on_pace else 'text-danger' }}">{{ 'On pace' if aum_on_pace else 'Off pace' }} ({{ aum_pace_fmt }}/yr)</span>
+        </div>
+    </div>
+</div>
+
+<!-- Monthly Revenue Chart -->
+<div class="card">
+    <div class="card-title">Monthly Revenue</div>
+    <canvas id="monthlyRevenueChart" height="200"></canvas>
+</div>
+
+<!-- Pipeline Weighted Forecast -->
+<div class="card">
+    <div class="card-title">Pipeline Weighted Forecast</div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr><th>Stage</th><th>Count</th><th>Avg Revenue</th><th>Probability</th><th>Weighted</th></tr>
+            </thead>
+            <tbody>
+                {% for row in weighted_forecast %}
+                <tr>
+                    <td>{{ row.stage }}</td>
+                    <td>{{ row.count }}</td>
+                    <td class="money">{{ row.avg_revenue_fmt }}</td>
+                    <td>{{ (row.probability * 100)|int }}%</td>
+                    <td class="money">{{ row.weighted_fmt }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Stage Velocity -->
+<div class="card">
+    <div class="card-title">Stage Velocity (Avg Days)</div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr><th>Stage</th><th>Avg Days</th><th>Deals</th></tr>
+            </thead>
+            <tbody>
+                {% for row in stage_velocity %}
+                <tr>
+                    <td>{{ row.stage }}</td>
+                    <td>{{ row.avg_days|int }}</td>
+                    <td>{{ row.count }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const ctx = document.getElementById('monthlyRevenueChart');
+    if (!ctx) return;
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: {{ monthly_labels|tojson }},
+            datasets: [
+                { label: 'Revenue', data: {{ monthly_values|tojson }}, backgroundColor: 'rgba(37,99,235,0.7)', borderRadius: 4 },
+                { label: 'Target', data: {{ monthly_target|tojson }}, type: 'line', borderColor: '#dc2626', borderDash: [5,5], pointRadius: 0, fill: false }
+            ]
+        },
+        options: { responsive: true, plugins: { legend: { display: true } }, scales: { y: { beginAtZero: true } } }
+    });
+});
+</script>
+{% endblock %}

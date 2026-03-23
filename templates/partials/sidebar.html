@@ -1,0 +1,48 @@
+<nav class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+        <div class="sidebar-brand-name">Calm Money</div>
+        <div class="sidebar-brand-sub">Pipeline CRM</div>
+    </div>
+    <div class="sidebar-nav">
+        <a href="/" class="sidebar-item {{ 'active' if active_page == 'dashboard' }}">
+            <span class="sidebar-icon">&#9633;</span>
+            Dashboard
+        </a>
+        <a href="/pipeline" class="sidebar-item {{ 'active' if active_page == 'pipeline' }}">
+            <span class="sidebar-icon">&#9645;</span>
+            Pipeline
+            {% if pipeline_count %}<span class="sidebar-badge info">{{ pipeline_count }}</span>{% endif %}
+        </a>
+        <a href="/tasks" class="sidebar-item {{ 'active' if active_page == 'tasks' }}">
+            <span class="sidebar-icon">&#9744;</span>
+            Tasks
+            {% if overdue_task_count %}<span class="sidebar-badge danger">{{ overdue_task_count }}</span>{% endif %}
+        </a>
+        <a href="/conversations" class="sidebar-item {{ 'active' if active_page == 'conversations' }}">
+            <span class="sidebar-icon">&#9993;</span>
+            Conversations
+            {% if unread_count %}<span class="sidebar-badge info">{{ unread_count }}</span>{% endif %}
+        </a>
+        <a href="/forecast" class="sidebar-item {{ 'active' if active_page == 'forecast' }}">
+            <span class="sidebar-icon">&#9650;</span>
+            Forecast
+        </a>
+        <a href="/clients" class="sidebar-item {{ 'active' if active_page == 'clients' }}">
+            <span class="sidebar-icon">&#9734;</span>
+            Clients
+            {% if won_count %}<span class="sidebar-badge" style="background:#dcfce7;color:#166534">{{ won_count }}</span>{% endif %}
+        </a>
+        <a href="/chat" class="sidebar-item {{ 'active' if active_page == 'chat' }}">
+            <span class="sidebar-icon">&#9883;</span>
+            AI Chat
+        </a>
+    </div>
+    <div class="sidebar-user">
+        <div class="sidebar-avatar">MP</div>
+        <div>
+            <div style="font-size:11px;font-weight:500;color:var(--text-primary)">Marc Pineault</div>
+            <div style="font-size:10px;color:var(--text-muted)">Co-operators</div>
+        </div>
+        <a href="/logout" style="margin-left:auto;font-size:10px;color:var(--text-muted);text-decoration:none" title="Sign out">&#x2192;</a>
+    </div>
+</nav>

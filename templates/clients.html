@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Clients{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Clients</h1>
+        <p class="page-subtitle">{{ won_count }} closed-won deals &middot; {{ total_client_aum_fmt }} AUM &middot; {{ total_client_premium_fmt }} premium</p>
+    </div>
+</div>
+
+<!-- Breakdown Cards -->
+{% if client_products %}
+<div class="two-col" style="grid-template-columns:1fr 1fr">
+    <div class="card">
+        <div class="card-title">By Product</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+            {% for product, count in client_products %}
+            <div style="padding:10px 16px;background:var(--bg-subtle);border-radius:8px;text-align:center">
+                <div style="font-size:20px;font-weight:700;color:var(--text-primary)">{{ count }}</div>
+                <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">{{ product }}</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-title">By Source</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+            {% for source, count in client_sources %}
+            <div style="padding:10px 16px;background:var(--bg-subtle);border-radius:8px;text-align:center">
+                <div style="font-size:20px;font-weight:700;color:var(--text-primary)">{{ count }}</div>
+                <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">{{ source }}</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Client Table -->
+<div class="card" style="padding:0;overflow:hidden">
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Phone</th>
+                    <th>Email</th>
+                    <th>Product</th>
+                    <th>AUM</th>
+                    <th>Revenue</th>
+                    <th>Won Date</th>
+                    <th>Cross-sell</th>
+                    <th>Notes</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in won_prospects %}
+                <tr onclick="openProspectDetail('{{ p.name|e }}')" style="cursor:pointer">
+                    <td class="name-cell">{{ p.name }}</td>
+                    <td>{{ p.phone or '' }}</td>
+                    <td>{{ p.email or '' }}</td>
+                    <td>{{ p.product or '' }}</td>
+                    <td class="money">{{ p.aum_fmt }}</td>
+                    <td class="money">{{ p.revenue_fmt }}</td>
+                    <td>{{ p.won_date }}</td>
+                    <td>{{ p.cross_sell_html|safe }}</td>
+                    <td class="notes">{{ (p.notes or '')[:50] }}{{ '...' if (p.notes or '')|length > 50 else '' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

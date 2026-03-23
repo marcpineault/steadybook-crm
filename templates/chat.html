@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}AI Chat{% endblock %}
+
+{% block content %}
+<div style="display:flex;flex-direction:column;height:calc(100vh - 56px)">
+    <div class="page-header" style="margin-bottom:0">
+        <div>
+            <h1 class="page-title">AI Chat</h1>
+            <p class="page-subtitle">Ask about your pipeline, prospects, or anything else</p>
+        </div>
+    </div>
+
+    <div class="card" style="flex:1;display:flex;flex-direction:column;margin-top:16px;padding:0;overflow:hidden">
+        <div id="fullChatMessages" style="flex:1;overflow-y:auto;padding:16px">
+            <div class="text-muted" style="text-align:center;padding:40px">
+                <div style="font-size:24px;margin-bottom:8px">&#9883;</div>
+                <div>Ask me anything about your pipeline</div>
+                <div style="font-size:11px;margin-top:4px">Try: "Who should I call today?" or "How's my pipeline looking?"</div>
+            </div>
+        </div>
+        <div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px">
+            <input type="text" class="form-input" id="fullChatInput" placeholder="Type your message..." style="margin:0;flex:1"
+                   onkeydown="if(event.key==='Enter')sendFullChat()">
+            <button class="btn btn-primary" onclick="sendFullChat()">Send</button>
+        </div>
+    </div>
+</div>
+
+<script>
+function sendFullChat() {
+    const input = document.getElementById('fullChatInput');
+    const msg = input.value.trim();
+    if (!msg) return;
+    input.value = '';
+    const container = document.getElementById('fullChatMessages');
+    container.innerHTML += '<div class="msg-bubble msg-outbound">' + _e(msg) + '</div>';
+    container.scrollTop = container.scrollHeight;
+
+    // Show typing indicator
+    const typing = document.createElement('div');
+    typing.className = 'msg-bubble msg-inbound';
+    typing.id = 'typingIndicator';
+    typing.textContent = 'Thinking...';
+    typing.style.opacity = '0.5';
+    container.appendChild(typing);
+    container.scrollTop = container.scrollHeight;
+
+    fetch('/api/chat', {
+        method: 'POST', headers: _headers(), body: JSON.stringify({ message: msg })
+    }).then(r => r.json()).then(res => {
+        const ti = document.getElementById('typingIndicator');
+        if (ti) ti.remove();
+        if (res.reply) {
+            container.innerHTML += '<div class="msg-bubble msg-inbound" style="white-space:pre-wrap">' + _e(res.reply) + '</div>';
+        } else if (res.error) {
+            container.innerHTML += '<div class="msg-bubble msg-inbound" style="color:var(--danger)">' + _e(res.error) + '</div>';
+        }
+        container.scrollTop = container.scrollHeight;
+    }).catch(e => {
+        const ti = document.getElementById('typingIndicator');
+        if (ti) ti.remove();
+        container.innerHTML += '<div class="msg-bubble msg-inbound" style="color:var(--danger)">Error connecting to AI</div>';
+    });
+}
+</script>
+{% endblock %}

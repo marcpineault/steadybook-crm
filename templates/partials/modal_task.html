@@ -1,0 +1,36 @@
+<!-- Task Modal (Add / Edit) -->
+<div class="modal-overlay" id="taskModal">
+    <div class="modal" style="max-width:440px">
+        <button class="modal-close" onclick="closeTaskModal()">&times;</button>
+        <h2 class="modal-title" id="taskModalTitle">New Task</h2>
+        <form id="taskForm" onsubmit="return saveTask(event)">
+            <input type="hidden" id="taskId" value="">
+            <div class="form-group">
+                <label class="form-label">Title *</label>
+                <input type="text" class="form-input" id="taskTitle" required>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                <div class="form-group">
+                    <label class="form-label">Prospect</label>
+                    <input type="text" class="form-input" id="taskProspect" placeholder="Link to prospect">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Due Date</label>
+                    <input type="date" class="form-input" id="taskDue">
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Reminder</label>
+                <input type="datetime-local" class="form-input" id="taskRemind">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Notes</label>
+                <textarea class="form-input form-textarea" id="taskNotes" rows="2"></textarea>
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+                <button type="button" class="btn btn-secondary" onclick="closeTaskModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save</button>
+            </div>
+        </form>
+    </div>
+</div>

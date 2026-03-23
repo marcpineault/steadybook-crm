@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Conversations{% endblock %}
+
+{% block content %}
+<div class="conv-layout">
+    <!-- Left: Contact List -->
+    <div class="conv-list">
+        <div class="conv-search">
+            <input type="text" class="form-input" placeholder="Search conversations..." oninput="filterConvList(this.value)" style="margin:0">
+        </div>
+        <div id="convList">
+            <div class="text-muted" style="padding:20px;text-align:center">Loading...</div>
+        </div>
+    </div>
+
+    <!-- Right: Thread -->
+    <div class="conv-thread">
+        <div class="conv-thread-header" id="convThreadHeader">
+            <div class="text-muted" style="text-align:center;padding:8px">Select a conversation</div>
+        </div>
+        <div class="conv-messages" id="convMessages">
+            <div class="text-muted" style="text-align:center;padding:40px">Choose a conversation from the left to view messages</div>
+        </div>
+        <div class="conv-composer">
+            <input type="text" class="form-input" id="convInput" placeholder="Type a message..." onkeydown="if(event.key==='Enter')sendConvMessage()" style="margin:0">
+            <button class="btn btn-primary" onclick="sendConvMessage()">Send</button>
+        </div>
+    </div>
+</div>
+
+<script>
+function filterConvList(q) {
+    q = q.toLowerCase();
+    document.querySelectorAll('.conv-item').forEach(item => {
+        const text = item.textContent.toLowerCase();
+        item.style.display = text.includes(q) || !q ? '' : 'none';
+    });
+}
+</script>
+{% endblock %}

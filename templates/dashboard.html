@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Good morning, Marc</h1>
+        <p class="page-subtitle">{{ today_display }} &mdash; {{ action_count }} priority action{{ 's' if action_count != 1 else '' }} today</p>
+    </div>
+    <div class="header-actions">
+        <button class="btn btn-secondary" onclick="openProspectModal('add')">+ Add Prospect</button>
+        <button class="btn btn-primary" onclick="openLogModal()">+ Log Activity</button>
+    </div>
+</div>
+
+<!-- KPI Row -->
+<div class="kpi-grid">
+    <div class="kpi-card">
+        <div class="kpi-label">Active Deals</div>
+        <div class="kpi-value">{{ active_count }}
+            {% if new_this_week %}<span class="kpi-delta positive">+{{ new_this_week }} this week</span>{% endif %}
+        </div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Pipeline Value</div>
+        <div class="kpi-value">{{ total_pipeline_fmt }}<span class="kpi-delta text-muted">AUM</span></div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Premium YTD</div>
+        <div class="kpi-value">{{ premium_ytd_fmt }}
+            <span class="kpi-delta {{ 'positive' if premium_pct >= 50 else 'negative' }}">{{ premium_pct|int }}% of target</span>
+        </div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Win Rate</div>
+        <div class="kpi-value">{{ win_rate|int }}%
+            {% if win_rate_delta %}
+            <span class="kpi-delta {{ 'positive' if win_rate_delta > 0 else 'negative' }}">{{ '%+d' % win_rate_delta }}%</span>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Two column: Priority Actions + Meetings/Activity -->
+<div class="two-col">
+    <!-- Left: Priority Actions -->
+    <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <div class="card-title mb-0">Priority Actions</div>
+            <div class="card-subtitle">Ranked by urgency</div>
+        </div>
+        {% if priority_actions %}
+        {% for action in priority_actions %}
+        <div class="action-row {{ action.urgency }}">
+            <div class="action-dot {{ action.urgency }}"></div>
+            <div style="flex:1">
+                <div class="action-name">{{ action.title }}</div>
+                <div class="action-detail">{{ action.detail }}</div>
+            </div>
+            <div class="action-buttons">
+                {% for btn in action.buttons %}
+                <button class="btn {{ 'btn-primary' if btn.primary else 'btn-secondary' }} btn-sm"
+                        onclick="{{ btn.onclick }}">{{ btn.label }}</button>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="text-muted" style="text-align:center;padding:20px">All clear! No urgent actions today.</div>
+        {% endif %}
+    </div>
+
+    <!-- Right: Meetings + Recent Activity -->
+    <div class="right-col">
+        <!-- Today's Meetings -->
+        <div class="card">
+            <div class="card-title">Today's Meetings</div>
+            {% if todays_meetings %}
+            {% for m in todays_meetings %}
+            <div class="meeting-item today">
+                <div class="meeting-time">{{ m.time or '' }}</div>
+                <div style="flex:1">
+                    <div class="meeting-name">{{ m.type or 'Meeting' }} &mdash; {{ m.prospect }}</div>
+                    <div class="meeting-detail">{{ m.prep_notes[:60] if m.prep_notes else '' }}</div>
+                </div>
+            </div>
+            {% endfor %}
+            {% else %}
+            <div class="text-muted" style="text-align:center;padding:12px">No meetings today</div>
+            {% endif %}
+        </div>
+
+        <!-- Recent Activity -->
+        <div class="card" style="flex:1">
+            <div class="card-title">Recent Activity</div>
+            {% for a in recent_activities[:5] %}
+            <div class="activity-item">
+                <div class="activity-dot" style="background:var(--primary)"></div>
+                <div>
+                    <div class="activity-text">{{ a.action }}{% if a.prospect %} &mdash; {{ a.prospect }}{% endif %}{% if a.outcome %} ({{ a.outcome }}){% endif %}</div>
+                    <div class="activity-time">{{ a.date_relative }}</div>
+                </div>
+            </div>
+            {% endfor %}
+            {% if not recent_activities %}
+            <div class="text-muted" style="text-align:center;padding:12px">No recent activity</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- AI Recommendations -->
+{% if ai_recs %}
+<div class="card">
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:12px">
+        <span style="font-size:14px">&#9883;</span>
+        <div class="card-title mb-0">AI Recommendations</div>
+    </div>
+    <div class="rec-grid">
+        {% for rec in ai_recs %}
+        <div class="rec-card {{ rec.level }}" {% if rec.prospect %}onclick="openProspectDetail('{{ rec.prospect }}')" style="cursor:pointer"{% endif %}>
+            <div class="rec-text">{{ rec.text }}</div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Pending Drafts -->
+{% if pending_drafts %}
+<div class="card" style="border-top:3px solid #8b5cf6">
+    <div class="card-title" style="color:#8b5cf6">Drafts Awaiting Approval ({{ pending_drafts|length }})</div>
+    {% for d in pending_drafts %}
+    <div style="padding:10px;margin-bottom:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg-subtle)">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+            <span class="badge badge-info">{{ d.type }}</span>
+            <span class="text-muted" style="font-size:10px">{{ d.created_at[:16] }}</span>
+        </div>
+        <div style="font-size:12px;white-space:pre-wrap">{{ d.content[:200] }}{{ '...' if d.content|length > 200 else '' }}</div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,35 @@
+<!-- Activity Log Modal -->
+<div class="modal-overlay" id="logModal">
+    <div class="modal" style="max-width:400px">
+        <button class="modal-close" onclick="closeLogModal()">&times;</button>
+        <h2 class="modal-title">Log Activity</h2>
+        <form id="logForm" onsubmit="return submitLog(event)">
+            <div class="form-group">
+                <label class="form-label">Type *</label>
+                <select class="form-input form-select" id="logAction">
+                    <option value="Call">Call</option>
+                    <option value="Email">Email</option>
+                    <option value="Meeting">Meeting</option>
+                    <option value="SMS">SMS</option>
+                    <option value="Other">Other</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Prospect *</label>
+                <input type="text" class="form-input" id="logProspect" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Outcome</label>
+                <input type="text" class="form-input" id="logOutcome" placeholder="e.g. Left voicemail, Booked meeting">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Next Step</label>
+                <input type="text" class="form-input" id="logNextStep" placeholder="e.g. Call back Friday">
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+                <button type="button" class="btn btn-secondary" onclick="closeLogModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Log Activity</button>
+            </div>
+        </form>
+    </div>
+</div>
