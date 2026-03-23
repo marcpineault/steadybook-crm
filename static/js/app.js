@@ -21,6 +21,17 @@ function showToast(message, type = 'info') {
     setTimeout(() => { toast.className = 'toast'; }, 3000);
 }
 
+function setLoading(btn, loading) {
+    if (!btn) return;
+    if (loading) {
+        btn.classList.add('loading');
+        btn.disabled = true;
+    } else {
+        btn.classList.remove('loading');
+        btn.disabled = false;
+    }
+}
+
 // ── Prospect Modal ──
 let _currentProspect = null;
 
@@ -241,6 +252,8 @@ function saveProspect(event) {
         notes: document.getElementById('pNotes').value,
     };
 
+    const submitBtn = document.querySelector('#prospectForm button[type="submit"]');
+    setLoading(submitBtn, true);
     if (original) {
         // Update
         fetch('/api/prospect/' + encodeURIComponent(original), {
@@ -250,7 +263,7 @@ function saveProspect(event) {
             showToast('Prospect updated', 'success');
             closeProspectModal();
             location.reload();
-        }).catch(e => showToast('Error saving', 'error'));
+        }).catch(e => { setLoading(submitBtn, false); showToast('Error saving', 'error'); });
     } else {
         // Create
         fetch('/api/prospect', {
@@ -260,7 +273,7 @@ function saveProspect(event) {
             showToast('Prospect added', 'success');
             closeProspectModal();
             location.reload();
-        }).catch(e => showToast('Error saving', 'error'));
+        }).catch(e => { setLoading(submitBtn, false); showToast('Error saving', 'error'); });
     }
     return false;
 }
@@ -318,37 +331,97 @@ function doMerge() {
     });
 }
 
+// ── Dropdown menus ──
+function closeAllDropdowns() {
+    document.querySelectorAll('.dropdown-menu.active').forEach(m => {
+        if (m.parentElement === document.body) m.remove();
+        else m.classList.remove('active');
+    });
+}
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.dropdown-menu') && !e.target.closest('[data-dropdown]')) {
+        closeAllDropdowns();
+    }
+});
+
 // ── Quick stage/priority change ──
 function changeStage(event, prospectName) {
     event.stopPropagation();
+    closeAllDropdowns();
     const stages = ['New Lead','Contacted','Discovery Call','Needs Analysis','Plan Presentation','Proposal Sent','Negotiation','Nurture','Closed-Won','Closed-Lost'];
-    const sel = prompt('New stage for ' + prospectName + ':\n\n' + stages.map((s,i) => (i+1)+'. '+s).join('\n') + '\n\nEnter number:');
-    if (!sel) return;
-    const idx = parseInt(sel) - 1;
-    if (idx < 0 || idx >= stages.length) return;
-    fetch('/api/prospect/update', {
-        method: 'PUT', headers: _headers(),
-        body: JSON.stringify({ name: prospectName, updates: { stage: stages[idx] } })
-    }).then(r => r.json()).then(res => {
-        showToast('Stage updated', 'success');
-        location.reload();
+    const stageColors = {'New Lead':'#3498DB','Contacted':'#9B59B6','Discovery Call':'#E67E22','Needs Analysis':'#F39C12','Plan Presentation':'#1ABC9C','Proposal Sent':'#2ECC71','Negotiation':'#E74C3C','Nurture':'#95A5A6','Closed-Won':'#27AE60','Closed-Lost':'#7F8C8D'};
+    const menu = document.createElement('div');
+    menu.className = 'dropdown-menu active';
+    menu.style.position = 'fixed';
+    menu.style.left = event.clientX + 'px';
+    menu.style.top = event.clientY + 'px';
+    menu.style.zIndex = '9999';
+    stages.forEach(s => {
+        const item = document.createElement('button');
+        item.className = 'dropdown-item';
+        const dot = document.createElement('span');
+        dot.className = 'dot';
+        dot.style.background = stageColors[s] || '#94a3b8';
+        item.appendChild(dot);
+        item.appendChild(document.createTextNode(s));
+        item.addEventListener('click', function() {
+            menu.remove();
+            const btn = event.target.closest('.btn, .badge, button');
+            if (btn) { btn.classList.add('loading'); btn.disabled = true; }
+            fetch('/api/prospect/update', {
+                method: 'PUT', headers: _headers(),
+                body: JSON.stringify({ name: prospectName, updates: { stage: s } })
+            }).then(r => r.json()).then(res => {
+                showToast(prospectName + ' → ' + s, 'success');
+                location.reload();
+            }).catch(() => { if (btn) { btn.classList.remove('loading'); btn.disabled = false; } showToast('Error updating stage', 'error'); });
+        });
+        menu.appendChild(item);
+    });
+    document.body.appendChild(menu);
+    // Position adjustment
+    requestAnimationFrame(() => {
+        const rect = menu.getBoundingClientRect();
+        if (rect.bottom > window.innerHeight) menu.style.top = (window.innerHeight - rect.height - 8) + 'px';
+        if (rect.right > window.innerWidth) menu.style.left = (window.innerWidth - rect.width - 8) + 'px';
     });
 }
 
 function changePriority(event, prospectName) {
     event.stopPropagation();
-    const pris = ['Hot', 'Warm', 'Cold'];
-    const sel = prompt('Priority for ' + prospectName + ':\n1. Hot\n2. Warm\n3. Cold\n\nEnter number:');
-    if (!sel) return;
-    const idx = parseInt(sel) - 1;
-    if (idx < 0 || idx >= pris.length) return;
-    fetch('/api/prospect/update', {
-        method: 'PUT', headers: _headers(),
-        body: JSON.stringify({ name: prospectName, updates: { priority: pris[idx] } })
-    }).then(r => r.json()).then(res => {
-        showToast('Priority updated', 'success');
-        location.reload();
+    closeAllDropdowns();
+    const pris = [
+        { name: 'Hot', color: '#dc2626' },
+        { name: 'Warm', color: '#f59e0b' },
+        { name: 'Cold', color: '#3498db' }
+    ];
+    const menu = document.createElement('div');
+    menu.className = 'dropdown-menu active';
+    menu.style.position = 'fixed';
+    menu.style.left = event.clientX + 'px';
+    menu.style.top = event.clientY + 'px';
+    menu.style.zIndex = '9999';
+    pris.forEach(p => {
+        const item = document.createElement('button');
+        item.className = 'dropdown-item';
+        const dot = document.createElement('span');
+        dot.className = 'dot';
+        dot.style.background = p.color;
+        item.appendChild(dot);
+        item.appendChild(document.createTextNode(p.name));
+        item.addEventListener('click', function() {
+            menu.remove();
+            fetch('/api/prospect/update', {
+                method: 'PUT', headers: _headers(),
+                body: JSON.stringify({ name: prospectName, updates: { priority: p.name } })
+            }).then(r => r.json()).then(res => {
+                showToast('Priority updated', 'success');
+                location.reload();
+            }).catch(() => showToast('Error updating priority', 'error'));
+        });
+        menu.appendChild(item);
     });
+    document.body.appendChild(menu);
 }
 
 function quickReschedule(name, days) {
@@ -504,20 +577,71 @@ function onCardClick(e, prospectName) {
 }
 
 // ── Pipeline search/filter ──
+let _filterTimeout = null;
 function filterProspects(query) {
-    const q = query.toLowerCase();
-    // Filter kanban cards
-    document.querySelectorAll('.kanban-card').forEach(card => {
-        const name = card.querySelector('.kanban-card-name')?.textContent?.toLowerCase() || '';
-        const product = card.querySelector('.kanban-card-product')?.textContent?.toLowerCase() || '';
-        card.style.display = (name.includes(q) || product.includes(q) || !q) ? '' : 'none';
-    });
-    // Filter table rows
-    document.querySelectorAll('.pipeline-table tbody tr').forEach(row => {
-        const text = row.textContent.toLowerCase();
-        row.style.display = text.includes(q) || !q ? '' : 'none';
-    });
+    clearTimeout(_filterTimeout);
+    _filterTimeout = setTimeout(() => {
+        const q = query.toLowerCase();
+        document.querySelectorAll('.kanban-card').forEach(card => {
+            const text = card.textContent.toLowerCase();
+            card.style.display = text.includes(q) || !q ? '' : 'none';
+        });
+        document.querySelectorAll('.pipeline-table tbody tr').forEach(row => {
+            const text = row.textContent.toLowerCase();
+            row.style.display = text.includes(q) || !q ? '' : 'none';
+        });
+        // Update column counts
+        document.querySelectorAll('.kanban-col').forEach(col => {
+            const visible = col.querySelectorAll('.kanban-card:not([style*="display: none"])').length;
+            const countEl = col.querySelector('.kanban-col-count');
+            if (countEl) countEl.textContent = visible;
+        });
+    }, 150);
 }
+
+// ── Sortable Tables ──
+function sortTable(table, colIndex, type) {
+    const tbody = table.querySelector('tbody');
+    if (!tbody) return;
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    const th = table.querySelectorAll('th')[colIndex];
+    const isAsc = th.classList.contains('sort-asc');
+
+    // Clear all sort indicators
+    table.querySelectorAll('th').forEach(h => h.classList.remove('sort-asc', 'sort-desc'));
+    th.classList.add(isAsc ? 'sort-desc' : 'sort-asc');
+
+    rows.sort((a, b) => {
+        let aVal = a.cells[colIndex]?.textContent?.trim() || '';
+        let bVal = b.cells[colIndex]?.textContent?.trim() || '';
+        if (type === 'money') {
+            aVal = parseFloat(aVal.replace(/[$,K]/g, '').replace('M', '000000')) || 0;
+            bVal = parseFloat(bVal.replace(/[$,K]/g, '').replace('M', '000000')) || 0;
+        } else if (type === 'number') {
+            aVal = parseFloat(aVal) || 0;
+            bVal = parseFloat(bVal) || 0;
+        } else {
+            aVal = aVal.toLowerCase();
+            bVal = bVal.toLowerCase();
+        }
+        if (aVal < bVal) return isAsc ? 1 : -1;
+        if (aVal > bVal) return isAsc ? -1 : 1;
+        return 0;
+    });
+    rows.forEach(r => tbody.appendChild(r));
+}
+
+// Initialize sortable tables on page load
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('th.sortable').forEach(th => {
+        th.addEventListener('click', function() {
+            const table = th.closest('table');
+            const idx = Array.from(th.parentElement.children).indexOf(th);
+            const type = th.dataset.sortType || 'text';
+            sortTable(table, idx, type);
+        });
+    });
+});
 
 // ── Pipeline view toggle ──
 function togglePipelineView(view) {

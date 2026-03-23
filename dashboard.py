@@ -890,9 +890,11 @@ def dashboard():
             "title": f"Call {p['name']}",
             "detail": f"{p.get('product', '')} · {p.get('stage', '')} · {days_late} day{'s' if days_late != 1 else ''} overdue",
             "urgency": "overdue" if days_late > 0 else "today",
+            "prospect_name": p["name"],
+            "action_type": "prospect",
             "buttons": [
-                {"label": "Call", "primary": True, "onclick": f"openLogModal('Call','{p['name']}')"},
-                {"label": "SMS", "primary": False, "onclick": f"openLogModal('SMS','{p['name']}')"},
+                {"label": "Call", "primary": True, "action": "call"},
+                {"label": "SMS", "primary": False, "action": "sms"},
             ],
         })
 
@@ -902,8 +904,10 @@ def dashboard():
             "title": t["title"],
             "detail": (t.get("prospect", "") + " · " if t.get("prospect") else "") + "Due today",
             "urgency": "today",
+            "action_type": "task",
+            "task_id": t["id"],
             "buttons": [
-                {"label": "View", "primary": False, "onclick": f"openTaskModal({t['id']},'{t['title']}','{t.get('prospect','')}','{t.get('due_date','')}','','')"},
+                {"label": "View", "primary": False, "action": "view"},
             ],
         })
 
@@ -917,8 +921,10 @@ def dashboard():
             "title": t["title"],
             "detail": (t.get("prospect", "") + " · " if t.get("prospect") else "") + f"{days_late}d overdue",
             "urgency": "overdue",
+            "action_type": "task",
+            "task_id": t["id"],
             "buttons": [
-                {"label": "View", "primary": False, "onclick": f"openTaskModal({t['id']},'{t['title']}','{t.get('prospect','')}','{t.get('due_date','')}','','')"},
+                {"label": "View", "primary": False, "action": "view"},
             ],
         })
 

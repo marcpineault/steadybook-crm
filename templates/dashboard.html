@@ -59,10 +59,15 @@
                 <div class="action-detail">{{ action.detail }}</div>
             </div>
             <div class="action-buttons">
-                {% for btn in action.buttons %}
-                <button class="btn {{ 'btn-primary' if btn.primary else 'btn-secondary' }} btn-sm"
-                        onclick="{{ btn.onclick }}">{{ btn.label }}</button>
-                {% endfor %}
+                {% if action.action_type == 'prospect' %}
+                    {% for btn in action.buttons %}
+                    <button class="btn {{ 'btn-primary' if btn.primary else 'btn-secondary' }} btn-sm"
+                            onclick="openLogModal('{{ btn.action|title }}', {{ action.prospect_name|tojson }})">{{ btn.label }}</button>
+                    {% endfor %}
+                {% elif action.action_type == 'task' %}
+                    <button class="btn btn-secondary btn-sm"
+                            onclick="openTaskModal({{ action.task_id }})">View</button>
+                {% endif %}
             </div>
         </div>
         {% endfor %}
@@ -119,7 +124,7 @@
     </div>
     <div class="rec-grid">
         {% for rec in ai_recs %}
-        <div class="rec-card {{ rec.level }}" {% if rec.prospect %}onclick="openProspectDetail('{{ rec.prospect }}')" style="cursor:pointer"{% endif %}>
+        <div class="rec-card {{ rec.level }}" {% if rec.prospect %}onclick="openProspectDetail({{ rec.prospect|tojson }})" style="cursor:pointer"{% endif %}>
             <div class="rec-text">{{ rec.text }}</div>
         </div>
         {% endfor %}
