@@ -38,7 +38,8 @@ templates/
   forecast.html               → Revenue forecast page
   clients.html                → Clients page
   chat.html                   → AI chat page
-  login.html                  → Login page
+  login.html                  → Login page (standalone, no base.html)
+  intake.html                 → Public lead intake form (standalone, no base.html)
   partials/
     sidebar.html              → Sidebar navigation (included in base.html)
     kpi_card.html             → Reusable KPI card component
@@ -136,7 +137,8 @@ Visual deal management.
 **Header Bar:** Page title + deal count + AUM summary. Search input. Kanban/Table toggle. "+ Add" button.
 
 **Kanban View (default):**
-- Horizontal scrolling board with columns: New Lead, Discovery Call, Needs Analysis, Proposal Sent, Negotiation
+- Horizontal scrolling board with columns for active stages: New Lead, Contacted, Discovery Call, Needs Analysis, Plan Presentation, Proposal Sent, Negotiation, Nurture
+- Closed-Won and Closed-Lost are NOT shown as kanban columns — Closed-Won deals appear on the Clients page, Closed-Lost are archived
 - Column headers show stage name with colored dot + count
 - Cards show: name, product, urgency alert (red text if overdue, blue if meeting), priority badge, AUM/premium, last touch time
 - Left border colored by priority (red=Hot, amber=Warm, grey=Cold)
@@ -253,7 +255,13 @@ GET    /api/conversations/<phone>  — Get thread
 POST   /api/conversations/<phone>/send — Send SMS
 POST   /api/chat                  — AI chat message
 GET    /health                    — Health check
+GET    /login                     — Login page
+POST   /login                     — Authenticate
+GET    /logout                    — Clear session
+GET/POST /intake/event            — Public lead intake form (standalone page, own template)
 ```
+
+**Note:** `/intake/event` is a public-facing form with its own CSRF protection. It gets its own template (`templates/intake.html`) that does NOT extend `base.html` (no sidebar, no auth required). `/login` also gets its own standalone template.
 
 ## Migration Strategy
 
