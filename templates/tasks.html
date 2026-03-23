@@ -27,7 +27,7 @@
                 <td class="name-cell" onclick="openTaskModal({{ t.id }},'{{ t.title|e }}','{{ t.prospect|e }}','{{ t.due_date }}','{{ (t.remind_at or '')|replace(' ','T') }}','{{ (t.notes or '')|e }}')">
                     {{ t.title }}{% if t.remind_at %} <span style="color:var(--warning)">&#9200;</span>{% endif %}
                 </td>
-                <td>{% if t.prospect %}<a href="javascript:void(0)" onclick="event.stopPropagation();openProspectDetail('{{ t.prospect|e }}')" style="color:var(--primary);text-decoration:none">{{ t.prospect }}</a>{% endif %}</td>
+                <td>{% if t.prospect %}<a href="javascript:void(0)" data-prospect="{{ t.prospect|e }}" onclick="event.stopPropagation();openProspectDetail(this.dataset.prospect)" style="color:var(--primary);text-decoration:none">{{ t.prospect }}</a>{% endif %}</td>
                 <td>{{ t.due_date }} <span class="text-danger">({{ t.days_late }}d late)</span></td>
                 <td style="text-align:center"><button onclick="deleteTask({{ t.id }})" class="btn btn-sm" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:14px">&times;</button></td>
             </tr>
@@ -49,7 +49,7 @@
                 <td class="name-cell" onclick="openTaskModal({{ t.id }},'{{ t.title|e }}','{{ t.prospect|e }}','{{ t.due_date }}','{{ (t.remind_at or '')|replace(' ','T') }}','{{ (t.notes or '')|e }}')">
                     {{ t.title }}{% if t.remind_at %} <span style="color:var(--warning)">&#9200;</span>{% endif %}
                 </td>
-                <td>{% if t.prospect %}<a href="javascript:void(0)" onclick="event.stopPropagation();openProspectDetail('{{ t.prospect|e }}')" style="color:var(--primary);text-decoration:none">{{ t.prospect }}</a>{% endif %}</td>
+                <td>{% if t.prospect %}<a href="javascript:void(0)" data-prospect="{{ t.prospect|e }}" onclick="event.stopPropagation();openProspectDetail(this.dataset.prospect)" style="color:var(--primary);text-decoration:none">{{ t.prospect }}</a>{% endif %}</td>
                 <td style="text-align:center"><button onclick="deleteTask({{ t.id }})" class="btn btn-sm" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:14px">&times;</button></td>
             </tr>
             {% endfor %}
@@ -70,7 +70,7 @@
                 <td class="name-cell" onclick="openTaskModal({{ t.id }},'{{ t.title|e }}','{{ t.prospect|e }}','{{ t.due_date or '' }}','{{ (t.remind_at or '')|replace(' ','T') }}','{{ (t.notes or '')|e }}')">
                     {{ t.title }}{% if t.remind_at %} <span style="color:var(--warning)">&#9200;</span>{% endif %}
                 </td>
-                <td>{% if t.prospect %}<a href="javascript:void(0)" onclick="event.stopPropagation();openProspectDetail('{{ t.prospect|e }}')" style="color:var(--primary);text-decoration:none">{{ t.prospect }}</a>{% endif %}</td>
+                <td>{% if t.prospect %}<a href="javascript:void(0)" data-prospect="{{ t.prospect|e }}" onclick="event.stopPropagation();openProspectDetail(this.dataset.prospect)" style="color:var(--primary);text-decoration:none">{{ t.prospect }}</a>{% endif %}</td>
                 <td>{{ t.due_date or 'No date' }}</td>
                 <td style="text-align:center"><button onclick="deleteTask({{ t.id }})" class="btn btn-sm" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:14px">&times;</button></td>
             </tr>

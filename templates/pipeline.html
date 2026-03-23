@@ -33,7 +33,7 @@
         {% for stage, prospects_in_stage in kanban_cols %}
         <div class="kanban-col" data-stage="{{ stage }}"
              ondragover="onDragOver(event)" ondragleave="onDragLeave(event)"
-             ondrop="onDrop(event, {{ stage|tojson }})">
+             ondrop="onDrop(event, this.dataset.stage)">
             <div class="kanban-col-header">
                 <div class="kanban-col-dot" style="background:{{ stage_colors[stage][0] if stage in stage_colors else '#94a3b8' }}"></div>
                 <div class="kanban-col-title">{{ stage }}</div>
@@ -46,10 +46,7 @@
                 {% for p in prospects_in_stage %}
                 {% set pri_color = priority_colors.get(p.priority, '#94a3b8') %}
                 <div class="kanban-card" draggable="true"
-                     data-name="{{ p.name }}" data-priority="{{ p.priority|lower }}"
-                     ondragstart="onDragStart(event, {{ p.name|tojson }})"
-                     ondragend="onDragEnd(event)"
-                     onclick="onCardClick(event, {{ p.name|tojson }})"
+                     data-name="{{ p.name|e }}" data-priority="{{ p.priority|lower }}"
                      style="border-left-color:{{ pri_color }}">
                     <div class="kanban-card-name">{{ p.name }}</div>
                     <div class="kanban-card-product">{{ p.product or '' }}</div>
@@ -98,8 +95,8 @@
                 </thead>
                 <tbody>
                     {% for p in active_prospects %}
-                    <tr data-name="{{ p.name }}" data-priority="{{ p.priority|lower }}"
-                        onclick="openProspectDetail({{ p.name|tojson }})" style="cursor:pointer">
+                    <tr data-name="{{ p.name|e }}" data-priority="{{ p.priority|lower }}"
+                        style="cursor:pointer">
                         <td class="name-cell">{{ p.name }}</td>
                         <td style="text-align:center">
                             {% set hcolor = 'var(--success)' if p.health >= 70 else 'var(--warning)' if p.health >= 40 else 'var(--danger)' %}
@@ -107,12 +104,12 @@
                         </td>
                         <td>
                             <span class="badge badge-{{ p.priority|lower }}" style="cursor:pointer"
-                                  onclick="event.stopPropagation();changePriority(event, {{ p.name|tojson }})"
+                                  data-action="changePriority" data-prospect="{{ p.name|e }}"
                                   title="Click to change">{{ p.priority }}</span>
                         </td>
                         <td>
                             <span class="badge badge-info" style="cursor:pointer"
-                                  onclick="event.stopPropagation();changeStage(event, {{ p.name|tojson }})"
+                                  data-action="changeStage" data-prospect="{{ p.name|e }}"
                                   title="Click to change">{{ p.stage }}</span>
                         </td>
                         <td>{{ p.product or '' }}</td>
@@ -125,8 +122,8 @@
                         </td>
                         <td style="text-align:center;white-space:nowrap" onclick="event.stopPropagation()">
                             <div class="quick-actions">
-                                <button class="btn btn-sm btn-secondary" onclick="openLogModal('Call', {{ p.name|tojson }})" title="Log Call">&#128222;</button>
-                                <button class="btn btn-sm btn-secondary" onclick="openLogModal('Email', {{ p.name|tojson }})" title="Log Email">&#9993;</button>
+                                <button class="btn btn-sm btn-secondary" data-action="logCall" data-prospect="{{ p.name|e }}" title="Log Call">&#128222;</button>
+                                <button class="btn btn-sm btn-secondary" data-action="logEmail" data-prospect="{{ p.name|e }}" title="Log Email">&#9993;</button>
                             </div>
                         </td>
                     </tr>
@@ -159,5 +156,43 @@ function filterByPriority(chip, priority) {
         if (countEl) countEl.textContent = visible;
     });
 }
+
+// Delegated event handlers for pipeline page
+document.addEventListener('click', function(e) {
+    // Kanban card click → open prospect detail
+    const card = e.target.closest('.kanban-card');
+    if (card && !e.target.closest('[data-action]') && !e.defaultPrevented) {
+        openProspectDetail(card.dataset.name);
+        return;
+    }
+
+    // Table row click → open prospect detail
+    const row = e.target.closest('.pipeline-table tbody tr');
+    if (row && !e.target.closest('[data-action]') && !e.target.closest('.quick-actions') && !e.target.closest('button')) {
+        openProspectDetail(row.dataset.name);
+        return;
+    }
+
+    // Data-action buttons
+    const actionEl = e.target.closest('[data-action]');
+    if (actionEl) {
+        e.stopPropagation();
+        const action = actionEl.dataset.action;
+        const prospect = actionEl.dataset.prospect;
+        if (action === 'changeStage') changeStage(e, prospect);
+        else if (action === 'changePriority') changePriority(e, prospect);
+        else if (action === 'logCall') openLogModal('Call', prospect);
+        else if (action === 'logEmail') openLogModal('Email', prospect);
+    }
+});
+
+// Kanban drag events via delegation
+document.addEventListener('dragstart', function(e) {
+    const card = e.target.closest('.kanban-card');
+    if (card) onDragStart(e, card.dataset.name);
+});
+document.addEventListener('dragend', function(e) {
+    if (e.target.closest('.kanban-card')) onDragEnd(e);
+});
 </script>
 {% endblock %}

@@ -71,27 +71,27 @@
                         Actions &#9662;
                     </button>
                     <div class="dropdown-menu right">
-                        <button class="dropdown-item" onclick="openLogModal('Call', {{ action.prospect_name|tojson }});closeAllDropdowns()">
+                        <button class="dropdown-item" onclick="openLogModal('Call', {{ action.prospect_name|tojson|forceescape }});closeAllDropdowns()">
                             &#128222; Log Call
                         </button>
-                        <button class="dropdown-item" onclick="openLogModal('SMS', {{ action.prospect_name|tojson }});closeAllDropdowns()">
+                        <button class="dropdown-item" onclick="openLogModal('SMS', {{ action.prospect_name|tojson|forceescape }});closeAllDropdowns()">
                             &#128172; Send SMS
                         </button>
-                        <button class="dropdown-item" onclick="openLogModal('Email', {{ action.prospect_name|tojson }});closeAllDropdowns()">
+                        <button class="dropdown-item" onclick="openLogModal('Email', {{ action.prospect_name|tojson|forceescape }});closeAllDropdowns()">
                             &#9993; Send Email
                         </button>
                         <div class="dropdown-divider"></div>
-                        <button class="dropdown-item" onclick="quickReschedule({{ action.prospect_name|tojson }}, 0);closeAllDropdowns()">
+                        <button class="dropdown-item" onclick="quickReschedule({{ action.prospect_name|tojson|forceescape }}, 0);closeAllDropdowns()">
                             &#128197; Reschedule Today
                         </button>
-                        <button class="dropdown-item" onclick="quickReschedule({{ action.prospect_name|tojson }}, 1);closeAllDropdowns()">
+                        <button class="dropdown-item" onclick="quickReschedule({{ action.prospect_name|tojson|forceescape }}, 1);closeAllDropdowns()">
                             &#128197; Reschedule Tomorrow
                         </button>
-                        <button class="dropdown-item" onclick="quickReschedule({{ action.prospect_name|tojson }}, 7);closeAllDropdowns()">
+                        <button class="dropdown-item" onclick="quickReschedule({{ action.prospect_name|tojson|forceescape }}, 7);closeAllDropdowns()">
                             &#128197; Reschedule +1 Week
                         </button>
                         <div class="dropdown-divider"></div>
-                        <button class="dropdown-item" onclick="openProspectDetail({{ action.prospect_name|tojson }});closeAllDropdowns()">
+                        <button class="dropdown-item" onclick="openProspectDetail({{ action.prospect_name|tojson|forceescape }});closeAllDropdowns()">
                             &#128100; View Prospect
                         </button>
                     </div>
@@ -152,13 +152,13 @@
                             onclick="event.stopPropagation();toggleActionMenu(this)"
                             style="padding:2px 8px;font-size:10px">&#8943;</button>
                     <div class="dropdown-menu right">
-                        <button class="dropdown-item" onclick="openProspectDetail({{ a.prospect|tojson }});closeAllDropdowns()">
+                        <button class="dropdown-item" onclick="openProspectDetail({{ a.prospect|tojson|forceescape }});closeAllDropdowns()">
                             &#128100; View {{ a.prospect }}
                         </button>
-                        <button class="dropdown-item" onclick="openLogModal('Call', {{ a.prospect|tojson }});closeAllDropdowns()">
+                        <button class="dropdown-item" onclick="openLogModal('Call', {{ a.prospect|tojson|forceescape }});closeAllDropdowns()">
                             &#128222; Log Call
                         </button>
-                        <button class="dropdown-item" onclick="openLogModal('Email', {{ a.prospect|tojson }});closeAllDropdowns()">
+                        <button class="dropdown-item" onclick="openLogModal('Email', {{ a.prospect|tojson|forceescape }});closeAllDropdowns()">
                             &#9993; Send Email
                         </button>
                     </div>
@@ -183,7 +183,7 @@
     </div>
     <div class="rec-grid">
         {% for rec in ai_recs %}
-        <div class="rec-card {{ rec.level }}" {% if rec.prospect %}onclick="openProspectDetail({{ rec.prospect|tojson }})" style="cursor:pointer"{% endif %}>
+        <div class="rec-card {{ rec.level }}" {% if rec.prospect %}onclick="openProspectDetail({{ rec.prospect|tojson|forceescape }})" style="cursor:pointer"{% endif %}>
             <div class="rec-text">{{ rec.text }}</div>
         </div>
         {% endfor %}
@@ -219,7 +219,7 @@
                     style="padding:4px 8px;font-size:10px">&#8943;</button>
             <div class="dropdown-menu right">
                 {% if d.prospect_id %}
-                <button class="dropdown-item" onclick="openProspectDetail({{ d.prospect_name|default('')|tojson }});closeAllDropdowns()">
+                <button class="dropdown-item" onclick="openProspectDetail({{ d.prospect_name|default('')|tojson|forceescape }});closeAllDropdowns()">
                     &#128100; View Prospect
                 </button>
                 {% endif %}

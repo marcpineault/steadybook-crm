@@ -56,7 +56,7 @@
             </thead>
             <tbody>
                 {% for p in won_prospects %}
-                <tr onclick="openProspectDetail('{{ p.name|e }}')" style="cursor:pointer">
+                <tr data-name="{{ p.name|e }}" onclick="openProspectDetail(this.dataset.name)" style="cursor:pointer">
                     <td class="name-cell">{{ p.name }}</td>
                     <td>{{ p.phone or '' }}</td>
                     <td>{{ p.email or '' }}</td>
