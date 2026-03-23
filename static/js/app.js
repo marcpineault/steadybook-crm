@@ -165,14 +165,8 @@ function populateProspectView(data) {
         });
     }
 
-    // Legacy notes (old single blob from prospect.notes field)
-    const legacyDiv = document.getElementById('prospectViewLegacyNotes');
-    if (p.notes && p.notes.trim()) {
-        legacyDiv.style.display = '';
-        legacyDiv.textContent = p.notes;
-    } else {
-        legacyDiv.style.display = 'none';
-    }
+    // Legacy notes — migrate old blob to timeline if present but no timeline notes exist
+    // (just display as context, don't clutter the UI)
 
     // Clear the add note input
     const noteInput = document.getElementById('newNoteInput');
@@ -268,11 +262,11 @@ function populateProspectForm(p) {
     document.getElementById('pRevenue').value = p.revenue || '';
     document.getElementById('pSource').value = p.source || '';
     document.getElementById('pFollowup').value = (p.next_followup || '').split(' ')[0];
-    document.getElementById('pNotes').value = p.notes || '';
+    // pNotes removed — notes timeline is the single source of truth
 }
 
 function clearProspectForm() {
-    ['pName','pPhone','pEmail','pProduct','pAum','pRevenue','pSource','pFollowup','pNotes'].forEach(id => {
+    ['pName','pPhone','pEmail','pProduct','pAum','pRevenue','pSource','pFollowup'].forEach(id => {
         document.getElementById(id).value = '';
     });
     document.getElementById('pStage').value = 'New Lead';
@@ -301,7 +295,7 @@ function saveProspect(event) {
         revenue: document.getElementById('pRevenue').value,
         source: document.getElementById('pSource').value,
         next_followup: document.getElementById('pFollowup').value,
-        notes: document.getElementById('pNotes').value,
+        // notes field removed — use notes timeline instead
     };
 
     const submitBtn = document.querySelector('#prospectForm button[type="submit"]');
