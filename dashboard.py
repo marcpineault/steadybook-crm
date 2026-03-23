@@ -135,7 +135,7 @@ def _set_security_headers(response):
         "connect-src 'self'; "
         "frame-ancestors 'none'"
     )
-    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(self), geolocation=()"
     return response
 
 STAGE_COLORS = {
