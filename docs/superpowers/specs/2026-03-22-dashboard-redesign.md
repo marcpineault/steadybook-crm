@@ -44,7 +44,7 @@ templates/
     sidebar.html              → Sidebar navigation (included in base.html)
     kpi_card.html             → Reusable KPI card component
     prospect_card.html        → Kanban card component
-    modal_prospect.html       → Prospect edit/detail modal
+    modal_prospect.html       → Prospect view/edit/add modal
     modal_task.html           → Task create/edit modal
     modal_log.html            → Activity log modal
 static/
@@ -213,18 +213,12 @@ The floating chat bubble, promoted to a full page.
 
 ## Modals (Shared Across Pages)
 
-### Prospect Detail Modal
-- Triggered by clicking any prospect name/card
-- Shows: all prospect fields, editable inline
-- Activity timeline
-- Memory/notes section
-- Quick actions: Call, SMS, Email, Reschedule
-- Merge section (collapsible)
-
-### Prospect Edit Modal
-- Add new or edit existing prospect
-- Fields: Name, Phone, Email, Product, Stage, Priority, AUM, Revenue, Notes
-- Source dropdown
+### Prospect Modal (View + Edit)
+- Triggered by clicking any prospect name/card, or "+ Add Prospect" button
+- **View mode:** Shows all prospect fields, activity timeline, memory/notes, quick actions (Call, SMS, Email, Reschedule), merge section (collapsible)
+- **Edit mode:** Toggle to edit fields inline — Name, Phone, Email, Product, Stage, Priority, AUM, Revenue, Notes, Source
+- **Add mode:** Same form fields, empty, triggered by "+ Add Prospect"
+- Single modal component with mode switching, not two separate modals
 
 ### Task Modal
 - Add new or edit task
