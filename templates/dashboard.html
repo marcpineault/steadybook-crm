@@ -191,6 +191,47 @@
     </div>
 </div>
 
+<!-- Active SMS Agent Missions -->
+{% if active_missions %}
+<div class="card" style="border-top:3px solid var(--primary)">
+    <div class="card-title" style="color:var(--primary)">SMS Agent Missions ({{ active_missions|length }})</div>
+    {% for m in active_missions %}
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;margin-bottom:6px;border:1px solid var(--border);border-radius:6px;background:var(--bg-subtle)">
+        {% if m.status == 'active' %}
+        <span class="badge badge-success">Active</span>
+        {% elif m.status == 'pending_approval' %}
+        <span class="badge" style="background:#fef3c7;color:#92400e">Pending</span>
+        {% endif %}
+        <div style="flex:1;min-width:0">
+            <div style="font-size:12px;font-weight:500;color:var(--text-primary)">{{ m.prospect_name }}</div>
+            <div style="font-size:10px;color:var(--text-muted)">{{ m.objective[:80] }}{% if m.objective|length > 80 %}...{% endif %}</div>
+        </div>
+        <div style="font-size:10px;color:var(--text-muted)">{{ m.attempts }} msg{{ 's' if m.attempts != 1 else '' }}</div>
+        <a href="/conversations" class="btn btn-sm btn-secondary" style="text-decoration:none;font-size:10px">View Thread</a>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- Cross-sell Opportunities -->
+{% if cross_sell_ops %}
+<div class="card">
+    <div class="card-title">Cross-sell Opportunities</div>
+    <div style="display:flex;flex-direction:column;gap:6px">
+        {% for cs in cross_sell_ops %}
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg-subtle);border-radius:6px;cursor:pointer"
+             data-name="{{ cs.name|e }}" onclick="openProspectDetail(this.dataset.name)">
+            <div style="flex:1;min-width:0">
+                <div style="font-size:12px;font-weight:500">{{ cs.name }}</div>
+                <div style="font-size:10px;color:var(--text-muted)">Has {{ cs.current_product }}</div>
+            </div>
+            <div style="font-size:10px;color:var(--primary)">Suggest: {{ cs.suggestions|join(', ') }}</div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
 <!-- Pending Drafts (approval queue) -->
 {% if pending_drafts %}
 <div class="card" style="border-top:3px solid #8b5cf6">

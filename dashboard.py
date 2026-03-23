@@ -297,6 +297,12 @@ def api_prospect_detail(name):
     health = _calc_health_score(prospect, _lam, _today)
     next_action = STAGE_NEXT_ACTION.get(prospect.get("stage", ""), "Keep following up")
     notes = db.get_prospect_notes(prospect["id"], limit=50)
+    # Memory engine intelligence
+    try:
+        import memory_engine
+        memory_summary = memory_engine.get_profile_summary_text(prospect["id"])
+    except Exception:
+        memory_summary = ""
     return jsonify({
         "prospect": prospect,
         "activities": prospect_activities[:20],
@@ -305,6 +311,7 @@ def api_prospect_detail(name):
         "notes": notes,
         "health_score": health,
         "next_action": next_action,
+        "memory_summary": memory_summary,
     })
 
 
@@ -428,6 +435,27 @@ def api_send_sms(phone):
     )
 
     return jsonify({"ok": True, "sid": sid})
+
+
+@app.route("/api/trust", methods=["GET"])
+@_require_auth
+def api_get_trust():
+    """Get current trust level."""
+    from bot import get_trust_level
+    return jsonify({"trust_level": get_trust_level()})
+
+
+@app.route("/api/trust", methods=["PUT"])
+@_require_auth
+def api_set_trust():
+    """Set trust level (1 or 2)."""
+    data = request.get_json(silent=True) or {}
+    level = data.get("level")
+    if level not in (1, 2, 3):
+        return jsonify({"error": "Level must be 1, 2, or 3"}), 400
+    from bot import set_trust_level
+    set_trust_level(level, "dashboard")
+    return jsonify({"ok": True, "trust_level": level})
 
 
 # ── Helper Functions ──
@@ -962,6 +990,30 @@ def dashboard():
     except Exception:
         pending_drafts = []
 
+    # Cross-sell opportunities for closed-won clients
+    cross_sell_ops = []
+    try:
+        from scoring import get_cross_sell_suggestions
+        for p in won[:10]:
+            suggestions = get_cross_sell_suggestions(p.get("product", ""))
+            if suggestions:
+                cross_sell_ops.append({
+                    "name": p["name"],
+                    "current_product": p.get("product", ""),
+                    "suggestions": suggestions[:2],
+                })
+    except Exception:
+        pass
+
+    # Active SMS agent missions
+    try:
+        with db.get_db() as conn:
+            active_missions = [dict(r) for r in conn.execute(
+                "SELECT * FROM sms_agents WHERE status IN ('active', 'pending_approval') ORDER BY updated_at DESC LIMIT 10"
+            ).fetchall()]
+    except Exception:
+        active_missions = []
+
     action_count = len(ranked_call_list) + len(urgent_tasks)
 
     ctx.update({
@@ -979,6 +1031,8 @@ def dashboard():
         "todays_meetings": todays_meetings,
         "recent_activities": recent_activities,
         "pending_drafts": pending_drafts,
+        "active_missions": active_missions,
+        "cross_sell_ops": cross_sell_ops[:5],
     })
 
     return render_template("dashboard.html", **ctx)

@@ -37,6 +37,21 @@
             AI Chat
         </a>
     </div>
+    <!-- Trust Toggle -->
+    <div style="padding:8px 12px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:10px;color:var(--text-secondary)">Review SMS</div>
+        <label style="position:relative;display:inline-block;width:36px;height:20px;cursor:pointer">
+            <input type="checkbox" id="trustToggle" onchange="toggleTrust(this)" style="opacity:0;width:0;height:0">
+            <span style="position:absolute;inset:0;background:var(--success);border-radius:10px;transition:0.2s"></span>
+            <span id="trustDot" style="position:absolute;top:2px;left:2px;width:16px;height:16px;background:#fff;border-radius:50%;transition:0.2s"></span>
+        </label>
+    </div>
+    <!-- Quick Actions -->
+    <div style="padding:8px;border-top:1px solid var(--border)">
+        <button onclick="navigator.clipboard.writeText('https://outlook.office.com/book/BookTimeWithMarcPineault@cooperators.onmicrosoft.com/?ismsaljsauthenabled').then(function(){showToast('Booking link copied!','success')})" class="btn btn-secondary btn-sm" style="width:100%;font-size:10px;padding:6px 8px" title="Copy booking link to clipboard">
+            &#128279; Copy Booking Link
+        </button>
+    </div>
     <div class="sidebar-user">
         <div class="sidebar-avatar">MP</div>
         <div>

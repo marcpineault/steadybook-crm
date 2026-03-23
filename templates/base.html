@@ -240,6 +240,48 @@
         item.addEventListener('click', closeMobileMenu);
     });
 
+    // Trust level toggle
+    function toggleTrust(checkbox) {
+        var level = checkbox.checked ? 1 : 2;
+        var dot = document.getElementById('trustDot');
+        var slider = checkbox.nextElementSibling;
+        if (level === 1) {
+            slider.style.background = 'var(--warning)';
+            dot.style.left = '2px';
+        } else {
+            slider.style.background = 'var(--success)';
+            dot.style.left = '18px';
+        }
+        fetch('/api/trust', {
+            method: 'PUT',
+            headers: { 'X-CSRF-Token': CSRF, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ level: level })
+        }).then(function(r) { return r.json(); }).then(function(res) {
+            showToast(level === 1 ? 'Review mode ON — all SMS needs approval' : 'Auto-send ON — routine SMS sent automatically', 'info');
+        });
+    }
+
+    // Load trust level on page load
+    (function() {
+        var toggle = document.getElementById('trustToggle');
+        if (!toggle) return;
+        fetch('/api/trust', { headers: { 'X-CSRF-Token': CSRF } })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var level = data.trust_level || 1;
+                toggle.checked = (level === 1);
+                var dot = document.getElementById('trustDot');
+                var slider = toggle.nextElementSibling;
+                if (level === 1) {
+                    slider.style.background = 'var(--warning)';
+                    dot.style.left = '2px';
+                } else {
+                    slider.style.background = 'var(--success)';
+                    dot.style.left = '18px';
+                }
+            }).catch(function() {});
+    })();
+
     // Voice input for AI chat (Web Speech API)
     var _voiceRecognition = null;
     var _isRecording = false;

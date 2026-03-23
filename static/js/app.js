@@ -165,8 +165,18 @@ function populateProspectView(data) {
         });
     }
 
-    // Legacy notes — migrate old blob to timeline if present but no timeline notes exist
-    // (just display as context, don't clutter the UI)
+    // Memory engine key facts
+    var memoryDiv = document.getElementById('prospectViewMemory');
+    var memoryContent = document.getElementById('prospectViewMemoryContent');
+    if (memoryDiv && memoryContent) {
+        var summary = data.memory_summary || '';
+        if (summary && summary.indexOf('No additional') === -1) {
+            memoryContent.textContent = summary;
+            memoryDiv.style.display = '';
+        } else {
+            memoryDiv.style.display = 'none';
+        }
+    }
 
     // Clear the add note input
     const noteInput = document.getElementById('newNoteInput');
