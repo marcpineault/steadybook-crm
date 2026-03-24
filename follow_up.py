@@ -17,6 +17,7 @@ import approval_queue
 import compliance
 import db
 import memory_engine
+from branding import build_advisor_intro, build_anti_injection_warning, get_prompt_context
 
 logger = logging.getLogger(__name__)
 
@@ -24,15 +25,20 @@ openai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
 
 FOLLOW_UP_NUDGE_HOURS = int(os.environ.get("FOLLOW_UP_NUDGE_HOURS", "4"))
 
-FOLLOW_UP_SYSTEM_PROMPT = """You are drafting a follow-up email for Marc Pineault, a financial advisor at Co-operators in London, Ontario.
+
+def get_follow_up_system_prompt(tenant_id=1):
+    ctx = get_prompt_context(tenant_id)
+    intro = build_advisor_intro(tenant_id)
+    first = ctx["advisor_first_name"]
+    return f"""You are drafting a follow-up email for {intro}.
 
 Write a casual, natural follow-up email based on the activity below. The email should:
-1. Reference specific details from the conversation (shows Marc was listening)
+1. Reference specific details from the conversation (shows {first} was listening)
 2. Confirm any next steps or commitments made
 3. Be concise (under 150 words)
-4. Sound like Marc texting a colleague -casual, direct, no corporate fluff
+4. Sound like {first} texting a colleague -casual, direct, no corporate fluff
 5. Include a clear next action or question to keep the conversation moving
-6. End with just "Marc" (no signature block, no full name)
+6. End with just "{first}" (no signature block, no full name)
 
 TONE RULES:
 - Use FIRST NAME ONLY in the greeting (e.g. "Hey John," not "Dear John Smith,")
@@ -74,12 +80,13 @@ def generate_follow_up_draft(prospect_name, activity_summary, activity_type="cal
         try:
             import analytics
             learning = analytics.get_learning_context()
+            base_prompt = get_follow_up_system_prompt()
             if learning:
-                system_prompt = FOLLOW_UP_SYSTEM_PROMPT + f"\n\nLEARNING FROM PAST PERFORMANCE:\n{learning}"
+                system_prompt = base_prompt + f"\n\nLEARNING FROM PAST PERFORMANCE:\n{learning}"
             else:
-                system_prompt = FOLLOW_UP_SYSTEM_PROMPT
+                system_prompt = base_prompt
         except Exception:
-            system_prompt = FOLLOW_UP_SYSTEM_PROMPT
+            system_prompt = get_follow_up_system_prompt()
 
         with RedactionContext(prospect_names=[prospect_name]) as pii_ctx:
             user_content = pii_ctx.redact(sanitize_for_prompt(

@@ -104,13 +104,13 @@ def normalize_phone(phone: str) -> str:
     return digits[-10:] if len(digits) >= 10 else digits
 
 
-def get_prospect_by_phone(phone: str):
+def get_prospect_by_phone(phone: str, tenant_id: int = 1):
     """Look up a prospect by phone number. Matches on last 10 digits. Returns dict or None."""
     last10 = normalize_phone(phone)
     if not last10:
         return None
     with get_db() as conn:
-        rows = conn.execute("SELECT * FROM prospects WHERE phone != ''").fetchall()
+        rows = conn.execute("SELECT * FROM prospects WHERE phone != '' AND tenant_id = ?", (tenant_id,)).fetchall()
     for row in rows:
         if normalize_phone(row["phone"]) == last10:
             return _row_to_dict(row)
@@ -659,14 +659,14 @@ def _migrate_phase6():
 
 # ── Prospects CRUD ──
 
-def read_pipeline():
+def read_pipeline(tenant_id: int = 1):
     """Return all prospects as a list of dicts."""
     with get_db() as conn:
-        rows = conn.execute("SELECT * FROM prospects ORDER BY id").fetchall()
+        rows = conn.execute("SELECT * FROM prospects WHERE tenant_id = ? ORDER BY id", (tenant_id,)).fetchall()
     return _rows_to_dicts(rows)
 
 
-def add_prospect(data: dict) -> str:
+def add_prospect(data: dict, tenant_id: int = 1) -> str:
     """Insert a new prospect. Returns status string."""
     name = data.get("name", "").strip()
     if not name:
@@ -681,8 +681,8 @@ def add_prospect(data: dict) -> str:
         conn.execute(
             """INSERT INTO prospects
                (name, phone, email, source, priority, stage, product,
-                aum, revenue, first_contact, next_followup, notes, send_channel)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                aum, revenue, first_contact, next_followup, notes, send_channel, tenant_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 name,
                 data.get("phone", ""),
@@ -697,6 +697,7 @@ def add_prospect(data: dict) -> str:
                 data.get("next_followup", ""),
                 data.get("notes", ""),
                 data.get("send_channel", "outlook"),
+                tenant_id,
             ),
         )
     return f"Added {name} to pipeline."
@@ -855,26 +856,26 @@ def merge_prospects(keep_name: str, merge_name: str) -> str:
     return f"Merged {merge_real} into {keep_real}."
 
 
-def get_all_prospect_names() -> list[str]:
+def get_all_prospect_names(tenant_id: int = 1) -> list[str]:
     """Return a list of all prospect names (for duplicate checking)."""
     with get_db() as conn:
-        rows = conn.execute("SELECT name FROM prospects ORDER BY name").fetchall()
+        rows = conn.execute("SELECT name FROM prospects WHERE tenant_id = ? ORDER BY name", (tenant_id,)).fetchall()
     return [row["name"] for row in rows]
 
 
-def get_prospect_by_name(name: str):
+def get_prospect_by_name(name: str, tenant_id: int = 1):
     """Lookup by exact match first, then fuzzy partial match. Returns single dict or None."""
     with get_db() as conn:
         # Try exact match first (case-insensitive)
         row = conn.execute(
-            "SELECT * FROM prospects WHERE LOWER(name) = ? LIMIT 1",
-            (name.lower(),),
+            "SELECT * FROM prospects WHERE LOWER(name) = ? AND tenant_id = ? LIMIT 1",
+            (name.lower(), tenant_id),
         ).fetchone()
         if row is None:
             # Fall back to partial match — fetch ALL candidates and pick best
             candidates = conn.execute(
-                "SELECT * FROM prospects WHERE LOWER(name) LIKE ?",
-                (f"%{name.lower()}%",),
+                "SELECT * FROM prospects WHERE LOWER(name) LIKE ? AND tenant_id = ?",
+                (f"%{name.lower()}%", tenant_id),
             ).fetchall()
             if len(candidates) == 1:
                 row = candidates[0]
@@ -889,14 +890,14 @@ def get_prospect_by_name(name: str):
     return _row_to_dict(row)
 
 
-def get_prospect_by_email(email: str):
+def get_prospect_by_email(email: str, tenant_id: int = 1):
     """Lookup prospect by exact email match (case-insensitive). Returns dict or None."""
     if not email:
         return None
     with get_db() as conn:
         row = conn.execute(
-            "SELECT * FROM prospects WHERE LOWER(email) = ? LIMIT 1",
-            (email.lower().strip(),),
+            "SELECT * FROM prospects WHERE LOWER(email) = ? AND tenant_id = ? LIMIT 1",
+            (email.lower().strip(), tenant_id),
         ).fetchone()
     return _row_to_dict(row)
 
@@ -910,13 +911,13 @@ def get_prospect_by_id(prospect_id: int):
 
 # ── Activities CRUD ──
 
-def add_activity(data: dict) -> str:
+def add_activity(data: dict, tenant_id: int = 1) -> str:
     """Add an entry to the activity log. Defaults date to today."""
     activity_date = data.get("date") or date.today().strftime("%Y-%m-%d")
     with get_db() as conn:
         conn.execute(
-            """INSERT INTO activities (date, prospect, action, outcome, next_step, notes)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO activities (date, prospect, action, outcome, next_step, notes, tenant_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (
                 activity_date,
                 data.get("prospect", ""),
@@ -924,16 +925,17 @@ def add_activity(data: dict) -> str:
                 data.get("outcome", ""),
                 data.get("next_step", ""),
                 data.get("notes", ""),
+                tenant_id,
             ),
         )
     return f"Logged activity for {data.get('prospect', 'unknown')}."
 
 
-def read_activities(limit: int = 100):
+def read_activities(limit: int = 100, tenant_id: int = 1):
     """Return recent activities as list of dicts, newest first."""
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT * FROM activities ORDER BY id DESC LIMIT ?", (limit,)
+            "SELECT * FROM activities WHERE tenant_id = ? ORDER BY id DESC LIMIT ?", (tenant_id, limit)
         ).fetchall()
     return _rows_to_dicts(rows)
 
@@ -976,13 +978,13 @@ def delete_prospect_note(note_id: int) -> str:
 
 # ── Meetings CRUD ──
 
-def add_meeting(data: dict) -> str:
+def add_meeting(data: dict, tenant_id: int = 1) -> str:
     """Add a meeting. Defaults status to 'Scheduled'."""
     status = data.get("status") or "Scheduled"
     with get_db() as conn:
         conn.execute(
-            """INSERT INTO meetings (date, time, prospect, type, prep_notes, status)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO meetings (date, time, prospect, type, prep_notes, status, tenant_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (
                 data.get("date", ""),
                 data.get("time", ""),
@@ -990,16 +992,17 @@ def add_meeting(data: dict) -> str:
                 data.get("type", ""),
                 data.get("prep_notes", ""),
                 status,
+                tenant_id,
             ),
         )
     return f"Meeting added: {data.get('prospect', '?')} on {data.get('date', '?')} at {data.get('time', '?')}"
 
 
-def read_meetings():
+def read_meetings(tenant_id: int = 1):
     """Return all meetings ordered by date and time."""
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT * FROM meetings ORDER BY date, time"
+            "SELECT * FROM meetings WHERE tenant_id = ? ORDER BY date, time", (tenant_id,)
         ).fetchall()
     return _rows_to_dicts(rows)
 
@@ -1020,16 +1023,16 @@ def update_meeting(meeting_id: int, updates: dict) -> str:
 
 # ── Insurance Book CRUD ──
 
-def read_insurance_book():
+def read_insurance_book(tenant_id: int = 1):
     """Return all insurance book entries."""
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT * FROM insurance_book ORDER BY id"
+            "SELECT * FROM insurance_book WHERE tenant_id = ? ORDER BY id", (tenant_id,)
         ).fetchall()
     return _rows_to_dicts(rows)
 
 
-def add_insurance_entry(data: dict) -> str:
+def add_insurance_entry(data: dict, tenant_id: int = 1) -> str:
     """Add an entry to the insurance book."""
     name = data.get("name", "").strip()
     if not name:
@@ -1038,8 +1041,8 @@ def add_insurance_entry(data: dict) -> str:
     with get_db() as conn:
         conn.execute(
             """INSERT INTO insurance_book
-               (name, phone, address, policy_start, status, last_called, notes, retry_date)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+               (name, phone, address, policy_start, status, last_called, notes, retry_date, tenant_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 name,
                 data.get("phone", ""),
@@ -1049,6 +1052,7 @@ def add_insurance_entry(data: dict) -> str:
                 data.get("last_called"),
                 data.get("notes", ""),
                 data.get("retry_date"),
+                tenant_id,
             ),
         )
     return f"Added {name} to insurance book."
@@ -1071,46 +1075,47 @@ def update_insurance_entry(entry_id: int, updates: dict) -> str:
 
 # ── Win/Loss Log ──
 
-def log_win_loss(prospect_name: str, outcome: str, reason: str, product: str = "") -> str:
+def log_win_loss(prospect_name: str, outcome: str, reason: str, product: str = "", tenant_id: int = 1) -> str:
     """Log a win or loss with reason."""
     # If product not provided, look it up from prospects
     if not product:
-        p = get_prospect_by_name(prospect_name)
+        p = get_prospect_by_name(prospect_name, tenant_id=tenant_id)
         if p:
             product = p.get("product", "")
 
     with get_db() as conn:
         conn.execute(
-            """INSERT INTO win_loss_log (date, prospect, outcome, reason, product)
-               VALUES (?, ?, ?, ?, ?)""",
+            """INSERT INTO win_loss_log (date, prospect, outcome, reason, product, tenant_id)
+               VALUES (?, ?, ?, ?, ?, ?)""",
             (
                 date.today().strftime("%Y-%m-%d"),
                 prospect_name,
                 outcome,
                 reason,
                 product,
+                tenant_id,
             ),
         )
     return f"Logged {outcome} for {prospect_name}: {reason}"
 
 
-def get_win_loss_stats():
+def get_win_loss_stats(tenant_id: int = 1):
     """Return all win/loss entries as list of dicts."""
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT * FROM win_loss_log ORDER BY id DESC"
+            "SELECT * FROM win_loss_log WHERE tenant_id = ? ORDER BY id DESC", (tenant_id,)
         ).fetchall()
     return _rows_to_dicts(rows)
 
 
 # ── Interactions CRUD ──
 
-def add_interaction(data: dict) -> str:
+def add_interaction(data: dict, tenant_id: int = 1) -> str:
     """Log an interaction (voice note, transcript, email, booking)."""
     with get_db() as conn:
         conn.execute(
-            """INSERT INTO interactions (date, prospect, source, raw_text, summary, action_items)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO interactions (date, prospect, source, raw_text, summary, action_items, tenant_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (
                 data.get("date") or datetime.now().strftime("%Y-%m-%d %H:%M"),
                 data.get("prospect", ""),
@@ -1118,29 +1123,30 @@ def add_interaction(data: dict) -> str:
                 data.get("raw_text", ""),
                 data.get("summary", ""),
                 data.get("action_items", ""),
+                tenant_id,
             ),
         )
     return f"Logged interaction for {data.get('prospect', 'unknown')} via {data.get('source', '?')}."
 
 
-def read_interactions(limit: int = 50, prospect: str = ""):
+def read_interactions(limit: int = 50, prospect: str = "", tenant_id: int = 1):
     """Return recent interactions, newest first. Optionally filter by prospect."""
     with get_db() as conn:
         if prospect:
             rows = conn.execute(
-                "SELECT * FROM interactions WHERE LOWER(prospect) LIKE ? ORDER BY id DESC LIMIT ?",
-                (f"%{prospect.lower()}%", limit),
+                "SELECT * FROM interactions WHERE LOWER(prospect) LIKE ? AND tenant_id = ? ORDER BY id DESC LIMIT ?",
+                (f"%{prospect.lower()}%", tenant_id, limit),
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT * FROM interactions ORDER BY id DESC LIMIT ?", (limit,)
+                "SELECT * FROM interactions WHERE tenant_id = ? ORDER BY id DESC LIMIT ?", (tenant_id, limit)
             ).fetchall()
     return _rows_to_dicts(rows)
 
 
 # ── Tasks CRUD ──
 
-def add_task(data: dict):
+def add_task(data: dict, tenant_id: int = 1):
     """Add a task. Returns the created task as dict, or None if no title."""
     title = data.get("title", "").strip()
     if not title:
@@ -1154,8 +1160,8 @@ def add_task(data: dict):
     with get_db() as conn:
         cursor = conn.execute(
             """INSERT INTO tasks
-               (title, prospect, due_date, remind_at, assigned_to, created_by, notes)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+               (title, prospect, due_date, remind_at, assigned_to, created_by, notes, tenant_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 title,
                 data.get("prospect", ""),
@@ -1164,6 +1170,7 @@ def add_task(data: dict):
                 data.get("assigned_to", ""),
                 data.get("created_by", ""),
                 data.get("notes", ""),
+                tenant_id,
             ),
         )
         task_id = cursor.lastrowid
@@ -1171,10 +1178,10 @@ def add_task(data: dict):
     return _row_to_dict(row)
 
 
-def get_tasks(assigned_to=None, status="pending", prospect=None, limit=50):
+def get_tasks(assigned_to=None, status="pending", prospect=None, limit=50, tenant_id: int = 1):
     """Get tasks with filters. Orders by due_date ASC (nulls last), then created_at DESC."""
-    conditions = []
-    params = []
+    conditions = ["tenant_id = ?"]
+    params = [tenant_id]
 
     if status:
         conditions.append("status = ?")
@@ -1186,7 +1193,7 @@ def get_tasks(assigned_to=None, status="pending", prospect=None, limit=50):
         conditions.append("LOWER(prospect) LIKE ?")
         params.append(f"%{prospect.lower()}%")
 
-    where = " AND ".join(conditions) if conditions else "1=1"
+    where = " AND ".join(conditions)
     params.append(limit)
 
     with get_db() as conn:
@@ -1254,34 +1261,34 @@ def delete_task(task_id: int, deleted_by: str, is_admin: bool = False) -> str:
     return f"Deleted: {row['title']}"
 
 
-def get_due_tasks(date_str: str):
+def get_due_tasks(date_str: str, tenant_id: int = 1):
     """Get pending tasks due on a specific date."""
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT * FROM tasks WHERE due_date = ? AND status = 'pending' ORDER BY created_at",
-            (date_str,),
+            "SELECT * FROM tasks WHERE due_date = ? AND status = 'pending' AND tenant_id = ? ORDER BY created_at",
+            (date_str, tenant_id),
         ).fetchall()
     return _rows_to_dicts(rows)
 
 
-def get_overdue_tasks():
+def get_overdue_tasks(tenant_id: int = 1):
     """Get pending tasks with due_date before today."""
     today = date.today().strftime("%Y-%m-%d")
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT * FROM tasks WHERE due_date < ? AND status = 'pending' ORDER BY due_date ASC",
-            (today,),
+            "SELECT * FROM tasks WHERE due_date < ? AND status = 'pending' AND tenant_id = ? ORDER BY due_date ASC",
+            (today, tenant_id),
         ).fetchall()
     return _rows_to_dicts(rows)
 
 
-def get_reminder_tasks(now_str: str):
+def get_reminder_tasks(now_str: str, tenant_id: int = 1):
     """Get pending tasks with remind_at <= now that haven't been cleared.
     Normalizes remind_at by replacing 'T' with space for consistent comparison."""
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT * FROM tasks WHERE remind_at IS NOT NULL AND REPLACE(remind_at, 'T', ' ') <= ? AND status = 'pending' ORDER BY remind_at",
-            (now_str.replace("T", " "),),
+            "SELECT * FROM tasks WHERE remind_at IS NOT NULL AND REPLACE(remind_at, 'T', ' ') <= ? AND status = 'pending' AND tenant_id = ? ORDER BY remind_at",
+            (now_str.replace("T", " "), tenant_id),
         ).fetchall()
     return _rows_to_dicts(rows)
 

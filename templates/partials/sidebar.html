@@ -1,7 +1,7 @@
 <nav class="sidebar" id="sidebar">
     <div class="sidebar-brand">
-        <div class="sidebar-brand-name">Calm Money</div>
-        <div class="sidebar-brand-sub">Pipeline CRM</div>
+        <div class="sidebar-brand-name">SteadyBook</div>
+        <div class="sidebar-brand-sub">CRM</div>
     </div>
     <div class="sidebar-nav">
         <a href="/" class="sidebar-item {{ 'active' if active_page == 'dashboard' }}">
@@ -55,16 +55,18 @@
         </label>
     </div>
     <!-- Quick Actions -->
+    {% if booking_url %}
     <div style="padding:8px;border-top:1px solid var(--border)">
-        <button onclick="navigator.clipboard.writeText('https://outlook.office.com/book/BookTimeWithMarcPineault@cooperators.onmicrosoft.com/?ismsaljsauthenabled').then(function(){showToast('Booking link copied!','success')})" class="btn btn-secondary btn-sm" style="width:100%;font-size:10px;padding:6px 8px" title="Copy booking link to clipboard">
+        <button onclick="navigator.clipboard.writeText('{{ booking_url }}').then(function(){showToast('Booking link copied!','success')})" class="btn btn-secondary btn-sm" style="width:100%;font-size:10px;padding:6px 8px" title="Copy booking link to clipboard">
             &#128279; Copy Booking Link
         </button>
     </div>
+    {% endif %}
     <div class="sidebar-user">
-        <div class="sidebar-avatar">MP</div>
+        <div class="sidebar-avatar">{{ user_initials|default('SB') }}</div>
         <div>
-            <div style="font-size:11px;font-weight:500;color:var(--text-primary)">Marc Pineault</div>
-            <div style="font-size:10px;color:var(--text-muted)">Co-operators</div>
+            <div style="font-size:11px;font-weight:500;color:var(--text-primary)">{{ user_name|default('User') }}</div>
+            <div style="font-size:10px;color:var(--text-muted)">{{ company_name|default('') }}</div>
         </div>
         <a href="/logout" style="margin-left:auto;font-size:10px;color:var(--text-muted);text-decoration:none" title="Sign out">&#x2192;</a>
     </div>

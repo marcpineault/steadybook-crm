@@ -812,6 +812,68 @@ def _check_auth():
     return False
 
 
+def _get_current_user_name():
+    """Get the current user's display name for the sidebar."""
+    try:
+        import tenants
+        token = request.cookies.get("dash_session", "")
+        if token:
+            session = tenants.validate_session(token)
+            if session:
+                with db.get_db() as conn:
+                    user = conn.execute("SELECT name, email FROM users WHERE id = ?",
+                                        (session["user_id"],)).fetchone()
+                    if user:
+                        return dict(user)["name"] or dict(user)["email"].split("@")[0]
+    except Exception:
+        pass
+    return "User"
+
+
+def _get_current_user_initials():
+    """Get initials for the sidebar avatar."""
+    name = _get_current_user_name()
+    if name == "User":
+        return "SB"
+    parts = name.split()
+    if len(parts) >= 2:
+        return (parts[0][0] + parts[-1][0]).upper()
+    return name[:2].upper()
+
+
+def _get_current_company():
+    """Get the current tenant's company name."""
+    try:
+        import tenants
+        tenant = tenants.get_tenant(1)  # TODO: get from request context
+        token = request.cookies.get("dash_session", "")
+        if token:
+            session = tenants.validate_session(token)
+            if session:
+                tenant = tenants.get_tenant(session["tenant_id"])
+        if tenant:
+            return tenant.get("company") or tenant.get("name") or ""
+    except Exception:
+        pass
+    return ""
+
+
+def _get_current_booking_url():
+    """Get the booking URL from tenant config."""
+    try:
+        import tenants
+        tenant_id = 1
+        token = request.cookies.get("dash_session", "")
+        if token:
+            session = tenants.validate_session(token)
+            if session:
+                tenant_id = session["tenant_id"]
+        config = tenants.get_tenant_config(tenant_id)
+        return config.get("booking_url", "")
+    except Exception:
+        return ""
+
+
 def _common_context():
     """Build context data shared by all pages (sidebar badges, etc)."""
     prospects, activities, meetings, book_entries = read_data()
@@ -850,6 +912,11 @@ def _common_context():
         "overdue_task_count": len(overdue_tasks),
         "unread_count": 0,  # Could be computed from SMS
         "won_count": len(won),
+        # Tenant-aware sidebar context
+        "user_name": _get_current_user_name(),
+        "user_initials": _get_current_user_initials(),
+        "company_name": _get_current_company(),
+        "booking_url": _get_current_booking_url(),
     }
 
 

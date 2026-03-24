@@ -12,8 +12,8 @@ import requests
 logger = logging.getLogger(__name__)
 
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
-FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL", "marc@info.calmmoney.ca")
-REPLY_TO = os.environ.get("RESEND_REPLY_TO", "mpineault1@gmail.com")
+FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL", "")
+REPLY_TO = os.environ.get("RESEND_REPLY_TO", "")
 API_URL = "https://api.resend.com/emails"
 
 
