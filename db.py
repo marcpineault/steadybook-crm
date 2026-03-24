@@ -340,6 +340,8 @@ def init_db():
     _migrate_booking_nurture()
     _migrate_sms_conversations()
     _migrate_sms_agent()
+    _migrate_multi_tenant()
+    _migrate_sequences()
     cleanup_old_data()
     logger.info(f"Database initialized at {DB_PATH}")
 
@@ -481,6 +483,167 @@ def _migrate_sms_agent():
         """)
 
 
+def _migrate_multi_tenant():
+    """Create multi-tenant tables and add tenant_id to existing tables (safe to run repeatedly)."""
+    with get_db() as conn:
+        # Tenants table
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS tenants (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                slug TEXT NOT NULL UNIQUE,
+                company TEXT DEFAULT '',
+                timezone TEXT DEFAULT 'America/Toronto',
+                products TEXT DEFAULT '[]',
+                config TEXT DEFAULT '{}',
+                stripe_customer_id TEXT,
+                plan TEXT DEFAULT 'starter',
+                status TEXT DEFAULT 'active',
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_tenants_slug ON tenants(slug)")
+
+        # Users table
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tenant_id INTEGER NOT NULL REFERENCES tenants(id),
+                email TEXT NOT NULL,
+                password_hash TEXT NOT NULL,
+                name TEXT DEFAULT '',
+                role TEXT DEFAULT 'agent',
+                telegram_chat_id TEXT,
+                status TEXT DEFAULT 'active',
+                created_at TEXT DEFAULT (datetime('now')),
+                last_login TEXT
+            )
+        """)
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(LOWER(email))")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id)")
+
+        # API keys table
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS api_keys (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tenant_id INTEGER NOT NULL REFERENCES tenants(id),
+                key_hash TEXT NOT NULL,
+                name TEXT DEFAULT 'Default',
+                scopes TEXT DEFAULT '["all"]',
+                created_at TEXT DEFAULT (datetime('now')),
+                expires_at TEXT
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash)")
+
+        # Add tenant_id to existing tables (default 1 for backwards compat)
+        _tables_needing_tenant = [
+            "prospects", "activities", "meetings", "tasks", "campaigns",
+            "approval_queue", "audit_log", "nurture_sequences",
+            "booking_nurture_sequences", "sms_conversations", "sms_agents",
+            "insurance_book", "trust_config", "brand_voice", "market_calendar",
+        ]
+        for table in _tables_needing_tenant:
+            try:
+                cols = [row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()]
+                if "tenant_id" not in cols:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN tenant_id INTEGER DEFAULT 1")
+                    logger.info("Migration: added tenant_id to %s", table)
+            except Exception:
+                pass  # Table may not exist yet
+
+        # Create default tenant for existing single-user deployment (idempotent)
+        existing = conn.execute("SELECT id FROM tenants WHERE id = 1").fetchone()
+        if not existing:
+            conn.execute(
+                """INSERT INTO tenants (id, name, slug, company, timezone, plan, status)
+                   VALUES (1, 'Default', 'default', '', 'America/Toronto', 'pro', 'active')"""
+            )
+            logger.info("Migration: created default tenant (id=1)")
+
+    logger.info("Multi-tenant migration complete")
+
+
+def _migrate_sequences():
+    """Create sequence automation tables (safe to run repeatedly)."""
+    with get_db() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS sequences (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tenant_id INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id),
+                name TEXT NOT NULL,
+                description TEXT DEFAULT '',
+                trigger_type TEXT NOT NULL,
+                trigger_config TEXT DEFAULT '{}',
+                status TEXT DEFAULT 'active',
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_sequences_tenant ON sequences(tenant_id, status)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_sequences_trigger ON sequences(trigger_type, status)")
+
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS sequence_steps (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sequence_id INTEGER NOT NULL REFERENCES sequences(id) ON DELETE CASCADE,
+                step_order INTEGER NOT NULL,
+                step_type TEXT NOT NULL,
+                delay_minutes INTEGER DEFAULT 0,
+                content_template TEXT DEFAULT '',
+                channel TEXT DEFAULT '',
+                config TEXT DEFAULT '{}'
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_seq_steps_seq ON sequence_steps(sequence_id, step_order)")
+
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS sequence_enrollments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sequence_id INTEGER NOT NULL REFERENCES sequences(id),
+                prospect_id INTEGER NOT NULL REFERENCES prospects(id),
+                status TEXT DEFAULT 'active',
+                current_step INTEGER DEFAULT 1,
+                enrolled_at TEXT DEFAULT (datetime('now')),
+                last_step_at TEXT,
+                next_step_at TEXT,
+                completed_at TEXT,
+                trigger_data TEXT DEFAULT '{}'
+            )
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_seq_enroll_due
+                ON sequence_enrollments(status, next_step_at)
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_seq_enroll_prospect
+                ON sequence_enrollments(prospect_id, status)
+        """)
+        conn.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS ux_seq_enroll_active
+                ON sequence_enrollments(sequence_id, prospect_id)
+                WHERE status = 'active'
+        """)
+
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS sequence_step_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                enrollment_id INTEGER NOT NULL REFERENCES sequence_enrollments(id),
+                step_id INTEGER NOT NULL REFERENCES sequence_steps(id),
+                status TEXT DEFAULT 'ok',
+                content TEXT DEFAULT '',
+                executed_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_seq_step_logs_enrollment
+                ON sequence_step_logs(enrollment_id, executed_at)
+        """)
+
+    logger.info("Sequence tables migration complete")
+
+
 def _migrate_phase6():
     """Add Phase 6 columns if they don't exist (safe to run repeatedly)."""
     with get_db() as conn:
@@ -608,6 +771,13 @@ def delete_prospect(name: str) -> str:
         conn.execute("DELETE FROM client_memory WHERE prospect_id = ?", (pid,))
         conn.execute("DELETE FROM approval_queue WHERE prospect_id = ?", (pid,))
         conn.execute("DELETE FROM nurture_sequences WHERE prospect_id = ?", (pid,))
+        # Clean up sequence enrollments and their step logs
+        enrollment_ids = [r[0] for r in conn.execute(
+            "SELECT id FROM sequence_enrollments WHERE prospect_id = ?", (pid,)
+        ).fetchall()]
+        for eid in enrollment_ids:
+            conn.execute("DELETE FROM sequence_step_logs WHERE enrollment_id = ?", (eid,))
+        conn.execute("DELETE FROM sequence_enrollments WHERE prospect_id = ?", (pid,))
         conn.execute("DELETE FROM activities WHERE LOWER(prospect) = ?", (matched_name.lower(),))
         conn.execute("DELETE FROM interactions WHERE LOWER(prospect) = ?", (matched_name.lower(),))
         conn.execute("DELETE FROM prospects WHERE id = ?", (pid,))

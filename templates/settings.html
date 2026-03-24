@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Settings</h1>
+        <p class="page-subtitle">Configure your workspace, branding, and team</p>
+    </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+    <!-- Workspace Settings -->
+    <div class="card">
+        <div class="card-title">Workspace</div>
+        <div class="form-group">
+            <label>Brand Name</label>
+            <input type="text" id="cfgBrandName" class="form-control" placeholder="Your brand name">
+        </div>
+        <div class="form-group">
+            <label>Sender Name (for outreach)</label>
+            <input type="text" id="cfgSenderName" class="form-control" placeholder="e.g. Marc">
+        </div>
+        <div class="form-group">
+            <label>Sender Signature</label>
+            <input type="text" id="cfgSignature" class="form-control" placeholder="e.g. - Marc">
+        </div>
+        <div class="form-group">
+            <label>Booking URL</label>
+            <input type="url" id="cfgBookingUrl" class="form-control" placeholder="https://calendly.com/...">
+        </div>
+        <div class="form-group">
+            <label>Timezone</label>
+            <select id="cfgTimezone" class="form-control">
+                <option value="America/Toronto">Eastern (Toronto)</option>
+                <option value="America/Chicago">Central (Chicago)</option>
+                <option value="America/Denver">Mountain (Denver)</option>
+                <option value="America/Los_Angeles">Pacific (LA)</option>
+                <option value="America/Vancouver">Pacific (Vancouver)</option>
+                <option value="America/Edmonton">Mountain (Edmonton)</option>
+                <option value="America/Winnipeg">Central (Winnipeg)</option>
+                <option value="America/Halifax">Atlantic (Halifax)</option>
+            </select>
+        </div>
+        <button class="btn btn-primary" onclick="saveConfig()">Save Changes</button>
+    </div>
+
+    <!-- Compliance & Automation -->
+    <div class="card">
+        <div class="card-title">Compliance & Automation</div>
+        <div class="form-group">
+            <label>Trust Level</label>
+            <select id="cfgTrustLevel" class="form-control">
+                <option value="1">Level 1 — Review all outgoing messages</option>
+                <option value="2">Level 2 — Auto-send SMS, review emails</option>
+                <option value="3">Level 3 — Auto-send all (use with caution)</option>
+            </select>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Controls which messages need manual approval before sending.</div>
+        </div>
+        <div class="form-group">
+            <label style="display:flex;align-items:center;gap:8px">
+                <input type="checkbox" id="cfgCompliance" style="width:16px;height:16px">
+                Enable compliance checks on outgoing messages
+            </label>
+        </div>
+        <div class="form-group">
+            <label style="display:flex;align-items:center;gap:8px">
+                <input type="checkbox" id="cfgApprovalRequired" style="width:16px;height:16px">
+                Require approval for all AI-generated content
+            </label>
+        </div>
+        <button class="btn btn-primary" onclick="saveConfig()">Save Changes</button>
+    </div>
+</div>
+
+<!-- Team Management -->
+<div class="card" style="margin-top:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div class="card-title mb-0">Team Members</div>
+        <button class="btn btn-secondary btn-sm" onclick="openAddUser()">+ Add User</button>
+    </div>
+    <table style="width:100%" id="usersTable">
+        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Last Login</th></tr></thead>
+        <tbody id="usersList"></tbody>
+    </table>
+</div>
+
+<!-- Add User Modal -->
+<div class="modal-backdrop" id="userBackdrop" onclick="closeAddUser()" style="display:none"></div>
+<div class="modal" id="userModal" style="display:none;max-width:450px">
+    <div class="modal-header">
+        <h3>Add Team Member</h3>
+        <button class="modal-close" onclick="closeAddUser()">&times;</button>
+    </div>
+    <div class="modal-body">
+        <div class="form-group">
+            <label>Name</label>
+            <input type="text" id="newUserName" class="form-control" placeholder="Full name">
+        </div>
+        <div class="form-group">
+            <label>Email</label>
+            <input type="email" id="newUserEmail" class="form-control" placeholder="email@example.com">
+        </div>
+        <div class="form-group">
+            <label>Password</label>
+            <input type="password" id="newUserPass" class="form-control" placeholder="Min 8 characters">
+        </div>
+        <div class="form-group">
+            <label>Role</label>
+            <select id="newUserRole" class="form-control">
+                <option value="agent">Agent — Can manage prospects and tasks</option>
+                <option value="admin">Admin — Full access except billing</option>
+            </select>
+        </div>
+    </div>
+    <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeAddUser()">Cancel</button>
+        <button class="btn btn-primary" onclick="createUser()">Add User</button>
+    </div>
+</div>
+
+<script>
+var CSRF = document.querySelector('meta[name="csrf-token"]').content;
+var headers = {'Content-Type':'application/json','X-CSRF-Token':CSRF};
+
+function api(method, url, body) {
+    var opts = {method:method, headers:headers};
+    if (body) opts.body = JSON.stringify(body);
+    return fetch(url, opts).then(function(r){return r.json()});
+}
+
+// Load current config
+function loadConfig() {
+    api('GET', '/api/tenant/config').then(function(data) {
+        if (!data.ok) return;
+        var c = data.config;
+        document.getElementById('cfgBrandName').value = c.brand_name || '';
+        document.getElementById('cfgSenderName').value = c.sender_name || '';
+        document.getElementById('cfgSignature').value = c.sender_signature || '';
+        document.getElementById('cfgBookingUrl').value = c.booking_url || '';
+        document.getElementById('cfgTrustLevel').value = String(c.trust_level || 1);
+        document.getElementById('cfgCompliance').checked = c.compliance_enabled !== false;
+        document.getElementById('cfgApprovalRequired').checked = c.approval_required !== false;
+        if (data.tenant && data.tenant.timezone) {
+            document.getElementById('cfgTimezone').value = data.tenant.timezone;
+        }
+    });
+}
+
+function saveConfig() {
+    var config = {
+        brand_name: document.getElementById('cfgBrandName').value,
+        sender_name: document.getElementById('cfgSenderName').value,
+        sender_signature: document.getElementById('cfgSignature').value,
+        booking_url: document.getElementById('cfgBookingUrl').value,
+        trust_level: parseInt(document.getElementById('cfgTrustLevel').value),
+        compliance_enabled: document.getElementById('cfgCompliance').checked,
+        approval_required: document.getElementById('cfgApprovalRequired').checked,
+    };
+    api('PUT', '/api/tenant/config', config).then(function(data) {
+        if (data.ok) showToast('Settings saved!', 'success');
+        else showToast(data.error || 'Error saving', 'danger');
+    });
+}
+
+// Load users
+function loadUsers() {
+    api('GET', '/api/tenant/users').then(function(data) {
+        var tbody = document.getElementById('usersList');
+        tbody.textContent = '';
+        if (!data.ok || !data.users.length) {
+            var row = document.createElement('tr');
+            var td = document.createElement('td');
+            td.colSpan = 4;
+            td.style.cssText = 'text-align:center;padding:20px;color:var(--text-muted)';
+            td.textContent = 'No team members yet';
+            row.appendChild(td);
+            tbody.appendChild(row);
+            return;
+        }
+        data.users.forEach(function(u) {
+            var row = document.createElement('tr');
+            var roleBg = u.role === 'owner' ? '#fef3c7' : u.role === 'admin' ? '#dbeafe' : '#f1f5f9';
+            var roleColor = u.role === 'owner' ? '#92400e' : u.role === 'admin' ? '#1e40af' : '#475569';
+
+            var nameTd = document.createElement('td');
+            nameTd.style.fontWeight = '500';
+            nameTd.textContent = u.name || u.email;
+            row.appendChild(nameTd);
+
+            var emailTd = document.createElement('td');
+            emailTd.textContent = u.email;
+            row.appendChild(emailTd);
+
+            var roleTd = document.createElement('td');
+            var roleSpan = document.createElement('span');
+            roleSpan.className = 'badge';
+            roleSpan.style.cssText = 'background:' + roleBg + ';color:' + roleColor;
+            roleSpan.textContent = u.role;
+            roleTd.appendChild(roleSpan);
+            row.appendChild(roleTd);
+
+            var loginTd = document.createElement('td');
+            loginTd.style.cssText = 'font-size:11px;color:var(--text-muted)';
+            loginTd.textContent = u.last_login ? u.last_login.split(' ')[0] : 'Never';
+            row.appendChild(loginTd);
+
+            tbody.appendChild(row);
+        });
+    });
+}
+
+function openAddUser() {
+    document.getElementById('userBackdrop').style.display = 'block';
+    document.getElementById('userModal').style.display = 'block';
+}
+function closeAddUser() {
+    document.getElementById('userBackdrop').style.display = 'none';
+    document.getElementById('userModal').style.display = 'none';
+}
+
+function createUser() {
+    var email = document.getElementById('newUserEmail').value.trim();
+    var password = document.getElementById('newUserPass').value;
+    var name = document.getElementById('newUserName').value.trim();
+    var role = document.getElementById('newUserRole').value;
+    if (!email || !password) { showToast('Email and password required', 'danger'); return; }
+    if (password.length < 8) { showToast('Password must be at least 8 characters', 'danger'); return; }
+
+    api('POST', '/api/tenant/users', {email:email, password:password, name:name, role:role}).then(function(data) {
+        if (data.ok) { closeAddUser(); loadUsers(); showToast('User added!', 'success'); }
+        else { showToast(data.error || 'Error', 'danger'); }
+    });
+}
+
+// Init
+loadConfig();
+loadUsers();
+</script>
+{% endblock %}

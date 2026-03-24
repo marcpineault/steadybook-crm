@@ -182,6 +182,16 @@ def api_add_prospect():
     if not data or not data.get("name"):
         return jsonify({"error": "Name required"}), 400
     result = db.add_prospect(data)
+    # Fire new_lead sequence trigger
+    try:
+        import sequences
+        prospect = db.get_prospect_by_name(data["name"])
+        if prospect:
+            tenant_id = getattr(request, 'tenant_id', 1)
+            sequences.process_trigger("new_lead", tenant_id, prospect["id"],
+                                       {"source": data.get("source", ""), "product": data.get("product", "")})
+    except Exception:
+        logger.exception("Sequence trigger failed for new prospect")
     return jsonify({"ok": True, "message": result})
 
 
@@ -191,9 +201,21 @@ def api_update_prospect(name):
     data = request.json
     if not data:
         return jsonify({"error": "No data"}), 400
+    # Capture old stage for trigger detection
+    old_prospect = db.get_prospect_by_name(name)
+    old_stage = old_prospect.get("stage", "") if old_prospect else ""
     result = db.update_prospect(name, data)
     if "not found" in result.lower() or "could not find" in result.lower():
         return jsonify({"error": result}), 404
+    # Fire stage_change trigger if stage changed
+    if data.get("stage") and data["stage"] != old_stage and old_prospect:
+        try:
+            import sequences
+            tenant_id = getattr(request, 'tenant_id', 1)
+            sequences.process_trigger("stage_change", tenant_id, old_prospect["id"],
+                                       {"old_stage": old_stage, "new_stage": data["stage"]})
+        except Exception:
+            logger.exception("Sequence trigger failed for stage change")
     return jsonify({"ok": True, "message": result})
 
 
@@ -1560,6 +1582,361 @@ def health_check():
         "checks": checks,
         "timestamp": datetime.now().isoformat(),
     }), status_code
+
+
+# ── Multi-tenant Auth Routes ──
+
+@app.route("/register")
+def register_page():
+    return render_template("register.html")
+
+
+@app.route("/api/auth/register", methods=["POST"])
+def api_register():
+    """Register a new tenant + owner account."""
+    data = request.json
+    if not data:
+        return jsonify({"error": "No data"}), 400
+
+    required = ["name", "slug", "email", "password"]
+    missing = [f for f in required if not data.get(f)]
+    if missing:
+        return jsonify({"error": f"Missing fields: {', '.join(missing)}"}), 400
+
+    if len(data["password"]) < 8:
+        return jsonify({"error": "Password must be at least 8 characters"}), 400
+
+    try:
+        import tenants
+        tenant = tenants.create_tenant(
+            name=data["name"],
+            slug=data["slug"],
+            owner_email=data["email"],
+            owner_password=data["password"],
+            owner_name=data.get("owner_name", ""),
+            company=data.get("company", ""),
+            timezone=data.get("timezone", "America/Toronto"),
+            products=data.get("products"),
+        )
+        # Install default sequence templates
+        import sequences
+        sequences.install_default_templates(tenant["id"])
+
+        return jsonify({"ok": True, "tenant": tenant})
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/api/auth/login", methods=["POST"])
+def api_tenant_login():
+    """Authenticate user and return session token."""
+    data = request.json
+    if not data or not data.get("email") or not data.get("password"):
+        return jsonify({"error": "Email and password required"}), 400
+
+    import tenants
+    user = tenants.authenticate_user(data["email"], data["password"])
+    if not user:
+        return jsonify({"error": "Invalid email or password"}), 401
+
+    token = tenants.create_session(user["tenant_id"], user["id"])
+    resp = make_response(jsonify({
+        "ok": True,
+        "user": {
+            "id": user["id"],
+            "email": user["email"],
+            "name": user["name"],
+            "role": user["role"],
+            "tenant_id": user["tenant_id"],
+            "tenant_name": user["tenant_name"],
+        },
+    }))
+    resp.set_cookie("dash_session", token, httponly=True, samesite="Lax",
+                     max_age=86400, secure=request.is_secure)
+    return resp
+
+
+@app.route("/api/auth/logout", methods=["POST"])
+def api_tenant_logout():
+    """Destroy session."""
+    import tenants
+    token = request.cookies.get("dash_session", "")
+    if token:
+        tenants.destroy_session(token)
+    resp = make_response(jsonify({"ok": True}))
+    resp.delete_cookie("dash_session")
+    return resp
+
+
+@app.route("/api/auth/me")
+def api_auth_me():
+    """Get current user info."""
+    import tenants
+    token = request.cookies.get("dash_session", "")
+    if not token:
+        return jsonify({"error": "Not authenticated"}), 401
+
+    session = tenants.validate_session(token)
+    if not session:
+        return jsonify({"error": "Session expired"}), 401
+
+    with db.get_db() as conn:
+        user = conn.execute(
+            """SELECT u.id, u.email, u.name, u.role, u.tenant_id,
+                      t.name as tenant_name, t.slug as tenant_slug, t.plan
+               FROM users u JOIN tenants t ON u.tenant_id = t.id
+               WHERE u.id = ?""",
+            (session["user_id"],),
+        ).fetchone()
+
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    return jsonify({"ok": True, "user": dict(user)})
+
+
+# ── Sequence API Routes ──
+
+@app.route("/api/sequences", methods=["GET"])
+@_require_auth
+def api_list_sequences():
+    """List all sequences for the current tenant."""
+    import sequences
+    # Determine tenant_id from auth context
+    tenant_id = getattr(request, 'tenant_id', 1)
+    seqs = sequences.list_sequences(tenant_id)
+    return jsonify({"ok": True, "sequences": seqs})
+
+
+@app.route("/api/sequences", methods=["POST"])
+@_require_auth
+def api_create_sequence():
+    """Create a new sequence."""
+    data = request.json
+    if not data or not data.get("name") or not data.get("trigger_type"):
+        return jsonify({"error": "name and trigger_type required"}), 400
+
+    import sequences
+    tenant_id = getattr(request, 'tenant_id', 1)
+
+    try:
+        seq = sequences.create_sequence(
+            tenant_id=tenant_id,
+            name=data["name"],
+            trigger_type=data["trigger_type"],
+            description=data.get("description", ""),
+            trigger_config=data.get("trigger_config"),
+            steps=data.get("steps"),
+        )
+        return jsonify({"ok": True, "sequence": seq})
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/api/sequences/templates", methods=["GET"])
+@_require_auth
+def api_sequence_templates():
+    """List available sequence templates."""
+    import sequences
+    templates = sequences.get_templates()
+    return jsonify({"ok": True, "templates": templates})
+
+
+@app.route("/api/sequences/from-template", methods=["POST"])
+@_require_auth
+def api_create_from_template():
+    """Create a sequence from a pre-built template."""
+    data = request.json
+    if not data or not data.get("template_key"):
+        return jsonify({"error": "template_key required"}), 400
+
+    import sequences
+    tenant_id = getattr(request, 'tenant_id', 1)
+
+    seq = sequences.create_from_template(
+        tenant_id=tenant_id,
+        template_key=data["template_key"],
+        overrides=data.get("overrides"),
+    )
+    if not seq:
+        return jsonify({"error": "Template not found"}), 404
+    return jsonify({"ok": True, "sequence": seq})
+
+
+@app.route("/api/sequences/<int:seq_id>", methods=["GET"])
+@_require_auth
+def api_get_sequence(seq_id):
+    """Get a sequence with its steps and enrollment counts."""
+    import sequences
+    seq = sequences.get_sequence(seq_id)
+    if not seq:
+        return jsonify({"error": "Sequence not found"}), 404
+    # Get enrollment counts
+    with db.get_db() as conn:
+        counts = conn.execute(
+            """SELECT status, COUNT(*) as cnt FROM sequence_enrollments
+               WHERE sequence_id = ? GROUP BY status""",
+            (seq_id,),
+        ).fetchall()
+    seq["enrollment_counts"] = {r["status"]: r["cnt"] for r in counts}
+    return jsonify({"ok": True, "sequence": seq})
+
+
+@app.route("/api/sequences/<int:seq_id>", methods=["PUT"])
+@_require_auth
+def api_update_sequence(seq_id):
+    """Update a sequence's metadata."""
+    data = request.json
+    if not data:
+        return jsonify({"error": "No data"}), 400
+
+    import sequences
+    seq = sequences.update_sequence(seq_id, data)
+    if not seq:
+        return jsonify({"error": "Sequence not found"}), 404
+    return jsonify({"ok": True, "sequence": seq})
+
+
+@app.route("/api/sequences/<int:seq_id>/steps", methods=["PUT"])
+@_require_auth
+def api_update_sequence_steps(seq_id):
+    """Replace all steps for a sequence."""
+    data = request.json
+    if not data or "steps" not in data:
+        return jsonify({"error": "steps array required"}), 400
+
+    import sequences
+    steps = sequences.update_sequence_steps(seq_id, data["steps"])
+    return jsonify({"ok": True, "steps": steps})
+
+
+@app.route("/api/sequences/<int:seq_id>/enroll", methods=["POST"])
+@_require_auth
+def api_enroll_prospect(seq_id):
+    """Enroll a prospect in a sequence."""
+    data = request.json
+    if not data or not data.get("prospect_id"):
+        return jsonify({"error": "prospect_id required"}), 400
+
+    import sequences
+    enrollment = sequences.enroll_prospect(seq_id, data["prospect_id"], data.get("trigger_data"))
+    if not enrollment:
+        return jsonify({"error": "Prospect already enrolled or sequence has no steps"}), 400
+    return jsonify({"ok": True, "enrollment": enrollment})
+
+
+@app.route("/api/sequences/<int:seq_id>/unenroll", methods=["POST"])
+@_require_auth
+def api_unenroll_prospect(seq_id):
+    """Remove a prospect from a sequence."""
+    data = request.json
+    if not data or not data.get("prospect_id"):
+        return jsonify({"error": "prospect_id required"}), 400
+
+    import sequences
+    result = sequences.unenroll_prospect(seq_id, data["prospect_id"])
+    return jsonify({"ok": True, "cancelled": result})
+
+
+@app.route("/api/sequences/<int:seq_id>/enrollments", methods=["GET"])
+@_require_auth
+def api_sequence_enrollments(seq_id):
+    """Get all enrollments for a sequence."""
+    import sequences
+    status = request.args.get("status", "active")
+    enrollments = sequences.get_sequence_enrollments(seq_id, status=status)
+    return jsonify({"ok": True, "enrollments": enrollments})
+
+
+@app.route("/api/prospect/<int:prospect_id>/sequences", methods=["GET"])
+@_require_auth
+def api_prospect_sequences(prospect_id):
+    """Get all sequence enrollments for a prospect."""
+    import sequences
+    enrollments = sequences.get_prospect_enrollments(prospect_id)
+    return jsonify({"ok": True, "enrollments": enrollments})
+
+
+# ── Sequences page ──
+
+@app.route("/sequences")
+def sequences_page():
+    if not _check_auth():
+        return redirect("/login")
+    ctx = _common_context()
+    ctx["active_page"] = "sequences"
+    return render_template("sequences.html", **ctx)
+
+
+# ── Tenant settings page ──
+
+@app.route("/settings")
+def settings_page():
+    if not _check_auth():
+        return redirect("/login")
+    ctx = _common_context()
+    ctx["active_page"] = "settings"
+    return render_template("settings.html", **ctx)
+
+
+@app.route("/api/tenant/config", methods=["GET"])
+@_require_auth
+def api_get_tenant_config():
+    """Get current tenant config."""
+    import tenants
+    tenant_id = getattr(request, 'tenant_id', 1)
+    tenant = tenants.get_tenant(tenant_id)
+    if not tenant:
+        return jsonify({"error": "Tenant not found"}), 404
+    config = tenants.get_tenant_config(tenant_id)
+    return jsonify({"ok": True, "tenant": tenant, "config": config})
+
+
+@app.route("/api/tenant/config", methods=["PUT"])
+@_require_auth
+def api_update_tenant_config():
+    """Update tenant config."""
+    data = request.json
+    if not data:
+        return jsonify({"error": "No data"}), 400
+
+    import tenants
+    tenant_id = getattr(request, 'tenant_id', 1)
+    config = tenants.update_tenant_config(tenant_id, data)
+    return jsonify({"ok": True, "config": config})
+
+
+@app.route("/api/tenant/users", methods=["GET"])
+@_require_auth
+def api_list_users():
+    """List all users for current tenant."""
+    import tenants
+    tenant_id = getattr(request, 'tenant_id', 1)
+    users = tenants.get_tenant_users(tenant_id)
+    return jsonify({"ok": True, "users": users})
+
+
+@app.route("/api/tenant/users", methods=["POST"])
+@_require_auth
+def api_create_user():
+    """Create a new user for the current tenant."""
+    data = request.json
+    if not data or not data.get("email") or not data.get("password"):
+        return jsonify({"error": "email and password required"}), 400
+
+    import tenants
+    tenant_id = getattr(request, 'tenant_id', 1)
+
+    try:
+        user = tenants.create_user(
+            tenant_id=tenant_id,
+            email=data["email"],
+            password=data["password"],
+            name=data.get("name", ""),
+            role=data.get("role", "agent"),
+        )
+        return jsonify({"ok": True, "user": user})
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
 
 
 def run_dashboard():

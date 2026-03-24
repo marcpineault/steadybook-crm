@@ -1172,6 +1172,25 @@ async def _send_meeting_reminders_job():
         logger.exception("meeting_reminders job failed")
 
 
+async def _process_sequence_steps_job():
+    """Process all due sequence automation steps."""
+    try:
+        import sequences
+        results = sequences.process_due_steps()
+        if results:
+            logger.info("Sequence engine processed %d steps", len(results))
+            # Notify via Telegram for queued messages
+            if _bot and CHAT_ID:
+                queued = [r for r in results if r.get("status") == "queued"]
+                if queued:
+                    lines = [f"SEQUENCES: {len(queued)} new draft{'s' if len(queued) != 1 else ''} queued"]
+                    for r in queued[:5]:
+                        lines.append(f"  {r.get('sequence_name', '?')}: {r.get('channel', '?')} for approval")
+                    await _bot.send_message(chat_id=CHAT_ID, text="\n".join(lines))
+    except Exception:
+        logger.exception("sequence_steps job failed")
+
+
 # ── Scheduler entry point ──
 
 def start_scheduler(telegram_app, event_loop=None):
@@ -1357,5 +1376,14 @@ def start_scheduler(telegram_app, event_loop=None):
         name="Meeting Confirmation SMS",
     )
 
+    # Sequence automation engine — process due steps every 5 minutes
+    scheduler.add_job(
+        _process_sequence_steps_job,
+        "interval",
+        minutes=5,
+        id="sequence_steps",
+        name="Sequence Automation Engine",
+    )
+
     scheduler.start()
-    logger.info("Scheduler started -briefing 8AM (weekdays), nag 9AM+2PM, midday 12:30PM, EOD 5:30PM, weekly Sun 6:30PM, task reminders every 60s, meeting prep hourly, backup 11PM, watchdog 8:45AM, webhook check every 6h, booking nurture every 15min, cold follow-ups 9:30AM daily ET, cold agents every 6h, meeting reminders 9AM+6PM.")
+    logger.info("Scheduler started -briefing 8AM (weekdays), nag 9AM+2PM, midday 12:30PM, EOD 5:30PM, weekly Sun 6:30PM, task reminders every 60s, meeting prep hourly, backup 11PM, watchdog 8:45AM, webhook check every 6h, booking nurture every 15min, cold follow-ups 9:30AM daily ET, cold agents every 6h, meeting reminders 9AM+6PM, sequences every 5min.")

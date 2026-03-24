@@ -1,0 +1,469 @@
+{% extends "base.html" %}
+{% block title %}Sequences{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Automation Sequences</h1>
+        <p class="page-subtitle">Configure automated outreach flows for your prospects</p>
+    </div>
+    <div class="header-actions">
+        <button class="btn btn-secondary" onclick="showTemplates()">Browse Templates</button>
+        <button class="btn btn-primary" onclick="openCreateModal()">+ New Sequence</button>
+    </div>
+</div>
+
+<!-- Sequences list -->
+<div id="sequencesList" class="card">
+    <div style="text-align:center;padding:40px;color:var(--text-muted)">Loading sequences...</div>
+</div>
+
+<!-- Templates modal -->
+<div class="modal-backdrop" id="templatesBackdrop" onclick="closeTemplates()" style="display:none"></div>
+<div class="modal" id="templatesModal" style="display:none;max-width:700px">
+    <div class="modal-header">
+        <h3>Sequence Templates</h3>
+        <button class="modal-close" onclick="closeTemplates()">&times;</button>
+    </div>
+    <div class="modal-body" id="templatesList">
+        <div style="text-align:center;padding:20px;color:var(--text-muted)">Loading templates...</div>
+    </div>
+</div>
+
+<!-- Create/Edit sequence modal -->
+<div class="modal-backdrop" id="seqBackdrop" onclick="closeSeqModal()" style="display:none"></div>
+<div class="modal" id="seqModal" style="display:none;max-width:700px">
+    <div class="modal-header">
+        <h3 id="seqModalTitle">New Sequence</h3>
+        <button class="modal-close" onclick="closeSeqModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+        <input type="hidden" id="seqEditId">
+        <div class="form-group">
+            <label>Name</label>
+            <input type="text" id="seqName" class="form-control" placeholder="e.g. No-Show Killer">
+        </div>
+        <div class="form-group">
+            <label>Description</label>
+            <input type="text" id="seqDesc" class="form-control" placeholder="Brief description of what this sequence does">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="form-group">
+                <label>Trigger</label>
+                <select id="seqTrigger" class="form-control" onchange="toggleTriggerConfig()">
+                    <option value="manual">Manual</option>
+                    <option value="new_lead">New Lead Created</option>
+                    <option value="stage_change">Stage Changed</option>
+                    <option value="no_show">No-Show</option>
+                    <option value="meeting_booked">Meeting Booked</option>
+                    <option value="cold_call">Cold Call Logged</option>
+                    <option value="form_submit">Form Submitted</option>
+                </select>
+            </div>
+            <div class="form-group" id="triggerStageGroup" style="display:none">
+                <label>Trigger Stage</label>
+                <select id="triggerStage" class="form-control">
+                    <option value="">Select stage...</option>
+                    <option value="New Lead">New Lead</option>
+                    <option value="Contacted">Contacted</option>
+                    <option value="Discovery Call">Discovery Call</option>
+                    <option value="Needs Analysis">Needs Analysis</option>
+                    <option value="Plan Presentation">Plan Presentation</option>
+                    <option value="Proposal Sent">Proposal Sent</option>
+                    <option value="Negotiation">Negotiation</option>
+                    <option value="Nurture">Nurture</option>
+                </select>
+            </div>
+        </div>
+
+        <div style="margin:16px 0 8px;font-weight:600;font-size:13px">Steps</div>
+        <div id="stepsList"></div>
+        <button class="btn btn-secondary btn-sm" onclick="addStep()" style="margin-top:8px">+ Add Step</button>
+    </div>
+    <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeSeqModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveSequence()">Save Sequence</button>
+    </div>
+</div>
+
+<!-- Enrollments modal -->
+<div class="modal-backdrop" id="enrollBackdrop" onclick="closeEnrollModal()" style="display:none"></div>
+<div class="modal" id="enrollModal" style="display:none;max-width:600px">
+    <div class="modal-header">
+        <h3 id="enrollModalTitle">Enrollments</h3>
+        <button class="modal-close" onclick="closeEnrollModal()">&times;</button>
+    </div>
+    <div class="modal-body" id="enrollmentsList"></div>
+</div>
+
+<script>
+var CSRF = document.querySelector('meta[name="csrf-token"]').content;
+var headers = {'Content-Type':'application/json','X-CSRF-Token':CSRF};
+
+function api(method, url, body) {
+    var opts = {method:method, headers:headers};
+    if (body) opts.body = JSON.stringify(body);
+    return fetch(url, opts).then(function(r){return r.json()});
+}
+
+function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+function buildNode(tag, attrs, children) {
+    var el = document.createElement(tag);
+    if (attrs) Object.keys(attrs).forEach(function(k) {
+        if (k === 'textContent') el.textContent = attrs[k];
+        else if (k === 'onclick') el.onclick = attrs[k];
+        else if (k === 'onchange') el.onchange = attrs[k];
+        else if (k.indexOf('data') === 0) el.setAttribute(k.replace(/([A-Z])/g, '-$1').toLowerCase(), attrs[k]);
+        else el.setAttribute(k, attrs[k]);
+    });
+    if (children) children.forEach(function(c) { if (c) el.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); });
+    return el;
+}
+
+// ── Load sequences ──
+function loadSequences() {
+    api('GET', '/api/sequences').then(function(data) {
+        var container = document.getElementById('sequencesList');
+        container.textContent = '';
+        if (!data.ok) { container.textContent = 'Error loading sequences'; return; }
+        var seqs = data.sequences;
+        if (!seqs.length) {
+            var empty = buildNode('div', {style:'text-align:center;padding:40px;color:var(--text-muted)'});
+            empty.appendChild(buildNode('p', {textContent:'No sequences yet.'}));
+            empty.appendChild(buildNode('button', {class:'btn btn-primary', textContent:'Get Started with Templates', onclick:showTemplates}));
+            container.appendChild(empty);
+            return;
+        }
+        var table = buildNode('table', {style:'width:100%'});
+        var thead = buildNode('thead');
+        var headRow = buildNode('tr');
+        ['Name','Trigger','Steps','Active','Status',''].forEach(function(h) { headRow.appendChild(buildNode('th', {textContent:h})); });
+        thead.appendChild(headRow);
+        table.appendChild(thead);
+        var tbody = buildNode('tbody');
+        seqs.forEach(function(s) {
+            var active = (s.enrollment_counts || {}).active || 0;
+            var completed = (s.enrollment_counts || {}).completed || 0;
+            var statusBg = s.status === 'active' ? 'var(--success)' : 'var(--text-muted)';
+            var row = buildNode('tr');
+
+            // Name cell
+            var nameCell = buildNode('td', {style:'font-weight:500'});
+            nameCell.appendChild(document.createTextNode(s.name));
+            nameCell.appendChild(buildNode('div', {style:'font-size:11px;color:var(--text-muted)', textContent:s.description||''}));
+            row.appendChild(nameCell);
+
+            // Trigger
+            var trigCell = buildNode('td');
+            trigCell.appendChild(buildNode('span', {class:'badge', style:'background:#ede9fe;color:#5b21b6', textContent:s.trigger_type}));
+            row.appendChild(trigCell);
+
+            // Steps count
+            row.appendChild(buildNode('td', {textContent: String((s.steps||[]).length)}));
+
+            // Active enrollments
+            var actCell = buildNode('td');
+            var actLink = buildNode('a', {href:'javascript:void(0)', style:'color:var(--primary)', textContent: active + ' active'});
+            (function(sid, sname) { actLink.onclick = function() { showEnrollments(sid, sname); }; })(s.id, s.name);
+            actCell.appendChild(actLink);
+            actCell.appendChild(buildNode('div', {style:'font-size:10px;color:var(--text-muted)', textContent: completed + ' completed'}));
+            row.appendChild(actCell);
+
+            // Status
+            var statCell = buildNode('td');
+            statCell.appendChild(buildNode('span', {style:'display:inline-block;width:8px;height:8px;border-radius:50%;background:' + statusBg}));
+            statCell.appendChild(document.createTextNode(' ' + s.status));
+            row.appendChild(statCell);
+
+            // Actions
+            var actionsCell = buildNode('td', {style:'text-align:right'});
+            var editBtn = buildNode('button', {class:'btn btn-secondary btn-sm', style:'margin-right:4px', textContent:'Edit'});
+            (function(sid) { editBtn.onclick = function() { editSequence(sid); }; })(s.id);
+            actionsCell.appendChild(editBtn);
+
+            if (s.status === 'active') {
+                var pauseBtn = buildNode('button', {class:'btn btn-secondary btn-sm', textContent:'Pause'});
+                (function(sid) { pauseBtn.onclick = function() { toggleStatus(sid, 'paused'); }; })(s.id);
+                actionsCell.appendChild(pauseBtn);
+            } else {
+                var activateBtn = buildNode('button', {class:'btn btn-secondary btn-sm', textContent:'Activate'});
+                (function(sid) { activateBtn.onclick = function() { toggleStatus(sid, 'active'); }; })(s.id);
+                actionsCell.appendChild(activateBtn);
+            }
+            row.appendChild(actionsCell);
+            tbody.appendChild(row);
+        });
+        table.appendChild(tbody);
+        container.appendChild(table);
+    });
+}
+
+// ── Templates ──
+function showTemplates() {
+    document.getElementById('templatesBackdrop').style.display = 'block';
+    document.getElementById('templatesModal').style.display = 'block';
+    api('GET', '/api/sequences/templates').then(function(data) {
+        var container = document.getElementById('templatesList');
+        container.textContent = '';
+        if (!data.ok) return;
+        Object.keys(data.templates).forEach(function(key) {
+            var t = data.templates[key];
+            var card = buildNode('div', {class:'card', style:'margin-bottom:12px;cursor:pointer'});
+            (function(k) { card.onclick = function() { installTemplate(k); }; })(key);
+            card.appendChild(buildNode('div', {style:'font-weight:600;font-size:14px', textContent:t.name}));
+            card.appendChild(buildNode('div', {style:'font-size:12px;color:var(--text-muted);margin:4px 0', textContent:t.description}));
+            var meta = buildNode('div', {style:'display:flex;gap:8px;font-size:11px'});
+            meta.appendChild(buildNode('span', {class:'badge', style:'background:#ede9fe;color:#5b21b6', textContent:t.trigger_type}));
+            meta.appendChild(buildNode('span', {style:'color:var(--text-muted)', textContent:t.steps.length + ' steps'}));
+            card.appendChild(meta);
+            container.appendChild(card);
+        });
+    });
+}
+function closeTemplates() {
+    document.getElementById('templatesBackdrop').style.display = 'none';
+    document.getElementById('templatesModal').style.display = 'none';
+}
+function installTemplate(key) {
+    api('POST', '/api/sequences/from-template', {template_key: key}).then(function(data) {
+        if (data.ok) { closeTemplates(); loadSequences(); showToast('Sequence installed!', 'success'); }
+        else { showToast(data.error || 'Error', 'danger'); }
+    });
+}
+
+// ── Create/Edit ──
+var editSteps = [];
+function openCreateModal() {
+    document.getElementById('seqEditId').value = '';
+    document.getElementById('seqName').value = '';
+    document.getElementById('seqDesc').value = '';
+    document.getElementById('seqTrigger').value = 'manual';
+    document.getElementById('seqModalTitle').textContent = 'New Sequence';
+    editSteps = [];
+    renderSteps();
+    toggleTriggerConfig();
+    document.getElementById('seqBackdrop').style.display = 'block';
+    document.getElementById('seqModal').style.display = 'block';
+}
+function closeSeqModal() {
+    document.getElementById('seqBackdrop').style.display = 'none';
+    document.getElementById('seqModal').style.display = 'none';
+}
+
+function editSequence(id) {
+    api('GET', '/api/sequences/' + id).then(function(data) {
+        if (!data.ok) return;
+        var s = data.sequence;
+        document.getElementById('seqEditId').value = s.id;
+        document.getElementById('seqName').value = s.name;
+        document.getElementById('seqDesc').value = s.description || '';
+        document.getElementById('seqTrigger').value = s.trigger_type;
+        document.getElementById('seqModalTitle').textContent = 'Edit: ' + s.name;
+        editSteps = (s.steps || []).map(function(st) {
+            return {step_type:st.step_type, delay_minutes:st.delay_minutes, content_template:st.content_template, channel:st.channel, config:st.config ? (typeof st.config === 'string' ? JSON.parse(st.config) : st.config) : {}};
+        });
+        renderSteps();
+        toggleTriggerConfig();
+        document.getElementById('seqBackdrop').style.display = 'block';
+        document.getElementById('seqModal').style.display = 'block';
+    });
+}
+
+function toggleTriggerConfig() {
+    document.getElementById('triggerStageGroup').style.display = document.getElementById('seqTrigger').value === 'stage_change' ? '' : 'none';
+}
+
+function addStep() {
+    editSteps.push({step_type:'sms', delay_minutes:0, content_template:'', channel:'sms', config:{}});
+    renderSteps();
+}
+
+function removeStep(i) {
+    editSteps.splice(i, 1);
+    renderSteps();
+}
+
+function renderSteps() {
+    var container = document.getElementById('stepsList');
+    container.textContent = '';
+    if (!editSteps.length) {
+        container.appendChild(buildNode('div', {style:'padding:12px;text-align:center;color:var(--text-muted);font-size:12px', textContent:'No steps yet. Click "+ Add Step" to build your sequence.'}));
+        return;
+    }
+    editSteps.forEach(function(s, i) {
+        var card = buildNode('div', {class:'card', style:'padding:10px;margin-bottom:8px;position:relative'});
+        var topRow = buildNode('div', {style:'display:flex;gap:8px;align-items:center;margin-bottom:8px'});
+        topRow.appendChild(buildNode('span', {style:'font-weight:600;font-size:12px;color:var(--text-muted)', textContent:'Step ' + (i+1)}));
+
+        // Step type select
+        var typeSelect = document.createElement('select');
+        typeSelect.className = 'form-control';
+        typeSelect.style.cssText = 'width:120px;padding:4px 8px;font-size:12px';
+        ['sms','email','wait','task','webhook'].forEach(function(t) {
+            var opt = document.createElement('option');
+            opt.value = t; opt.textContent = t.charAt(0).toUpperCase() + t.slice(1);
+            if (s.step_type === t) opt.selected = true;
+            typeSelect.appendChild(opt);
+        });
+        (function(idx) { typeSelect.onchange = function() {
+            editSteps[idx].step_type = this.value;
+            editSteps[idx].channel = this.value === 'sms' ? 'sms' : this.value === 'email' ? 'email' : '';
+            renderSteps();
+        }; })(i);
+        topRow.appendChild(typeSelect);
+
+        // Delay
+        topRow.appendChild(buildNode('span', {style:'font-size:11px;color:var(--text-muted)', textContent:'Delay:'}));
+        var delayInput = document.createElement('input');
+        delayInput.type = 'number';
+        delayInput.className = 'form-control';
+        delayInput.style.cssText = 'width:60px;padding:4px;font-size:12px';
+        delayInput.value = s.delay_minutes >= 1440 ? s.delay_minutes/1440 : s.delay_minutes >= 60 ? s.delay_minutes/60 : s.delay_minutes;
+
+        var delayUnit = document.createElement('select');
+        delayUnit.className = 'form-control';
+        delayUnit.style.cssText = 'width:80px;padding:4px;font-size:12px';
+        [['min','min'],['hours','hours'],['days','days']].forEach(function(u) {
+            var opt = document.createElement('option');
+            opt.value = u[0]; opt.textContent = u[1];
+            if (u[0] === 'days' && s.delay_minutes >= 1440) opt.selected = true;
+            else if (u[0] === 'hours' && s.delay_minutes >= 60 && s.delay_minutes < 1440) opt.selected = true;
+            else if (u[0] === 'min' && s.delay_minutes < 60) opt.selected = true;
+            delayUnit.appendChild(opt);
+        });
+        (function(idx, dInput, dUnit) {
+            dInput.onchange = function() { updateDelay(idx, dInput.value, dUnit.value); };
+            dUnit.onchange = function() { updateDelay(idx, dInput.value, dUnit.value); };
+        })(i, delayInput, delayUnit);
+        topRow.appendChild(delayInput);
+        topRow.appendChild(delayUnit);
+
+        // Remove button
+        var removeBtn = buildNode('button', {style:'margin-left:auto;background:none;border:none;cursor:pointer;color:var(--danger);font-size:16px', textContent:'\u00D7'});
+        (function(idx) { removeBtn.onclick = function() { removeStep(idx); }; })(i);
+        topRow.appendChild(removeBtn);
+        card.appendChild(topRow);
+
+        // Content area
+        if (s.step_type === 'sms' || s.step_type === 'email') {
+            var textarea = document.createElement('textarea');
+            textarea.className = 'form-control';
+            textarea.rows = 2;
+            textarea.style.fontSize = '12px';
+            textarea.placeholder = 'Message template or AI instruction...';
+            textarea.value = s.content_template || '';
+            (function(idx) { textarea.onchange = function() { editSteps[idx].content_template = this.value; }; })(i);
+            card.appendChild(textarea);
+            card.appendChild(buildNode('div', {style:'font-size:10px;color:var(--text-muted);margin-top:4px', textContent:'Use {{first_name}}, {{product}} for variables, or write an instruction for AI to generate the message.'}));
+        } else if (s.step_type === 'task') {
+            var taskInput = document.createElement('input');
+            taskInput.type = 'text';
+            taskInput.className = 'form-control';
+            taskInput.style.fontSize = '12px';
+            taskInput.placeholder = 'Task title (e.g. Call {{first_name}})';
+            taskInput.value = (s.config || {}).title || s.content_template || '';
+            (function(idx) { taskInput.onchange = function() { editSteps[idx].config = {title:this.value}; editSteps[idx].content_template = this.value; }; })(i);
+            card.appendChild(taskInput);
+        } else if (s.step_type === 'webhook') {
+            var urlInput = document.createElement('input');
+            urlInput.type = 'url';
+            urlInput.className = 'form-control';
+            urlInput.style.fontSize = '12px';
+            urlInput.placeholder = 'https://...';
+            urlInput.value = (s.config || {}).url || '';
+            (function(idx) { urlInput.onchange = function() { editSteps[idx].config = {url:this.value}; }; })(i);
+            card.appendChild(urlInput);
+        }
+
+        container.appendChild(card);
+    });
+}
+
+function updateDelay(i, val, unit) {
+    var n = parseFloat(val) || 0;
+    if (unit === 'days') editSteps[i].delay_minutes = n * 1440;
+    else if (unit === 'hours') editSteps[i].delay_minutes = n * 60;
+    else editSteps[i].delay_minutes = n;
+}
+
+function saveSequence() {
+    var id = document.getElementById('seqEditId').value;
+    var name = document.getElementById('seqName').value.trim();
+    var trigger = document.getElementById('seqTrigger').value;
+    if (!name) { showToast('Name is required', 'danger'); return; }
+
+    var triggerConfig = {};
+    if (trigger === 'stage_change') triggerConfig.stage = document.getElementById('triggerStage').value;
+
+    if (id) {
+        api('PUT', '/api/sequences/' + id, {name:name, description:document.getElementById('seqDesc').value, trigger_type:trigger, trigger_config:triggerConfig}).then(function(data) {
+            if (!data.ok) { showToast(data.error||'Error','danger'); return; }
+            api('PUT', '/api/sequences/' + id + '/steps', {steps:editSteps}).then(function() {
+                closeSeqModal(); loadSequences(); showToast('Sequence updated!','success');
+            });
+        });
+    } else {
+        api('POST', '/api/sequences', {name:name, description:document.getElementById('seqDesc').value, trigger_type:trigger, trigger_config:triggerConfig, steps:editSteps}).then(function(data) {
+            if (data.ok) { closeSeqModal(); loadSequences(); showToast('Sequence created!','success'); }
+            else { showToast(data.error||'Error','danger'); }
+        });
+    }
+}
+
+function toggleStatus(id, newStatus) {
+    api('PUT', '/api/sequences/' + id, {status:newStatus}).then(function(data) {
+        if (data.ok) { loadSequences(); showToast('Sequence ' + newStatus, 'success'); }
+    });
+}
+
+// ── Enrollments ──
+function showEnrollments(seqId, name) {
+    document.getElementById('enrollModalTitle').textContent = 'Enrollments: ' + name;
+    document.getElementById('enrollBackdrop').style.display = 'block';
+    document.getElementById('enrollModal').style.display = 'block';
+    api('GET', '/api/sequences/' + seqId + '/enrollments?status=').then(function(data) {
+        var container = document.getElementById('enrollmentsList');
+        container.textContent = '';
+        if (!data.ok || !data.enrollments.length) {
+            container.appendChild(buildNode('div', {style:'padding:20px;text-align:center;color:var(--text-muted)', textContent:'No enrollments yet'}));
+            return;
+        }
+        var table = buildNode('table', {style:'width:100%'});
+        var thead = buildNode('thead');
+        var headRow = buildNode('tr');
+        ['Prospect','Step','Status','Enrolled',''].forEach(function(h) { headRow.appendChild(buildNode('th', {textContent:h})); });
+        thead.appendChild(headRow);
+        table.appendChild(thead);
+        var tbody = buildNode('tbody');
+        data.enrollments.forEach(function(e) {
+            var statusColor = e.status === 'active' ? 'var(--success)' : e.status === 'completed' ? 'var(--primary)' : 'var(--text-muted)';
+            var row = buildNode('tr');
+            row.appendChild(buildNode('td', {textContent: e.prospect_name || '#' + e.prospect_id}));
+            row.appendChild(buildNode('td', {textContent: 'Step ' + e.current_step}));
+            row.appendChild(buildNode('td', {style:'color:'+statusColor, textContent: e.status}));
+            row.appendChild(buildNode('td', {style:'font-size:11px;color:var(--text-muted)', textContent: (e.enrolled_at||'').split(' ')[0]}));
+            var actTd = buildNode('td');
+            if (e.status === 'active') {
+                var cancelBtn = buildNode('button', {class:'btn btn-secondary btn-sm', textContent:'Cancel'});
+                (function(sid, pid, sname) { cancelBtn.onclick = function() {
+                    api('POST', '/api/sequences/' + sid + '/unenroll', {prospect_id:pid}).then(function() { showEnrollments(sid, sname); });
+                }; })(seqId, e.prospect_id, name);
+                actTd.appendChild(cancelBtn);
+            }
+            row.appendChild(actTd);
+            tbody.appendChild(row);
+        });
+        table.appendChild(tbody);
+        container.appendChild(table);
+    });
+}
+function closeEnrollModal() {
+    document.getElementById('enrollBackdrop').style.display = 'none';
+    document.getElementById('enrollModal').style.display = 'none';
+}
+
+// Init
+loadSequences();
+</script>
+{% endblock %}
