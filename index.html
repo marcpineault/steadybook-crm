@@ -1,0 +1,1133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SteadyBook — AI-Powered CRM for Advisors</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,300;1,9..144,400&family=Plus+Jakarta+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #070B17;
+      --surface:   #0D1526;
+      --surface2:  #111A30;
+      --border:    rgba(255,255,255,0.06);
+      --border2:   rgba(255,255,255,0.10);
+      --gold:      #C8A96E;
+      --gold-dim:  rgba(200,169,110,0.15);
+      --gold-glow: rgba(200,169,110,0.08);
+      --teal:      #2DD4BF;
+      --teal-dim:  rgba(45,212,191,0.12);
+      --text:      #EDE9E0;
+      --muted:     #6E7691;
+      --muted2:    #9AA0B8;
+      --radius:    14px;
+      --sans:      'Plus Jakarta Sans', sans-serif;
+      --serif:     'Fraunces', serif;
+      --mono:      'JetBrains Mono', monospace;
+    }
+
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* GRID BACKGROUND */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(200,169,110,0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(200,169,110,0.025) 1px, transparent 1px);
+      background-size: 60px 60px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* NAV */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 40px;
+      height: 68px;
+      background: rgba(7,11,23,0.85);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+    }
+    .nav-logo-mark {
+      width: 32px; height: 32px;
+      background: var(--gold);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--serif);
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--bg);
+      letter-spacing: -0.5px;
+    }
+    .nav-logo-text {
+      font-family: var(--serif);
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text);
+      letter-spacing: -0.3px;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .nav-link {
+      font-size: 14px;
+      color: var(--muted2);
+      text-decoration: none;
+      padding: 8px 14px;
+      border-radius: 8px;
+      transition: color 0.2s;
+    }
+    .nav-link:hover { color: var(--text); }
+
+    .btn-primary {
+      background: var(--gold);
+      color: var(--bg);
+      font-family: var(--sans);
+      font-size: 14px;
+      font-weight: 600;
+      padding: 10px 22px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: opacity 0.2s, transform 0.15s;
+      letter-spacing: 0.01em;
+    }
+    .btn-primary:hover { opacity: 0.88; transform: translateY(-1px); }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 14px;
+      font-weight: 500;
+      padding: 10px 22px;
+      border-radius: 8px;
+      border: 1px solid var(--border2);
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .btn-ghost:hover { border-color: var(--gold); background: var(--gold-glow); }
+
+    /* HERO */
+    .hero {
+      position: relative;
+      z-index: 1;
+      padding: 160px 40px 100px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--gold-dim);
+      border: 1px solid rgba(200,169,110,0.25);
+      border-radius: 100px;
+      padding: 6px 16px;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--gold);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 32px;
+    }
+    .badge-dot {
+      width: 6px; height: 6px;
+      background: var(--teal);
+      border-radius: 50%;
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.8); }
+    }
+
+    .hero h1 {
+      font-family: var(--serif);
+      font-size: clamp(44px, 6vw, 76px);
+      font-weight: 700;
+      line-height: 1.07;
+      letter-spacing: -0.03em;
+      color: var(--text);
+      max-width: 780px;
+      margin-bottom: 28px;
+    }
+    .hero h1 em {
+      font-style: italic;
+      color: var(--gold);
+    }
+
+    .hero-sub {
+      font-size: 18px;
+      line-height: 1.7;
+      color: var(--muted2);
+      max-width: 540px;
+      margin-bottom: 44px;
+      font-weight: 300;
+    }
+
+    .hero-ctas {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 72px;
+    }
+    .btn-primary.large { padding: 14px 30px; font-size: 15px; border-radius: 10px; }
+    .btn-ghost.large   { padding: 14px 30px; font-size: 15px; border-radius: 10px; }
+
+    .hero-stats {
+      display: flex;
+      gap: 0;
+      border: 1px solid var(--border2);
+      border-radius: var(--radius);
+      overflow: hidden;
+      width: fit-content;
+    }
+    .stat-item {
+      padding: 22px 36px;
+      border-right: 1px solid var(--border2);
+      background: var(--surface);
+    }
+    .stat-item:last-child { border-right: none; }
+    .stat-num {
+      font-family: var(--serif);
+      font-size: 32px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.03em;
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+    .stat-num span { color: var(--gold); }
+    .stat-label {
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 400;
+      letter-spacing: 0.02em;
+    }
+
+    /* SECTION BASE */
+    section { position: relative; z-index: 1; }
+    .container { max-width: 1100px; margin: 0 auto; padding: 0 40px; }
+
+    .section-label {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--gold);
+      margin-bottom: 16px;
+    }
+    .section-title {
+      font-family: var(--serif);
+      font-size: clamp(32px, 4vw, 52px);
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+      color: var(--text);
+      margin-bottom: 20px;
+    }
+    .section-title em { font-style: italic; color: var(--gold); }
+    .section-sub {
+      font-size: 17px;
+      color: var(--muted2);
+      font-weight: 300;
+      max-width: 520px;
+      line-height: 1.7;
+    }
+
+    /* DIVIDER */
+    .divider {
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--gold), transparent);
+      opacity: 0.2;
+      margin: 0 40px;
+    }
+
+    /* PAIN SECTION */
+    .pain {
+      padding: 100px 0;
+    }
+    .pain-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 40px;
+      margin-top: 60px;
+      align-items: center;
+    }
+    .pain-items {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+    .pain-item {
+      display: flex;
+      gap: 18px;
+      padding: 24px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .pain-item:first-child { border-top: 1px solid var(--border); }
+    .pain-icon {
+      width: 40px; height: 40px; flex-shrink: 0;
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+    .pain-text h4 {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+    .pain-text p {
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+    .pain-visual {
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: 20px;
+      padding: 32px;
+      position: relative;
+      overflow: hidden;
+    }
+    .pain-visual::before {
+      content: '';
+      position: absolute;
+      top: -60px; right: -60px;
+      width: 200px; height: 200px;
+      background: radial-gradient(circle, rgba(200,169,110,0.12) 0%, transparent 70%);
+      border-radius: 50%;
+    }
+    .mini-stat {
+      font-family: var(--serif);
+      font-size: 56px;
+      font-weight: 700;
+      color: var(--gold);
+      letter-spacing: -0.04em;
+      line-height: 1;
+      margin-bottom: 8px;
+    }
+    .mini-stat-label {
+      font-size: 15px;
+      color: var(--muted2);
+      line-height: 1.5;
+      font-weight: 300;
+    }
+    .mini-divider {
+      height: 1px;
+      background: var(--border2);
+      margin: 24px 0;
+    }
+
+    /* FEATURES */
+    .features {
+      padding: 100px 0;
+    }
+    .features-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      margin-bottom: 60px;
+      gap: 40px;
+    }
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 2px;
+      background: var(--border);
+      border-radius: 20px;
+      overflow: hidden;
+    }
+    .feature-card {
+      background: var(--bg);
+      padding: 36px 32px;
+      transition: background 0.25s;
+      cursor: default;
+    }
+    .feature-card:hover { background: var(--surface); }
+    .feature-card:hover .feature-icon { border-color: rgba(200,169,110,0.3); background: var(--gold-dim); }
+    .feature-icon {
+      width: 48px; height: 48px;
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px;
+      margin-bottom: 20px;
+      transition: all 0.25s;
+    }
+    .feature-card h3 {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 10px;
+      letter-spacing: -0.01em;
+    }
+    .feature-card p {
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.65;
+    }
+    .feature-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      margin-top: 16px;
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      color: var(--teal);
+      text-transform: uppercase;
+    }
+    .feature-tag::before {
+      content: '';
+      display: block;
+      width: 14px;
+      height: 1px;
+      background: var(--teal);
+    }
+
+    /* HOW IT WORKS */
+    .how {
+      padding: 100px 0;
+      background: linear-gradient(180deg, transparent, var(--surface) 20%, var(--surface) 80%, transparent);
+    }
+    .how-inner {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 40px;
+    }
+    .how-header { margin-bottom: 64px; }
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+      background: var(--border);
+      border-radius: 20px;
+      overflow: hidden;
+    }
+    .step {
+      background: var(--surface);
+      padding: 40px 36px;
+      position: relative;
+    }
+    .step-number {
+      font-family: var(--serif);
+      font-size: 72px;
+      font-weight: 700;
+      color: var(--border2);
+      line-height: 1;
+      position: absolute;
+      top: 24px; right: 28px;
+      letter-spacing: -0.05em;
+    }
+    .step-icon {
+      font-size: 28px;
+      margin-bottom: 20px;
+    }
+    .step h3 {
+      font-family: var(--serif);
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 12px;
+      letter-spacing: -0.02em;
+    }
+    .step p {
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+    .step-connector {
+      display: none;
+    }
+
+    /* DEMO PREVIEW */
+    .preview {
+      padding: 60px 0 100px;
+    }
+    .preview-shell {
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: 20px;
+      overflow: hidden;
+    }
+    .preview-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 20px;
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+    }
+    .dot { width: 12px; height: 12px; border-radius: 50%; }
+    .dot.red   { background: #FF5F57; }
+    .dot.yellow{ background: #FEBC2E; }
+    .dot.green { background: #28C840; }
+    .preview-url {
+      flex: 1;
+      margin: 0 12px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 5px 14px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted2);
+    }
+    .preview-body {
+      padding: 0;
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      min-height: 380px;
+    }
+    .preview-sidebar {
+      background: var(--bg);
+      border-right: 1px solid var(--border);
+      padding: 20px 16px;
+    }
+    .preview-nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      margin-bottom: 2px;
+      color: var(--muted);
+    }
+    .preview-nav-item.active {
+      background: var(--gold-dim);
+      color: var(--gold);
+    }
+    .preview-nav-icon { font-size: 15px; }
+    .preview-main {
+      padding: 28px;
+    }
+    .preview-cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .preview-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 18px;
+    }
+    .preview-card-label {
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 6px;
+      font-family: var(--mono);
+    }
+    .preview-card-value {
+      font-family: var(--serif);
+      font-size: 26px;
+      font-weight: 600;
+      color: var(--text);
+      letter-spacing: -0.03em;
+      line-height: 1;
+    }
+    .preview-card-value.gold { color: var(--gold); }
+    .preview-card-value.teal { color: var(--teal); }
+    .preview-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .preview-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 12px 16px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 13px;
+    }
+    .preview-avatar {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      background: var(--gold-dim);
+      border: 1px solid rgba(200,169,110,0.3);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--gold);
+    }
+    .preview-name { font-weight: 500; color: var(--text); flex: 1; }
+    .preview-stage {
+      font-family: var(--mono);
+      font-size: 10px;
+      padding: 3px 9px;
+      border-radius: 100px;
+      letter-spacing: 0.04em;
+    }
+    .stage-hot  { background: rgba(255,95,87,0.15); color: #FF7B76; }
+    .stage-warm { background: rgba(200,169,110,0.15); color: var(--gold); }
+    .stage-cool { background: rgba(45,212,191,0.12); color: var(--teal); }
+    .preview-score {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted2);
+    }
+
+    /* TESTIMONIAL */
+    .testimonial {
+      padding: 80px 0;
+    }
+    .quote-block {
+      max-width: 800px;
+      margin: 0 auto;
+      text-align: center;
+      padding: 0 40px;
+    }
+    .quote-mark {
+      font-family: var(--serif);
+      font-size: 80px;
+      line-height: 0.6;
+      color: var(--gold);
+      opacity: 0.4;
+      display: block;
+      margin-bottom: 20px;
+    }
+    .quote-text {
+      font-family: var(--serif);
+      font-size: clamp(22px, 3vw, 32px);
+      font-weight: 400;
+      font-style: italic;
+      color: var(--text);
+      line-height: 1.5;
+      letter-spacing: -0.01em;
+      margin-bottom: 32px;
+    }
+    .quote-author {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+    }
+    .quote-avatar {
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      background: var(--gold-dim);
+      border: 2px solid rgba(200,169,110,0.3);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 600;
+      font-size: 14px;
+      color: var(--gold);
+    }
+    .quote-info { text-align: left; }
+    .quote-name { font-size: 14px; font-weight: 600; color: var(--text); }
+    .quote-title { font-size: 13px; color: var(--muted); }
+
+    /* CTA */
+    .cta-section {
+      padding: 100px 0 120px;
+    }
+    .cta-box {
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: 24px;
+      padding: 80px 60px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .cta-box::before {
+      content: '';
+      position: absolute;
+      bottom: -100px; left: 50%;
+      transform: translateX(-50%);
+      width: 500px; height: 300px;
+      background: radial-gradient(ellipse, rgba(200,169,110,0.1) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .cta-box .section-title { max-width: 600px; margin: 0 auto 20px; }
+    .cta-box .section-sub  { max-width: 460px; margin: 0 auto 44px; text-align: center; }
+    .cta-actions {
+      display: flex;
+      gap: 14px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .btn-primary.xlarge { padding: 16px 36px; font-size: 16px; border-radius: 10px; }
+    .btn-ghost.xlarge   { padding: 16px 36px; font-size: 16px; border-radius: 10px; }
+
+    /* FOOTER */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: relative;
+      z-index: 1;
+    }
+    .footer-logo { display: flex; align-items: center; gap: 10px; }
+    .footer-copy { font-size: 13px; color: var(--muted); }
+    .footer-tagline {
+      font-size: 13px;
+      color: var(--muted);
+      font-style: italic;
+      font-family: var(--serif);
+    }
+
+    /* REVEAL ANIMATION */
+    .reveal {
+      opacity: 0;
+      transform: translateY(24px);
+      transition: opacity 0.7s ease, transform 0.7s ease;
+    }
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .reveal-delay-1 { transition-delay: 0.1s; }
+    .reveal-delay-2 { transition-delay: 0.2s; }
+    .reveal-delay-3 { transition-delay: 0.3s; }
+
+    /* RESPONSIVE */
+    @media (max-width: 900px) {
+      nav { padding: 0 20px; }
+      .nav-links .nav-link { display: none; }
+      .hero { padding: 130px 20px 80px; }
+      .hero-stats { flex-direction: column; width: 100%; }
+      .stat-item { border-right: none; border-bottom: 1px solid var(--border2); }
+      .stat-item:last-child { border-bottom: none; }
+      .container { padding: 0 20px; }
+      .pain-grid { grid-template-columns: 1fr; }
+      .features-grid { grid-template-columns: 1fr; }
+      .steps { grid-template-columns: 1fr; }
+      .preview-body { grid-template-columns: 1fr; }
+      .preview-sidebar { display: none; }
+      .preview-cards { grid-template-columns: 1fr 1fr; }
+      .cta-box { padding: 48px 28px; }
+      .features-header { flex-direction: column; align-items: flex-start; }
+      footer { flex-direction: column; gap: 12px; text-align: center; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAV -->
+  <nav>
+    <a href="#" class="nav-logo">
+      <div class="nav-logo-mark">S</div>
+      <span class="nav-logo-text">SteadyBook</span>
+    </a>
+    <div class="nav-links">
+      <a href="#features" class="nav-link">Features</a>
+      <a href="#how" class="nav-link">How it works</a>
+      <a href="#demo" class="nav-link">Demo</a>
+      <a href="#cta" class="btn-primary">Book a Demo →</a>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="badge">
+      <span class="badge-dot"></span>
+      Now in Early Access — Insurance &amp; Financial Advisors
+    </div>
+    <h1>The CRM that works<br>while you're <em>with clients</em></h1>
+    <p class="hero-sub">
+      AI-powered follow-ups, meeting prep, pipeline scoring, and nurture sequences — built exclusively for insurance and financial advisors who are done losing deals to bad admin.
+    </p>
+    <div class="hero-ctas">
+      <a href="#cta" class="btn-primary large">Book a Live Demo →</a>
+      <a href="#features" class="btn-ghost large">See the features</a>
+    </div>
+    <div class="hero-stats">
+      <div class="stat-item">
+        <div class="stat-num"><span class="counter" data-target="40">0</span><span>%</span></div>
+        <div class="stat-label">of advisor time lost to admin</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-num"><span class="counter" data-target="3">0</span><span>x</span></div>
+        <div class="stat-label">faster lead response time</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-num"><span>$</span><span class="counter" data-target="180">0</span><span>k</span></div>
+        <div class="stat-label">avg revenue recovered per advisor</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- PAIN -->
+  <section class="pain">
+    <div class="container">
+      <div class="pain-grid">
+        <div>
+          <p class="section-label reveal">The problem</p>
+          <h2 class="section-title reveal reveal-delay-1">You're a great advisor.<br>The admin is <em>killing</em> you.</h2>
+          <div class="pain-items">
+            <div class="pain-item reveal reveal-delay-1">
+              <div class="pain-icon">📋</div>
+              <div class="pain-text">
+                <h4>Manual follow-ups that slip</h4>
+                <p>Leads go cold because there's no time to send that third touchpoint. You're juggling 80 clients in a spreadsheet.</p>
+              </div>
+            </div>
+            <div class="pain-item reveal reveal-delay-2">
+              <div class="pain-icon">🔍</div>
+              <div class="pain-text">
+                <h4>No intel before meetings</h4>
+                <p>Walking into a client review without a full picture of their situation, recent changes, and what to recommend.</p>
+              </div>
+            </div>
+            <div class="pain-item reveal reveal-delay-3">
+              <div class="pain-icon">📉</div>
+              <div class="pain-text">
+                <h4>Pipeline blind spots</h4>
+                <p>Deals stalling at proposal stage for weeks. No automatic nudges, no scoring, no visibility into who's actually ready to close.</p>
+              </div>
+            </div>
+            <div class="pain-item reveal">
+              <div class="pain-icon">⏱️</div>
+              <div class="pain-text">
+                <h4>Hours on rate lookups</h4>
+                <p>Manually checking carrier portals and spreadsheets to compare rates instead of spending that time building relationships.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="reveal">
+          <div class="pain-visual">
+            <div class="mini-stat counter-animate" data-target="12" data-suffix="hrs">0 hrs</div>
+            <div class="mini-stat-label">wasted per week on tasks<br>SteadyBook handles automatically</div>
+            <div class="mini-divider"></div>
+            <div class="mini-stat counter-animate" data-target="68" data-suffix="%">0%</div>
+            <div class="mini-stat-label">of advisors say they'd write<br>more business with better follow-up tools</div>
+            <div class="mini-divider"></div>
+            <div style="font-family: var(--mono); font-size: 11px; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase;">
+              Industry research, LIMRA 2024
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- FEATURES -->
+  <section class="features" id="features">
+    <div class="container">
+      <div class="features-header">
+        <div>
+          <p class="section-label reveal">What SteadyBook does</p>
+          <h2 class="section-title reveal reveal-delay-1">Every tool your<br>practice needs, <em>automated</em></h2>
+        </div>
+        <p class="section-sub reveal reveal-delay-2" style="margin-bottom: 0;">
+          Six AI-powered modules that work 24/7 — so you can focus on what only you can do: advising.
+        </p>
+      </div>
+      <div class="features-grid reveal">
+        <div class="feature-card">
+          <div class="feature-icon">🤖</div>
+          <h3>AI Nurture Sequences</h3>
+          <p>Personalized follow-up emails and SMS sent automatically based on where each lead is in the pipeline. Feels human, works at scale.</p>
+          <div class="feature-tag">AI-Generated</div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📊</div>
+          <h3>Lead Scoring Engine</h3>
+          <p>Every contact gets a live score based on engagement, recency, and fit. Know exactly who to call today — and who can wait.</p>
+          <div class="feature-tag">Real-Time</div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📝</div>
+          <h3>Pre-Meeting Briefings</h3>
+          <p>Walk into every client meeting with a full AI-generated brief: history, open items, product gaps, and talking points.</p>
+          <div class="feature-tag">Auto-Generated</div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">💬</div>
+          <h3>SMS &amp; Email Automation</h3>
+          <p>Two-way SMS conversations managed by AI. Appointment reminders, confirmation flows, and re-engagement campaigns — all on autopilot.</p>
+          <div class="feature-tag">2-Way SMS</div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📈</div>
+          <h3>Pipeline Dashboard</h3>
+          <p>Visual drag-and-drop pipeline with AI-powered deal health indicators. See every opportunity, its stage, and next best action at a glance.</p>
+          <div class="feature-tag">Live View</div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🔎</div>
+          <h3>Instant Rate Lookup</h3>
+          <p>Pull and compare carrier rates directly inside the CRM. No more portal hopping. Accurate quotes, faster turnaround, happier clients.</p>
+          <div class="feature-tag">Multi-Carrier</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section class="how" id="how">
+    <div class="how-inner">
+      <div class="how-header">
+        <p class="section-label reveal">How it works</p>
+        <h2 class="section-title reveal reveal-delay-1">Up and running<br>in <em>one afternoon</em></h2>
+      </div>
+      <div class="steps">
+        <div class="step reveal">
+          <div class="step-number">01</div>
+          <div class="step-icon">📥</div>
+          <h3>Import your book</h3>
+          <p>Connect your existing spreadsheet, Outlook contacts, or prior CRM. SteadyBook syncs your entire client and prospect list in minutes, no tech expertise needed.</p>
+        </div>
+        <div class="step reveal reveal-delay-1">
+          <div class="step-number">02</div>
+          <div class="step-icon">⚙️</div>
+          <h3>AI learns your style</h3>
+          <p>SteadyBook reads your past communications and pipeline history to personalize every automated message to match your voice — not a generic template.</p>
+        </div>
+        <div class="step reveal reveal-delay-2">
+          <div class="step-number">03</div>
+          <div class="step-icon">🚀</div>
+          <h3>Let it run</h3>
+          <p>Sequences start, follow-ups send, meetings get prepped, and your pipeline updates automatically. You show up to the right calls with the right info.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- DEMO PREVIEW -->
+  <section class="preview" id="demo">
+    <div class="container">
+      <p class="section-label reveal" style="text-align:center; margin-bottom: 12px;">The interface</p>
+      <h2 class="section-title reveal reveal-delay-1" style="text-align:center; margin: 0 auto 48px;">Looks like a tool<br>built <em>for advisors</em></h2>
+      <div class="preview-shell reveal">
+        <div class="preview-bar">
+          <div class="dot red"></div>
+          <div class="dot yellow"></div>
+          <div class="dot green"></div>
+          <div class="preview-url">app.steadybook.io/pipeline</div>
+        </div>
+        <div class="preview-body">
+          <div class="preview-sidebar">
+            <div style="font-family: var(--mono); font-size: 10px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 16px; padding: 0 12px;">Menu</div>
+            <div class="preview-nav-item active"><span class="preview-nav-icon">📊</span> Pipeline</div>
+            <div class="preview-nav-item"><span class="preview-nav-icon">👥</span> Clients</div>
+            <div class="preview-nav-item"><span class="preview-nav-icon">💬</span> Conversations</div>
+            <div class="preview-nav-item"><span class="preview-nav-icon">📝</span> Briefings</div>
+            <div class="preview-nav-item"><span class="preview-nav-icon">📧</span> Sequences</div>
+            <div class="preview-nav-item"><span class="preview-nav-icon">📈</span> Analytics</div>
+            <div class="preview-nav-item"><span class="preview-nav-icon">⚙️</span> Settings</div>
+          </div>
+          <div class="preview-main">
+            <div class="preview-cards">
+              <div class="preview-card">
+                <div class="preview-card-label">Active Leads</div>
+                <div class="preview-card-value gold">34</div>
+              </div>
+              <div class="preview-card">
+                <div class="preview-card-label">Pipeline Value</div>
+                <div class="preview-card-value">$218k</div>
+              </div>
+              <div class="preview-card">
+                <div class="preview-card-label">Sequences Running</div>
+                <div class="preview-card-value teal">12</div>
+              </div>
+            </div>
+            <div class="preview-list">
+              <div class="preview-row">
+                <div class="preview-avatar">SR</div>
+                <div class="preview-name">Sarah Reynolds</div>
+                <div class="preview-stage stage-hot">HOT</div>
+                <div class="preview-score">Score: 94</div>
+              </div>
+              <div class="preview-row">
+                <div class="preview-avatar">MT</div>
+                <div class="preview-name">Mike Tremblay</div>
+                <div class="preview-stage stage-warm">WARM</div>
+                <div class="preview-score">Score: 71</div>
+              </div>
+              <div class="preview-row">
+                <div class="preview-avatar">JL</div>
+                <div class="preview-name">Julie Landry</div>
+                <div class="preview-stage stage-cool">NURTURE</div>
+                <div class="preview-score">Score: 48</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- TESTIMONIAL -->
+  <section class="testimonial">
+    <div class="quote-block reveal">
+      <span class="quote-mark">"</span>
+      <p class="quote-text">I used to spend Sunday nights prepping for Monday meetings. Now SteadyBook sends me a briefing at 8am with everything I need. It's like having a full-time assistant who never sleeps.</p>
+      <div class="quote-author">
+        <div class="quote-avatar">DP</div>
+        <div class="quote-info">
+          <div class="quote-name">David Pelletier</div>
+          <div class="quote-title">Senior Financial Advisor, 14 years in practice</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- CTA -->
+  <section class="cta-section" id="cta">
+    <div class="container">
+      <div class="cta-box reveal">
+        <p class="section-label" style="text-align:center;">Get started</p>
+        <h2 class="section-title">Ready to stop losing<br>deals to <em>bad follow-up?</em></h2>
+        <p class="section-sub">Book a 20-minute demo and we'll show you exactly how SteadyBook works for your practice. No commitment, no nonsense.</p>
+        <div class="cta-actions">
+          <a href="mailto:hello@steadybook.io" class="btn-primary xlarge">Book a Demo →</a>
+          <a href="mailto:hello@steadybook.io" class="btn-ghost xlarge">Ask a question</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer>
+    <div class="footer-logo">
+      <div class="nav-logo-mark">S</div>
+      <span class="nav-logo-text">SteadyBook</span>
+    </div>
+    <div class="footer-copy">© 2026 SteadyBook. All rights reserved.</div>
+    <div class="footer-tagline">Built for advisors who close.</div>
+  </footer>
+
+  <script>
+    // SCROLL REVEAL
+    const reveals = document.querySelectorAll('.reveal');
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          e.target.classList.add('visible');
+          observer.unobserve(e.target);
+        }
+      });
+    }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+    reveals.forEach(el => observer.observe(el));
+
+    // Make hero visible immediately
+    document.querySelectorAll('.hero .reveal, .hero .badge').forEach(el => {
+      el.classList.add('visible');
+    });
+
+    // NUMBER COUNTER
+    function animateCounter(el) {
+      const target = parseInt(el.getAttribute('data-target'));
+      const duration = 1400;
+      const start = performance.now();
+      function update(now) {
+        const elapsed = now - start;
+        const progress = Math.min(elapsed / duration, 1);
+        const eased = 1 - Math.pow(1 - progress, 3);
+        el.textContent = Math.round(eased * target);
+        if (progress < 1) requestAnimationFrame(update);
+      }
+      requestAnimationFrame(update);
+    }
+
+    const counterObserver = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          animateCounter(e.target);
+          counterObserver.unobserve(e.target);
+        }
+      });
+    }, { threshold: 0.5 });
+    document.querySelectorAll('.counter').forEach(el => counterObserver.observe(el));
+
+    // PAIN VISUAL COUNTERS
+    function animateText(el) {
+      const target = parseInt(el.getAttribute('data-target'));
+      const suffix = el.getAttribute('data-suffix') || '';
+      const duration = 1400;
+      const start = performance.now();
+      function update(now) {
+        const elapsed = now - start;
+        const progress = Math.min(elapsed / duration, 1);
+        const eased = 1 - Math.pow(1 - progress, 3);
+        el.textContent = Math.round(eased * target) + suffix;
+        if (progress < 1) requestAnimationFrame(update);
+      }
+      requestAnimationFrame(update);
+    }
+    const textCounterObserver = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          animateText(e.target);
+          textCounterObserver.unobserve(e.target);
+        }
+      });
+    }, { threshold: 0.5 });
+    document.querySelectorAll('.counter-animate').forEach(el => textCounterObserver.observe(el));
+
+    // SMOOTH NAV SCROLL
+    document.querySelectorAll('a[href^="#"]').forEach(a => {
+      a.addEventListener('click', e => {
+        const id = a.getAttribute('href');
+        if (id === '#') return;
+        const target = document.querySelector(id);
+        if (target) {
+          e.preventDefault();
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
+    });
+  </script>
+</body>
+</html>
