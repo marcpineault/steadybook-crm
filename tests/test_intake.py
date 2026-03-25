@@ -15,6 +15,12 @@ def setup_function():
     if os.path.exists(db.DB_PATH):
         os.remove(db.DB_PATH)
     db.init_db()
+    # Seed the tenant owner so calendar intake can skip the advisor's own email
+    with db.get_db() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO users (tenant_id, email, password_hash, name, role) VALUES (1, ?, '', 'Marc Pineault', 'owner')",
+            ("marcpineault@cooperators.onmicrosoft.com",),
+        )
 
 
 def test_process_booking_payload():

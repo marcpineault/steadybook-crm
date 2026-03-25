@@ -46,7 +46,7 @@ def test_approval_queue_columns():
         columns = {row[1] for row in cursor.fetchall()}
         expected = {
             "id", "type", "prospect_id", "channel", "content", "context",
-            "status", "created_at", "acted_on_at", "telegram_message_id",
+            "status", "created_at", "acted_on_at", "telegram_message_id", "tenant_id",
         }
         assert expected == columns
 
@@ -65,6 +65,6 @@ def test_audit_log_columns():
         columns = {row[1] for row in cursor.fetchall()}
         expected = {
             "id", "timestamp", "action_type", "target", "content",
-            "compliance_check", "approved_by", "outcome",
+            "compliance_check", "approved_by", "outcome", "tenant_id",
         }
         assert expected == columns

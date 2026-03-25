@@ -197,6 +197,18 @@ def process_calendar_event(data: dict) -> str:
             })
         results.append(f"Calendar event logged: {subject}")
     else:
+        # Look up the advisor's own email so we can skip them in attendee list
+        owner_email = ""
+        try:
+            with db.get_db() as _conn:
+                _owner = _conn.execute(
+                    "SELECT email FROM users WHERE role = 'owner' AND tenant_id = 1 LIMIT 1"
+                ).fetchone()
+                if _owner:
+                    owner_email = (_owner["email"] or "").lower()
+        except Exception:
+            pass
+
         for att in attendees:
             att_name = (att.get("name") or "").strip()
             att_email = (att.get("email") or "").strip()
@@ -206,8 +218,9 @@ def process_calendar_event(data: dict) -> str:
             if not att_name:
                 att_name = att_email.split("@")[0].replace(".", " ").title()
 
-            # Skip the advisor's own email (will match on tenant owner)
-            # No hardcoded domain filtering — handled by tenant config
+            # Skip the advisor's own email (tenant owner)
+            if owner_email and att_email.lower() == owner_email:
+                continue
 
             existing = db.get_prospect_by_name(att_name)
             if existing:

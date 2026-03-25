@@ -191,7 +191,8 @@ def init_db():
                 raw_text TEXT DEFAULT '',
                 summary TEXT DEFAULT '',
                 action_items TEXT DEFAULT '',
-                created_at TEXT DEFAULT (datetime('now'))
+                created_at TEXT DEFAULT (datetime('now')),
+                tenant_id INTEGER DEFAULT 1
             );
 
             CREATE TABLE IF NOT EXISTS tasks (
