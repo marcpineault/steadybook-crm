@@ -7,4 +7,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-CMD ["sleep", "infinity"]
+CMD flask --app dashboard:app run --host 0.0.0.0 --port ${PORT:-8080}
