@@ -1954,6 +1954,47 @@ def reporting():
     return render_template("reporting.html", **ctx)
 
 
+@app.route('/manager')
+def manager_dashboard():
+    """Manager view — advisor performance and stale deal tracking."""
+    if not _check_auth():
+        return redirect("/login")
+
+    # Advisor grid: group prospects by assigned_to
+    with db.get_db() as conn:
+        advisor_rows = conn.execute("""
+            SELECT
+                COALESCE(assigned_to, 'Unassigned') as advisor,
+                COUNT(*) as total,
+                SUM(CASE WHEN stage = 'Closed Won' THEN 1 ELSE 0 END) as closed_won,
+                SUM(CASE WHEN stage NOT IN ('Closed Won', 'Closed Lost') THEN 1 ELSE 0 END) as active
+            FROM prospects
+            GROUP BY assigned_to
+            ORDER BY total DESC
+        """).fetchall()
+
+        # Stale deals: active prospects not updated in 14+ days
+        stale_rows = conn.execute("""
+            SELECT name, stage, assigned_to, updated_at, source
+            FROM prospects
+            WHERE stage NOT IN ('Closed Won', 'Closed Lost')
+            AND (updated_at IS NULL OR updated_at < date('now', '-14 days'))
+            ORDER BY updated_at ASC
+            LIMIT 20
+        """).fetchall()
+
+    advisors = [dict(r) for r in advisor_rows]
+    stale = [dict(r) for r in stale_rows]
+
+    ctx = _common_context()
+    ctx.update({
+        "active_page": "manager",
+        "advisors": advisors,
+        "stale": stale,
+    })
+    return render_template("manager_dashboard.html", **ctx)
+
+
 # ── Tenant settings page ──
 
 @app.route("/settings")

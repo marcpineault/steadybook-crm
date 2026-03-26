@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Manager View{% endblock %}
+{% block content %}
+
+<div class="page-header">
+    <h1 class="page-title">Manager View</h1>
+</div>
+
+<!-- Advisor Grid -->
+<div class="card" style="margin-bottom:2rem;">
+    <h3 style="margin-bottom:1rem;font-size:1rem;color:#94a3b8;">Advisor Performance</h3>
+    {% if advisors %}
+    <table style="width:100%;border-collapse:collapse;">
+        <thead>
+            <tr>
+                <th style="text-align:left;padding:0.5rem 0;color:#94a3b8;font-size:0.8rem;font-weight:500;">Advisor</th>
+                <th style="text-align:right;padding:0.5rem 0;color:#94a3b8;font-size:0.8rem;font-weight:500;">Total</th>
+                <th style="text-align:right;padding:0.5rem 0;color:#94a3b8;font-size:0.8rem;font-weight:500;">Active</th>
+                <th style="text-align:right;padding:0.5rem 0;color:#94a3b8;font-size:0.8rem;font-weight:500;">Closed Won</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in advisors %}
+            <tr style="border-top:1px solid #1e293b;">
+                <td style="padding:0.5rem 0;font-size:0.9rem;font-weight:500;">{{ row.advisor | e }}</td>
+                <td style="padding:0.5rem 0;text-align:right;">{{ row.total }}</td>
+                <td style="padding:0.5rem 0;text-align:right;">{{ row.active }}</td>
+                <td style="padding:0.5rem 0;text-align:right;color:#22c55e;font-weight:600;">{{ row.closed_won }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="color:#475569;font-size:0.9rem;">No advisor data yet.</p>
+    {% endif %}
+</div>
+
+<!-- Stale Deals -->
+<div class="card">
+    <h3 style="margin-bottom:1rem;font-size:1rem;color:#94a3b8;">Stale Deals <span style="color:#f59e0b;font-size:0.8rem;">(no activity in 14+ days)</span></h3>
+    {% if stale %}
+    <table style="width:100%;border-collapse:collapse;">
+        <thead>
+            <tr>
+                <th style="text-align:left;padding:0.5rem 0;color:#94a3b8;font-size:0.8rem;font-weight:500;">Prospect</th>
+                <th style="text-align:left;padding:0.5rem 0;color:#94a3b8;font-size:0.8rem;font-weight:500;">Stage</th>
+                <th style="text-align:left;padding:0.5rem 0;color:#94a3b8;font-size:0.8rem;font-weight:500;">Advisor</th>
+                <th style="text-align:left;padding:0.5rem 0;color:#94a3b8;font-size:0.8rem;font-weight:500;">Last Activity</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in stale %}
+            <tr style="border-top:1px solid #1e293b;">
+                <td style="padding:0.5rem 0;font-size:0.9rem;font-weight:500;">{{ row.name | e }}</td>
+                <td style="padding:0.5rem 0;font-size:0.9rem;">{{ row.stage | e }}</td>
+                <td style="padding:0.5rem 0;font-size:0.9rem;color:#94a3b8;">{{ row.assigned_to | e | default('Unassigned') }}</td>
+                <td style="padding:0.5rem 0;font-size:0.9rem;color:#f59e0b;">
+                    {{ row.updated_at[:10] if row.updated_at else 'Never' }}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="color:#22c55e;font-size:0.9rem;">&#10003; No stale deals — pipeline is healthy.</p>
+    {% endif %}
+</div>
+
+{% endblock %}
