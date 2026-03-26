@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from voice_handler import handle_voice_message
+from photo_handler import handle_photo_message, handle_card_confirmation
 
 load_dotenv()
 
@@ -3729,6 +3730,8 @@ def build_application():
     app.add_handler(CommandHandler("clearsms", cmd_clearsms))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice_message))
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo_message))
+    app.add_handler(CallbackQueryHandler(handle_card_confirmation, pattern="^card_"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     async def error_handler(update, context):
