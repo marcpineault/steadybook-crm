@@ -11,7 +11,7 @@ from functools import wraps
 import json
 
 import db
-from flask import Flask, Response, request, jsonify, render_template, redirect, make_response
+from flask import Flask, Response, request, jsonify, render_template, redirect, make_response, send_file, abort
 
 logger = logging.getLogger(__name__)
 
@@ -1993,6 +1993,43 @@ def manager_dashboard():
         "stale": stale,
     })
     return render_template("manager_dashboard.html", **ctx)
+
+
+# ── Email tracking endpoints (no auth required — called by email clients) ──
+
+_TOKEN_RE = re.compile(r'^[A-Za-z0-9_\-]{10,40}$')
+
+
+@app.route('/t/open/<token>.gif')
+def tracking_open(token):
+    """Email open tracking pixel. Returns a 1x1 transparent GIF."""
+    if not _TOKEN_RE.match(token):
+        abort(400)
+    db.record_email_open(token)
+    # Minimal 1x1 transparent GIF (43 bytes)
+    gif = bytes([
+        0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x01, 0x00,
+        0x01, 0x00, 0x80, 0x00, 0x00, 0xFF, 0xFF, 0xFF,
+        0x00, 0x00, 0x00, 0x21, 0xF9, 0x04, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x2C, 0x00, 0x00, 0x00, 0x00,
+        0x01, 0x00, 0x01, 0x00, 0x00, 0x02, 0x02, 0x44,
+        0x01, 0x00, 0x3B
+    ])
+    from io import BytesIO
+    return send_file(BytesIO(gif), mimetype='image/gif')
+
+
+@app.route('/t/click/<token>')
+def tracking_click(token):
+    """Email link click tracking. Validates token and records click."""
+    if not _TOKEN_RE.match(token):
+        abort(400)
+    dest = request.args.get('url', '/')
+    # Only allow relative paths — prevent open redirect (including protocol-relative //)
+    if not dest.startswith('/') or dest.startswith('//'):
+        dest = '/'
+    db.record_link_click(token)
+    return redirect(dest)
 
 
 # ── Tenant settings page ──
