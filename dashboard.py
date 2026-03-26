@@ -120,6 +120,9 @@ except ImportError:
     logging.getLogger(__name__).warning("flask-limiter not installed — rate limiting disabled")
     limiter = None
 
+from social_intake import social_intake_bp
+app.register_blueprint(social_intake_bp)
+
 
 @app.after_request
 def _set_security_headers(response):
