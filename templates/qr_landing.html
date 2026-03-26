@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connect with Us</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #0f172a;
+            color: #f1f5f9;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+        }
+        .card {
+            background: #1e293b;
+            border-radius: 1rem;
+            padding: 2rem;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.4);
+        }
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 0.25rem;
+            color: #f8fafc;
+        }
+        .subtitle {
+            color: #94a3b8;
+            font-size: 0.9rem;
+            margin-bottom: 1.5rem;
+        }
+        .form-group { margin-bottom: 1rem; }
+        label {
+            display: block;
+            font-size: 0.85rem;
+            color: #94a3b8;
+            margin-bottom: 0.35rem;
+            font-weight: 500;
+        }
+        input {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 0.5rem;
+            color: #f1f5f9;
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        input:focus { border-color: #6366f1; }
+        input::placeholder { color: #475569; }
+        .btn {
+            width: 100%;
+            padding: 0.875rem;
+            background: #6366f1;
+            color: white;
+            border: none;
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 0.5rem;
+            transition: background 0.2s;
+        }
+        .btn:hover { background: #4f46e5; }
+        .btn:disabled { background: #334155; cursor: not-allowed; }
+        .success {
+            text-align: center;
+            padding: 2rem 0;
+        }
+        .success .icon { font-size: 3rem; margin-bottom: 1rem; }
+        .success h2 { font-size: 1.25rem; margin-bottom: 0.5rem; }
+        .success p { color: #94a3b8; font-size: 0.9rem; }
+        .privacy {
+            margin-top: 1rem;
+            font-size: 0.75rem;
+            color: #475569;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div id="form-section">
+            <h1>{{ advisor_name | e }}</h1>
+            <p class="subtitle">Let's stay connected</p>
+            <form id="qr-form">
+                <input type="hidden" id="tenant_id" value="{{ tenant_id | e }}">
+                <div class="form-group">
+                    <label for="name">Your Name *</label>
+                    <input type="text" id="name" name="name" placeholder="Jane Smith" required autocomplete="name">
+                </div>
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email" placeholder="jane@example.com" autocomplete="email">
+                </div>
+                <div class="form-group">
+                    <label for="phone">Phone</label>
+                    <input type="tel" id="phone" name="phone" placeholder="519-555-1234" autocomplete="tel">
+                </div>
+                <div class="form-group">
+                    <label for="company">Company</label>
+                    <input type="text" id="company" name="company" placeholder="Acme Inc." autocomplete="organization">
+                </div>
+                <button type="submit" class="btn" id="submit-btn">Connect &#8594;</button>
+            </form>
+            <p class="privacy">Your information is kept private and secure.</p>
+        </div>
+        <div id="success-section" class="success" style="display:none;">
+            <div class="icon">&#9989;</div>
+            <h2>Nice to meet you!</h2>
+            <p>We'll be in touch soon.</p>
+        </div>
+    </div>
+    <script>
+        document.getElementById('qr-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            var btn = document.getElementById('submit-btn');
+            btn.disabled = true;
+            btn.textContent = 'Saving...';
+
+            var tid = document.getElementById('tenant_id').value;
+
+            var payload = {
+                tenant_id: tid,
+                name: document.getElementById('name').value,
+                email: document.getElementById('email').value,
+                phone: document.getElementById('phone').value,
+                company: document.getElementById('company').value
+            };
+
+            try {
+                var resp = await fetch('/api/qr-submit', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                if (resp.ok) {
+                    document.getElementById('form-section').style.display = 'none';
+                    document.getElementById('success-section').style.display = 'block';
+                } else {
+                    btn.disabled = false;
+                    btn.textContent = 'Connect \u2192';
+                    alert('Something went wrong. Please try again.');
+                }
+            } catch(err) {
+                btn.disabled = false;
+                btn.textContent = 'Connect \u2192';
+                alert('Network error. Please try again.');
+            }
+        });
+    </script>
+</body>
+</html>

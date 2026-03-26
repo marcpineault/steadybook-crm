@@ -2006,6 +2006,53 @@ def api_create_user():
         return jsonify({"error": str(e)}), 400
 
 
+@app.route('/qr/<tenant_id>')
+def qr_landing(tenant_id):
+    """QR code landing page for lead capture at events."""
+    advisor_name = 'Your Advisor'
+    return render_template('qr_landing.html', tenant_id=tenant_id, advisor_name=advisor_name)
+
+
+@app.route('/api/qr-submit', methods=['POST'])
+def qr_submit():
+    """Handle QR landing page form submission."""
+    data = request.get_json(silent=True) or {}
+    name = str(data.get('name', '')).strip()
+    if not name:
+        return jsonify({'error': 'Name is required'}), 400
+
+    tenant_id_raw = data.get('tenant_id', '1')
+    try:
+        tenant_id = int(tenant_id_raw)
+    except (ValueError, TypeError):
+        tenant_id = 1
+
+    phone = str(data.get('phone', '')).strip()
+    email = str(data.get('email', '')).strip()
+    company = str(data.get('company', '')).strip()
+
+    prospect_data = {
+        'name': name,
+        'phone': phone,
+        'email': email,
+        'company': company,
+        'source': 'qr_code',
+        'stage': 'New Lead',
+    }
+    db.add_prospect(prospect_data, tenant_id=tenant_id)
+
+    # Look up the new prospect to tag + enrich
+    prospect = db.get_prospect_by_name(name, tenant_id=tenant_id)
+    if prospect:
+        pid = prospect.get('id')
+        if pid:
+            db.apply_tag(pid, 'new_lead')
+            db.apply_tag(pid, 'source_qr')
+            db.queue_enrichment(pid)
+
+    return jsonify({'status': 'ok'}), 201
+
+
 def run_dashboard():
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
