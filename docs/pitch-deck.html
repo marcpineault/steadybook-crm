@@ -1,0 +1,1223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SteadyBook Pitch Deck</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f8f7f4;
+  --panel:#fffdf9;
+  --panel-2:#ffffff;
+  --text:#171717;
+  --muted:#66635f;
+  --muted-2:#8b8780;
+  --line:#e7e2d8;
+  --line-2:#d8d1c5;
+  --accent:#6366f1;
+  --accent-soft:#eef0ff;
+  --accent-deep:#4f46e5;
+  --good:#0f9f6e;
+  --good-soft:#ddf7ec;
+  --warn:#d97706;
+  --warn-soft:#fff2dc;
+  --bad:#d14343;
+  --bad-soft:#ffe3e3;
+  --shadow:0 18px 50px rgba(28,25,23,.08);
+  --shadow-sm:0 8px 24px rgba(28,25,23,.05);
+}
+html{scroll-behavior:smooth}
+body{
+  font-family:"Inter",sans-serif;
+  background:
+    radial-gradient(circle at top left, rgba(99,102,241,.10), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(15,159,110,.06), transparent 24%),
+    var(--bg);
+  color:var(--text);
+  height:100vh;
+  overflow:hidden;
+}
+a{color:inherit;text-decoration:none}
+button{font:inherit}
+#progress{
+  position:fixed;
+  top:0;left:0;
+  width:10%;
+  height:4px;
+  background:linear-gradient(90deg,var(--accent),var(--accent-deep));
+  z-index:30;
+  transition:width .25s ease;
+}
+#slides{
+  height:100vh;
+  overflow-y:auto;
+  scroll-snap-type:y mandatory;
+}
+.slide{
+  min-height:100vh;
+  scroll-snap-align:start;
+  position:relative;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+}
+.slide::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  background-image:radial-gradient(rgba(23,23,23,.05) 1px, transparent 1px);
+  background-size:24px 24px;
+  opacity:.28;
+  pointer-events:none;
+}
+.slide.dark{
+  background:
+    radial-gradient(circle at top right, rgba(99,102,241,.25), transparent 34%),
+    linear-gradient(180deg, #222221 0%, #171717 100%);
+  color:#fff;
+}
+.slide.dark::before{
+  background-image:radial-gradient(rgba(255,255,255,.08) 1px, transparent 1px);
+  opacity:.26;
+}
+.shell{
+  width:min(1140px, calc(100vw - 80px));
+  position:relative;
+  z-index:2;
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  padding:118px 0 72px;
+}
+.shell > :not(.chrome){width:100%}
+.chrome{
+  position:absolute;
+  top:28px;
+  left:0;
+  right:0;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+}
+.brand{
+  display:inline-flex;
+  align-items:center;
+  gap:10px;
+  font-size:12px;
+  font-weight:700;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+}
+.brand-mark{
+  width:12px;
+  height:12px;
+  border-radius:4px;
+  background:linear-gradient(135deg,var(--accent),#9aa0ff);
+  box-shadow:0 0 0 4px rgba(99,102,241,.12);
+}
+.dark .brand-mark{box-shadow:0 0 0 4px rgba(255,255,255,.12)}
+.eyebrow{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:7px 11px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:rgba(255,255,255,.72);
+  backdrop-filter:blur(10px);
+  color:var(--muted);
+  font-size:11px;
+  font-weight:600;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+.dark .eyebrow{
+  border-color:rgba(255,255,255,.14);
+  background:rgba(255,255,255,.08);
+  color:rgba(255,255,255,.72);
+}
+.hero-time{
+  font-size:clamp(96px,15vw,176px);
+  line-height:.9;
+  font-weight:800;
+  letter-spacing:-.08em;
+}
+.hero-time span{
+  font-size:.22em;
+  letter-spacing:.02em;
+  color:var(--muted-2);
+}
+.dark .hero-time span{color:rgba(255,255,255,.42)}
+.headline{
+  font-size:clamp(36px,5vw,72px);
+  line-height:1.02;
+  font-weight:800;
+  letter-spacing:-.06em;
+  max-width:880px;
+}
+.subhead{
+  margin-top:22px;
+  max-width:620px;
+  font-size:21px;
+  line-height:1.45;
+  color:var(--muted);
+}
+.dark .subhead{color:rgba(255,255,255,.72)}
+.grid-2{
+  display:grid;
+  grid-template-columns:1.02fr .98fr;
+  gap:44px;
+  align-items:center;
+}
+.stack{display:flex;flex-direction:column;gap:18px}
+.hero-layout{
+  min-height:auto;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  padding:0;
+}
+.hero-copy{
+  max-width:900px;
+}
+.hero-headline{
+  max-width:760px;
+  font-size:clamp(34px,4.8vw,64px);
+}
+.hero-subhead{
+  max-width:700px;
+  font-size:clamp(18px,2vw,23px);
+}
+.chips{
+  display:flex;
+  flex-wrap:wrap;
+  gap:12px;
+  margin-top:32px;
+}
+.chip{
+  display:inline-flex;
+  align-items:center;
+  gap:10px;
+  padding:12px 16px;
+  border-radius:999px;
+  border:1px solid var(--line);
+  background:rgba(255,255,255,.82);
+  box-shadow:var(--shadow-sm);
+  font-size:14px;
+  color:var(--muted);
+}
+.chip-dot{
+  width:10px;
+  height:10px;
+  border-radius:999px;
+}
+.panel{
+  background:rgba(255,255,255,.82);
+  border:1px solid rgba(231,226,216,.95);
+  border-radius:28px;
+  box-shadow:var(--shadow);
+  backdrop-filter:blur(18px);
+}
+.pad-lg{padding:34px}
+.timeline{
+  display:flex;
+  flex-direction:column;
+  gap:18px;
+}
+.timeline-row{
+  display:grid;
+  grid-template-columns:72px 18px 1fr;
+  gap:18px;
+  align-items:flex-start;
+}
+.timeline-hour{
+  font-size:12px;
+  font-weight:700;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:var(--muted-2);
+  text-align:right;
+  padding-top:3px;
+}
+.timeline-node{
+  width:18px;
+  height:18px;
+  border-radius:999px;
+  border:4px solid var(--line-2);
+  background:var(--bg);
+  position:relative;
+}
+.timeline-node.hot{border-color:var(--bad);background:var(--bad-soft)}
+.timeline-node.ok{border-color:var(--good);background:var(--good-soft)}
+.timeline-row:not(:last-child) .timeline-node::after{
+  content:"";
+  position:absolute;
+  top:16px;
+  left:3px;
+  width:2px;
+  height:58px;
+  background:var(--line);
+}
+.timeline-title{
+  font-size:18px;
+  font-weight:700;
+  letter-spacing:-.03em;
+}
+.timeline-copy{
+  margin-top:4px;
+  color:var(--muted);
+  font-size:14px;
+  line-height:1.5;
+}
+.stat-pill{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  margin-top:16px;
+  padding:10px 14px;
+  border-radius:999px;
+  font-size:13px;
+  font-weight:700;
+}
+.stat-pill.bad{background:var(--bad-soft);color:var(--bad)}
+.stat-pill.good{background:var(--good-soft);color:var(--good)}
+.bullet-list{
+  margin-top:28px;
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+}
+.bullet{
+  display:flex;
+  gap:12px;
+  font-size:16px;
+  line-height:1.45;
+  color:var(--muted);
+}
+.bullet strong{color:var(--text)}
+.bullet svg{flex:0 0 auto;color:var(--accent);margin-top:3px}
+.lead-table{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+.lead-row{
+  display:grid;
+  grid-template-columns:76px 1fr auto auto;
+  gap:14px;
+  align-items:center;
+  padding:14px 16px;
+  border:1px solid var(--line);
+  border-radius:18px;
+  background:var(--panel-2);
+}
+.score{
+  width:58px;
+  height:42px;
+  border-radius:12px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:18px;
+  font-weight:800;
+}
+.score.hot{background:var(--bad-soft);color:var(--bad)}
+.score.warm{background:var(--warn-soft);color:var(--warn)}
+.score.cool{background:var(--accent-soft);color:var(--accent)}
+.lead-name{font-size:15px;font-weight:700}
+.lead-meta{font-size:13px;color:var(--muted);margin-top:3px}
+.mini-bar{
+  width:84px;
+  height:8px;
+  border-radius:999px;
+  background:#ece8e0;
+  overflow:hidden;
+}
+.mini-bar span{display:block;height:100%;border-radius:999px}
+.action{
+  padding:9px 12px;
+  border-radius:12px;
+  background:var(--accent-soft);
+  color:var(--accent-deep);
+  font-size:12px;
+  font-weight:700;
+}
+.phone{
+  width:min(330px,100%);
+  margin-inline:auto;
+  border-radius:34px;
+  background:#fff;
+  border:1px solid var(--line);
+  box-shadow:var(--shadow);
+  overflow:hidden;
+}
+.phone-top{
+  padding:18px 18px 14px;
+  border-bottom:1px solid var(--line);
+  background:#fbfaf7;
+  text-align:center;
+}
+.phone-name{font-size:14px;font-weight:700}
+.phone-sub{font-size:12px;color:var(--muted);margin-top:4px}
+.messages{
+  padding:18px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+.stamp{
+  font-size:11px;
+  color:var(--muted-2);
+  text-align:center;
+  margin:4px 0;
+}
+.message{
+  max-width:86%;
+  padding:12px 14px;
+  border-radius:18px;
+  font-size:13px;
+  line-height:1.45;
+}
+.message.in{
+  align-self:flex-start;
+  background:#f1eee7;
+}
+.message.out{
+  align-self:flex-end;
+  background:var(--accent);
+  color:#fff;
+}
+.message.pending{
+  align-self:flex-end;
+  background:#fff8dd;
+  border:1px dashed #efb84a;
+  color:#4b5563;
+}
+.approval{
+  margin:0 18px 18px;
+  padding:14px 16px;
+  border-radius:18px;
+  background:var(--accent-soft);
+  color:var(--accent-deep);
+  font-size:13px;
+  line-height:1.45;
+}
+.kanban{
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0,1fr));
+  gap:12px;
+}
+.kanban-col{
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius:22px;
+  padding:14px;
+}
+.kanban-col.focus{
+  border-color:#c7cafb;
+  background:#f7f7ff;
+}
+.kanban-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  font-size:13px;
+  font-weight:700;
+  margin-bottom:12px;
+}
+.kanban-count{
+  padding:4px 8px;
+  border-radius:999px;
+  background:#f3efe8;
+  color:var(--muted);
+  font-size:11px;
+}
+.kanban-card{
+  padding:12px;
+  border-radius:16px;
+  border:1px solid var(--line);
+  background:#fff;
+}
+.kanban-card + .kanban-card{margin-top:10px}
+.k-name{font-size:13px;font-weight:700}
+.k-value{font-size:12px;color:var(--muted);margin-top:4px}
+.k-note{font-size:11px;color:var(--muted-2);margin-top:6px}
+.pricing{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:16px;
+}
+.impact-band{
+  margin:0 auto 22px;
+  max-width:1040px;
+  padding:22px 24px;
+  border-radius:24px;
+  border:1px solid var(--line);
+  background:linear-gradient(180deg,rgba(255,255,255,.92) 0%,rgba(247,247,255,.92) 100%);
+  box-shadow:var(--shadow-sm);
+}
+.impact-title{
+  font-size:14px;
+  font-weight:700;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:var(--muted);
+}
+.impact-copy{
+  margin-top:10px;
+  max-width:780px;
+  font-size:16px;
+  line-height:1.55;
+  color:var(--muted);
+}
+.impact-grid{
+  margin-top:18px;
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:12px;
+}
+.impact-card{
+  padding:16px;
+  border-radius:18px;
+  background:#fff;
+  border:1px solid var(--line);
+}
+.impact-kicker{
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:var(--muted-2);
+}
+.impact-number{
+  margin-top:8px;
+  font-size:30px;
+  font-weight:800;
+  letter-spacing:-.06em;
+}
+.impact-meta{
+  margin-top:6px;
+  font-size:13px;
+  line-height:1.45;
+  color:var(--muted);
+}
+.price-card{
+  position:relative;
+  background:rgba(255,255,255,.88);
+  border:1px solid var(--line);
+  border-radius:28px;
+  padding:28px;
+  box-shadow:var(--shadow-sm);
+}
+.price-card.featured{
+  border-color:#c7cafb;
+  background:linear-gradient(180deg,#fff 0%,#f5f5ff 100%);
+  box-shadow:var(--shadow);
+}
+.price-badge{
+  position:absolute;
+  top:18px;
+  right:18px;
+  padding:7px 10px;
+  border-radius:999px;
+  background:var(--accent);
+  color:#fff;
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:.05em;
+  text-transform:uppercase;
+}
+.price-tier{font-size:14px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.price-amount{
+  margin-top:16px;
+  font-size:54px;
+  font-weight:800;
+  letter-spacing:-.08em;
+}
+.price-amount span{font-size:18px;letter-spacing:0;color:var(--muted)}
+.price-copy{
+  margin-top:14px;
+  font-size:15px;
+  line-height:1.5;
+  color:var(--muted);
+}
+.features{
+  list-style:none;
+  margin-top:20px;
+  display:flex;
+  flex-direction:column;
+  gap:11px;
+}
+.features li{
+  display:flex;
+  gap:10px;
+  font-size:14px;
+  color:var(--text);
+}
+.features li svg{flex:0 0 auto;color:var(--good);margin-top:2px}
+.button{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+  margin-top:24px;
+  min-height:52px;
+  padding:0 18px;
+  border:1px solid transparent;
+  border-radius:16px;
+  background:var(--text);
+  color:#fff;
+  font-size:14px;
+  font-weight:700;
+}
+.button.primary{
+  background:linear-gradient(135deg,var(--accent),var(--accent-deep));
+}
+.cta-shell{
+  max-width:880px;
+  text-align:center;
+  margin-inline:auto;
+}
+.cta-head{
+  font-size:clamp(42px,6vw,86px);
+  font-weight:800;
+  letter-spacing:-.08em;
+  line-height:.98;
+}
+.cta-copy{
+  margin:24px auto 0;
+  max-width:620px;
+  font-size:20px;
+  line-height:1.5;
+  color:rgba(255,255,255,.7);
+}
+.cta-meta{
+  margin-top:30px;
+  display:flex;
+  justify-content:center;
+  gap:12px;
+  flex-wrap:wrap;
+}
+.cta-meta span{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:11px 14px;
+  border-radius:999px;
+  background:rgba(255,255,255,.08);
+  border:1px solid rgba(255,255,255,.12);
+  font-size:13px;
+  color:rgba(255,255,255,.82);
+}
+.reveal{
+  opacity:0;
+  transform:translateY(24px);
+  transition:opacity .45s ease, transform .45s ease;
+}
+.reveal.visible{
+  opacity:1;
+  transform:translateY(0);
+}
+#dotNav{
+  position:fixed;
+  right:24px;
+  top:50%;
+  transform:translateY(-50%);
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  z-index:25;
+}
+.dot{
+  width:10px;
+  height:10px;
+  border-radius:999px;
+  border:1px solid rgba(0,0,0,.12);
+  background:rgba(255,255,255,.72);
+  cursor:pointer;
+  transition:transform .2s ease, background .2s ease, border-color .2s ease;
+}
+.dot.active{
+  transform:scale(1.4);
+  background:var(--accent);
+  border-color:var(--accent);
+}
+#counter{
+  position:fixed;
+  right:24px;
+  bottom:24px;
+  z-index:25;
+  font-size:12px;
+  font-weight:700;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:var(--muted-2);
+}
+#controls{
+  position:fixed;
+  left:24px;
+  bottom:24px;
+  z-index:25;
+  display:flex;
+  gap:10px;
+}
+.nav-btn{
+  width:48px;
+  height:48px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:16px;
+  border:1px solid rgba(231,226,216,.95);
+  background:rgba(255,255,255,.82);
+  box-shadow:var(--shadow-sm);
+  color:var(--text);
+  cursor:pointer;
+}
+.nav-btn:disabled{
+  opacity:.45;
+  cursor:not-allowed;
+}
+@media (max-width: 980px){
+  .shell{width:min(100vw - 40px, 1140px)}
+  .grid-2{grid-template-columns:1fr;gap:26px}
+  .pricing{grid-template-columns:1fr}
+  .impact-grid{grid-template-columns:1fr 1fr}
+  .kanban{grid-template-columns:1fr 1fr}
+  .chrome{top:18px}
+}
+@media (max-width: 720px){
+  body{overflow:auto;height:auto}
+  #slides{height:auto;overflow:visible;scroll-snap-type:none}
+  .slide{min-height:auto;padding:96px 0 88px}
+  .slide::before{opacity:.16}
+  .hero-time{font-size:72px}
+  .headline{font-size:38px}
+  .subhead{font-size:18px}
+  .hero-layout{
+    min-height:auto;
+    justify-content:flex-start;
+    padding:0;
+  }
+  .shell{
+    width:calc(100vw - 28px);
+    min-height:auto;
+    padding:0;
+    display:block;
+  }
+  .panel,.price-card,.kanban-col,.phone{border-radius:22px}
+  .lead-row{grid-template-columns:64px 1fr;gap:10px}
+  .mini-bar,.action{grid-column:2}
+  .impact-band{padding:18px}
+  .impact-grid{grid-template-columns:1fr}
+  .kanban{grid-template-columns:1fr}
+  #dotNav{display:none}
+  #controls{left:14px;bottom:14px}
+  #counter{right:14px;bottom:18px}
+}
+</style>
+</head>
+<body>
+<div id="progress" aria-hidden="true"></div>
+<div id="dotNav" aria-label="Slide navigation"></div>
+<div id="counter">1 / 10</div>
+<div id="controls">
+  <button class="nav-btn" id="prevBtn" aria-label="Previous slide">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+  </button>
+  <button class="nav-btn" id="nextBtn" aria-label="Next slide">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+  </button>
+</div>
+
+<main id="slides">
+  <section class="slide" data-slide="1">
+    <div class="shell">
+      <div class="chrome">
+        <div class="brand"><span class="brand-mark"></span>SteadyBook</div>
+        <div class="eyebrow">For Insurance Advisors</div>
+      </div>
+      <div class="stack hero-layout">
+        <div class="hero-time reveal">7:00 <span>AM</span></div>
+        <div class="hero-copy">
+          <h1 class="headline hero-headline reveal">Three leads went cold overnight.</h1>
+          <p class="subhead hero-subhead reveal">You do not know which ones yet. You already have renewals, paperwork, client calls, and a dozen reminders competing for the same morning.</p>
+        </div>
+        <div class="chips reveal">
+          <div class="chip"><span class="chip-dot" style="background:var(--bad)"></span>David Chen, 18 days idle</div>
+          <div class="chip"><span class="chip-dot" style="background:var(--warn)"></span>Sandra K., no-show twice</div>
+          <div class="chip"><span class="chip-dot" style="background:var(--accent)"></span>Marc Tremblay, $12K policy drifting</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide" data-slide="2">
+    <div class="shell">
+      <div class="chrome">
+        <div class="brand"><span class="brand-mark"></span>SteadyBook</div>
+        <div class="eyebrow">The Advisor's Juggle</div>
+      </div>
+      <div class="grid-2">
+        <div>
+          <div class="eyebrow reveal">Recognition</div>
+          <h2 class="headline reveal" style="max-width:640px">Every hour of the day is already spoken for.</h2>
+          <p class="subhead reveal">Follow-up does not break because advisors do not care. It breaks because the day gets consumed by work that cannot wait.</p>
+        </div>
+        <div class="panel pad-lg reveal">
+          <div class="timeline">
+            <div class="timeline-row">
+              <div class="timeline-hour">8 AM</div>
+              <div class="timeline-node ok"></div>
+              <div><div class="timeline-title">Prospecting block</div><div class="timeline-copy">Three new conversations, one demo booked, momentum is good.</div></div>
+            </div>
+            <div class="timeline-row">
+              <div class="timeline-hour">10 AM</div>
+              <div class="timeline-node"></div>
+              <div><div class="timeline-title">Policy renewals</div><div class="timeline-copy">Paperwork, questions, carrier follow-up, inbox starts to spike.</div></div>
+            </div>
+            <div class="timeline-row">
+              <div class="timeline-hour">1 PM</div>
+              <div class="timeline-node hot"></div>
+              <div><div class="timeline-title">Client no-show</div><div class="timeline-copy">Forty-five minutes lost and the reschedule never gets sent.</div></div>
+            </div>
+            <div class="timeline-row">
+              <div class="timeline-hour">3 PM</div>
+              <div class="timeline-node"></div>
+              <div><div class="timeline-title">Compliance review</div><div class="timeline-copy">Disclosures, E&amp;O checks, documentation, admin wins again.</div></div>
+            </div>
+            <div class="timeline-row">
+              <div class="timeline-hour">5 PM</div>
+              <div class="timeline-node hot"></div>
+              <div><div class="timeline-title">Follow-up falls off the list</div><div class="timeline-copy">Twenty-three reminders are still open. Warm prospects cool down overnight.</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide" data-slide="3">
+    <div class="shell">
+      <div class="chrome">
+        <div class="brand"><span class="brand-mark"></span>SteadyBook</div>
+        <div class="eyebrow">The Breaking Point</div>
+      </div>
+      <div class="grid-2">
+        <div>
+          <div class="eyebrow reveal">Gut Punch</div>
+          <h2 class="headline reveal" style="max-width:700px">$12K does not disappear because the lead was bad.</h2>
+          <p class="subhead reveal">It disappears because the system was manual, inconsistent, and easy to lose track of the moment the day got busy.</p>
+          <div class="bullet-list reveal">
+            <div class="bullet">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>
+              <span><strong>68% of leads</strong> never receive a second follow-up.</span>
+            </div>
+            <div class="bullet">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>
+              <span><strong>Most sales need 5 or more touches</strong> before a decision happens.</span>
+            </div>
+            <div class="bullet">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>
+              <span><strong>Manual follow-up guarantees drift</strong> once admin work and meetings pile up.</span>
+            </div>
+          </div>
+          <div class="stat-pill bad reveal">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            $11,400 commission lost in one missed sequence
+          </div>
+        </div>
+        <div class="panel pad-lg reveal">
+          <div style="font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted-2)">Real scenario</div>
+          <div style="margin-top:18px;padding:18px;border-radius:20px;background:#faf8f3;border:1px solid var(--line)">
+            <div style="font-size:20px;font-weight:800;letter-spacing:-.04em">Marc Tremblay</div>
+            <div style="margin-top:6px;font-size:14px;color:var(--muted)">Life + Disability renewal, quote requested, strong fit, high premium potential.</div>
+          </div>
+          <div style="margin-top:20px;display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+            <div style="padding:16px;border-radius:18px;background:var(--good-soft)">
+              <div style="font-size:12px;font-weight:700;color:var(--good)">Jan 15</div>
+              <div style="margin-top:8px;font-size:13px;line-height:1.5">Great first call. Quote requested same day.</div>
+            </div>
+            <div style="padding:16px;border-radius:18px;background:#f6f3ed">
+              <div style="font-size:12px;font-weight:700;color:var(--muted)">Jan 17</div>
+              <div style="margin-top:8px;font-size:13px;line-height:1.5">Follow-up task buried under renewals and client admin.</div>
+            </div>
+            <div style="padding:16px;border-radius:18px;background:var(--bad-soft)">
+              <div style="font-size:12px;font-weight:700;color:var(--bad)">Feb 5</div>
+              <div style="margin-top:8px;font-size:13px;line-height:1.5">Prospect signed elsewhere before the next touchpoint happened.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide dark" data-slide="4">
+    <div class="shell">
+      <div class="chrome">
+        <div class="brand"><span class="brand-mark"></span>SteadyBook</div>
+        <div class="eyebrow">There Is a Better Way</div>
+      </div>
+      <div style="max-width:860px">
+        <div class="eyebrow reveal">Relief</div>
+        <h2 class="headline reveal">SteadyBook is the CRM built for insurance advisors who need follow-up to actually happen.</h2>
+        <p class="subhead reveal">It scores the pipeline every morning, drafts the next message in your voice, and keeps your board clean without asking you to become a full-time CRM operator.</p>
+        <div class="chips reveal" style="margin-top:36px">
+          <div class="chip" style="background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.14);color:rgba(255,255,255,.78)"><span class="chip-dot" style="background:#9aa0ff"></span>AI lead scoring</div>
+          <div class="chip" style="background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.14);color:rgba(255,255,255,.78)"><span class="chip-dot" style="background:#9aa0ff"></span>Autonomous follow-up</div>
+          <div class="chip" style="background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.14);color:rgba(255,255,255,.78)"><span class="chip-dot" style="background:#9aa0ff"></span>Stage-based pipeline automation</div>
+          <div class="chip" style="background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.14);color:rgba(255,255,255,.78)"><span class="chip-dot" style="background:#9aa0ff"></span>Built for advisor workflows</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide" data-slide="5">
+    <div class="shell">
+      <div class="chrome">
+        <div class="brand"><span class="brand-mark"></span>SteadyBook</div>
+        <div class="eyebrow">Feature 01</div>
+      </div>
+      <div class="grid-2">
+        <div>
+          <div class="eyebrow reveal">Know Who to Call</div>
+          <h2 class="headline reveal">Open the day with a ranked list, not a guess.</h2>
+          <p class="subhead reveal">SteadyBook scores every lead from 0 to 100 using deal size, days idle, engagement history, and stage momentum. Hot leads surface first. Cold leads drop into nurture automatically.</p>
+          <div class="bullet-list reveal">
+            <div class="bullet">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
+              <span>Prioritized call list every morning.</span>
+            </div>
+            <div class="bullet">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
+              <span>High-value deals flagged before they stall.</span>
+            </div>
+            <div class="bullet">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
+              <span>No more reviewing the entire pipeline by hand.</span>
+            </div>
+          </div>
+        </div>
+        <div class="panel pad-lg reveal">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+            <div style="font-size:15px;font-weight:800">Today's call list</div>
+            <div style="font-size:12px;color:var(--muted)">8:02 AM</div>
+          </div>
+          <div class="lead-table">
+            <div class="lead-row">
+              <div class="score hot">92</div>
+              <div><div class="lead-name">Sandra Kowalski</div><div class="lead-meta">Disability policy, no-show recovery, day 4</div></div>
+              <div class="mini-bar"><span style="width:92%;background:var(--bad)"></span></div>
+              <div class="action">Call</div>
+            </div>
+            <div class="lead-row">
+              <div class="score hot">87</div>
+              <div><div class="lead-name">David Chen</div><div class="lead-meta">Life + CI quote requested, day 18</div></div>
+              <div class="mini-bar"><span style="width:87%;background:var(--bad)"></span></div>
+              <div class="action">Call</div>
+            </div>
+            <div class="lead-row">
+              <div class="score warm">71</div>
+              <div><div class="lead-name">Pierre Lavoie</div><div class="lead-meta">Group benefits meeting booked</div></div>
+              <div class="mini-bar"><span style="width:71%;background:var(--warn)"></span></div>
+              <div class="action">Prep</div>
+            </div>
+            <div class="lead-row">
+              <div class="score cool">34</div>
+              <div><div class="lead-name">Marc Tremblay</div><div class="lead-meta">Nurture active, no manual touch required today</div></div>
+              <div class="mini-bar"><span style="width:34%;background:var(--accent)"></span></div>
+              <div class="action">Auto</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide" data-slide="6">
+    <div class="shell">
+      <div class="chrome">
+        <div class="brand"><span class="brand-mark"></span>SteadyBook</div>
+        <div class="eyebrow">Feature 02</div>
+      </div>
+      <div class="grid-2">
+        <div>
+          <div class="eyebrow reveal">Follow-Up That Sounds Like You</div>
+          <h2 class="headline reveal">Every message is personal. None of them depend on your memory.</h2>
+          <p class="subhead reveal">SteadyBook drafts SMS follow-up in your tone, sends it to Telegram for one-tap approval, and keeps conversations moving while you are with another client.</p>
+          <div class="bullet-list reveal">
+            <div class="bullet">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
+              <span>Personalized draft with context from the deal.</span>
+            </div>
+            <div class="bullet">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
+              <span>Approval flow when you want control.</span>
+            </div>
+            <div class="bullet">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
+              <span>Trusted automation when you need scale.</span>
+            </div>
+          </div>
+        </div>
+        <div class="reveal">
+          <div class="phone">
+            <div class="phone-top">
+              <div class="phone-name">David Chen</div>
+              <div class="phone-sub">Life + CI quote follow-up</div>
+            </div>
+            <div class="messages">
+              <div class="stamp">Jan 15</div>
+              <div class="message out">Great speaking today. I will send your quote by Thursday and keep this simple.</div>
+              <div class="message in">Perfect, looking forward to it.</div>
+              <div class="stamp">14 days later</div>
+              <div class="message pending">Hi David, checking in on the quote I sent over. Happy to walk through options on a quick call this week if helpful.</div>
+            </div>
+            <div class="approval">Draft ready for approval in Telegram. Tap send, make a quick edit, or allow the sequence to continue automatically.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide" data-slide="7">
+    <div class="shell">
+      <div class="chrome">
+        <div class="brand"><span class="brand-mark"></span>SteadyBook</div>
+        <div class="eyebrow">Feature 03</div>
+      </div>
+      <div class="grid-2">
+        <div>
+          <div class="eyebrow reveal">Pipeline, Always Clean</div>
+          <h2 class="headline reveal">The board stays organized because actions fire when the stage changes.</h2>
+          <p class="subhead reveal">Move a lead to quote sent and the follow-up sequence begins. Move it to won and tasks, notes, and downstream actions stay aligned. The pipeline becomes operational, not decorative.</p>
+          <div class="stat-pill good reveal">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6L9 17l-5-5"/></svg>
+            Stage-based automation keeps the next step attached to the deal
+          </div>
+        </div>
+        <div class="panel pad-lg reveal">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+            <div style="font-size:15px;font-weight:800">March pipeline</div>
+            <div style="font-size:12px;color:var(--muted)">10 stages, automated</div>
+          </div>
+          <div class="kanban">
+            <div class="kanban-col">
+              <div class="kanban-head">New <span class="kanban-count">4</span></div>
+              <div class="kanban-card"><div class="k-name">A. Bergeron</div><div class="k-value">Referral, wealth review</div><div class="k-note">New lead, day 1</div></div>
+              <div class="kanban-card"><div class="k-name">L. Fontaine</div><div class="k-value">Web form, life insurance</div><div class="k-note">Needs intro call</div></div>
+            </div>
+            <div class="kanban-col">
+              <div class="kanban-head">Contacted <span class="kanban-count">3</span></div>
+              <div class="kanban-card"><div class="k-name">Marc Tremblay</div><div class="k-value">Life + disability</div><div class="k-note">Nurture active</div></div>
+            </div>
+            <div class="kanban-col focus">
+              <div class="kanban-head">Quote Sent <span class="kanban-count" style="background:var(--accent-soft);color:var(--accent)">2</span></div>
+              <div class="kanban-card"><div class="k-name">David Chen</div><div class="k-value">$8,400 annual premium</div><div class="k-note">SMS follow-up scheduled</div></div>
+            </div>
+            <div class="kanban-col">
+              <div class="kanban-head">Won <span class="kanban-count" style="background:var(--good-soft);color:var(--good)">5</span></div>
+              <div class="kanban-card"><div class="k-name">P. Lavoie</div><div class="k-value">$14,200 annual premium</div><div class="k-note">Onboarding checklist complete</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide" data-slide="8">
+    <div class="shell">
+      <div class="chrome">
+        <div class="brand"><span class="brand-mark"></span>SteadyBook</div>
+        <div class="eyebrow">The Transformation</div>
+      </div>
+      <div class="stack">
+        <div class="hero-time reveal">7:00 <span>PM</span></div>
+        <h2 class="headline reveal">Same advisor. Same day. Completely different ending.</h2>
+        <p class="subhead reveal">Fourteen follow-ups already went out. Two clients moved forward. Your inbox is manageable, the pipeline is current, and nothing valuable is sitting forgotten in a corner.</p>
+        <div class="chips reveal">
+          <div class="chip"><span class="chip-dot" style="background:var(--good)"></span>David Chen signed</div>
+          <div class="chip"><span class="chip-dot" style="background:var(--good)"></span>Sandra K. rebooked</div>
+          <div class="chip"><span class="chip-dot" style="background:var(--accent)"></span>Marc Tremblay still nurturing</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide" data-slide="9">
+    <div class="shell">
+      <div class="chrome">
+        <div class="brand"><span class="brand-mark"></span>SteadyBook</div>
+        <div class="eyebrow">Pricing</div>
+      </div>
+      <div style="max-width:760px;margin:0 auto 30px;text-align:center">
+        <div class="eyebrow reveal">Commitment</div>
+        <h2 class="headline reveal" style="margin-inline:auto">Simple pricing that fits how advisors actually buy software.</h2>
+        <p class="subhead reveal" style="margin-inline:auto">Start small, scale when the book grows, and tie the monthly cost to real revenue impact.</p>
+      </div>
+      <div class="impact-band reveal">
+        <div class="impact-title">What 1 to 20 more deals can mean</div>
+        <p class="impact-copy">If SteadyBook helps an advisor consistently land even a few more warm opportunities each month, the return is not subtle. Using a conservative average commission of <strong style="color:var(--text)">$1,000 per deal</strong>, the upside compounds fast.</p>
+        <div class="impact-grid">
+          <div class="impact-card">
+            <div class="impact-kicker">1 extra deal / month</div>
+            <div class="impact-number">$1K</div>
+            <div class="impact-meta">Roughly $12K in added annual commission from one extra close each month.</div>
+          </div>
+          <div class="impact-card">
+            <div class="impact-kicker">5 extra deals / month</div>
+            <div class="impact-number">$5K</div>
+            <div class="impact-meta">$60K per year. Enough to materially change a solo advisor's income.</div>
+          </div>
+          <div class="impact-card">
+            <div class="impact-kicker">10 extra deals / month</div>
+            <div class="impact-number">$10K</div>
+            <div class="impact-meta">$120K per year when follow-up becomes consistent instead of manual.</div>
+          </div>
+          <div class="impact-card">
+            <div class="impact-kicker">20 extra deals / month</div>
+            <div class="impact-number">$20K</div>
+            <div class="impact-meta">$240K per year for high-volume advisors or teams with strong lead flow.</div>
+          </div>
+        </div>
+      </div>
+      <div class="pricing reveal">
+        <div class="price-card">
+          <div class="price-tier">Solo</div>
+          <div class="price-amount">$97<span>/mo</span></div>
+          <div class="price-copy">For independent advisors who need their follow-up system to stop leaking revenue.</div>
+          <ul class="features">
+            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6L9 17l-5-5"/></svg>AI lead scoring</li>
+            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6L9 17l-5-5"/></svg>SMS follow-up</li>
+            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6L9 17l-5-5"/></svg>Kanban pipeline</li>
+          </ul>
+          <a class="button" href="#slide-10">Get started</a>
+        </div>
+        <div class="price-card featured">
+          <div class="price-badge">Most Popular</div>
+          <div class="price-tier">Growth</div>
+          <div class="price-amount">$297<span>/mo</span></div>
+          <div class="price-copy">For advisors building a serious book and ready to let automation handle the routine touches.</div>
+          <ul class="features">
+            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6L9 17l-5-5"/></svg>Everything in Solo</li>
+            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6L9 17l-5-5"/></svg>Autonomous SMS agent</li>
+            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6L9 17l-5-5"/></svg>Forecasting and advisor KPI views</li>
+          </ul>
+          <a class="button primary" href="#slide-10">Book a demo</a>
+        </div>
+        <div class="price-card">
+          <div class="price-tier">Agency</div>
+          <div class="price-amount">$797<span>/mo</span></div>
+          <div class="price-copy">For teams or MGAs managing multiple advisors with shared reporting and white-label options.</div>
+          <ul class="features">
+            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6L9 17l-5-5"/></svg>Everything in Growth</li>
+            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6L9 17l-5-5"/></svg>Multi-tenant management</li>
+            <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6L9 17l-5-5"/></svg>Agency analytics and support</li>
+          </ul>
+          <a class="button" href="#slide-10">Talk to sales</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide dark" data-slide="10" id="slide-10">
+    <div class="shell">
+      <div class="chrome">
+        <div class="brand"><span class="brand-mark"></span>SteadyBook</div>
+        <div class="eyebrow">Call to Action</div>
+      </div>
+      <div class="cta-shell">
+        <div class="eyebrow reveal">Action</div>
+        <h2 class="cta-head reveal">See your pipeline in 20 minutes.</h2>
+        <p class="cta-copy reveal">We will take your current process, show you where leads are slipping, and map exactly how SteadyBook would automate the next step.</p>
+        <a class="button primary reveal" href="https://steadybook.io" target="_blank" rel="noreferrer">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          Book a free demo
+        </a>
+        <div class="cta-meta reveal">
+          <span>Built by a practicing advisor</span>
+          <span>Insurance-first workflow</span>
+          <span>Confidential sales material</span>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+const slides = Array.from(document.querySelectorAll(".slide"));
+const dotNav = document.getElementById("dotNav");
+const progress = document.getElementById("progress");
+const counter = document.getElementById("counter");
+const prevBtn = document.getElementById("prevBtn");
+const nextBtn = document.getElementById("nextBtn");
+const total = slides.length;
+let currentIndex = 0;
+
+function goToSlide(index) {
+  const target = slides[index];
+  if (!target) return;
+  target.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function updateUI(index) {
+  currentIndex = index;
+  progress.style.width = `${((index + 1) / total) * 100}%`;
+  counter.textContent = `${index + 1} / ${total}`;
+  prevBtn.disabled = index === 0;
+  nextBtn.disabled = index === total - 1;
+  document.querySelectorAll(".dot").forEach((dot, dotIndex) => {
+    dot.classList.toggle("active", dotIndex === index);
+  });
+  slides[index].querySelectorAll(".reveal").forEach((node, revealIndex) => {
+    setTimeout(() => node.classList.add("visible"), revealIndex * 55);
+  });
+}
+
+slides.forEach((slide, index) => {
+  const dot = document.createElement("button");
+  dot.className = `dot${index === 0 ? " active" : ""}`;
+  dot.type = "button";
+  dot.setAttribute("aria-label", `Go to slide ${index + 1}`);
+  dot.addEventListener("click", () => goToSlide(index));
+  dotNav.appendChild(dot);
+});
+
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach((entry) => {
+    if (entry.isIntersecting && entry.intersectionRatio >= 0.55) {
+      updateUI(slides.indexOf(entry.target));
+    }
+  });
+}, { threshold: [0.55] });
+
+slides.forEach((slide) => observer.observe(slide));
+
+document.addEventListener("keydown", (event) => {
+  if (["ArrowDown", "ArrowRight", " "].includes(event.key)) {
+    event.preventDefault();
+    if (currentIndex < total - 1) goToSlide(currentIndex + 1);
+  }
+  if (["ArrowUp", "ArrowLeft"].includes(event.key)) {
+    event.preventDefault();
+    if (currentIndex > 0) goToSlide(currentIndex - 1);
+  }
+});
+
+prevBtn.addEventListener("click", () => {
+  if (currentIndex > 0) goToSlide(currentIndex - 1);
+});
+
+nextBtn.addEventListener("click", () => {
+  if (currentIndex < total - 1) goToSlide(currentIndex + 1);
+});
+
+window.addEventListener("load", () => updateUI(0));
+</script>
+</body>
+</html>

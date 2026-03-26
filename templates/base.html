@@ -189,7 +189,7 @@
     {% include "partials/modal_log.html" %}
 
     <!-- Chat FAB (floating action button) -->
-    <button class="chat-fab" onclick="toggleChat()" title="AI Chat">&#9883;</button>
+    <button class="chat-fab" onclick="toggleChat()" title="AI Chat">&#128172;</button>
 
     <!-- Chat backdrop -->
     <div class="chat-backdrop" id="chatBackdrop" onclick="toggleChat()"></div>
@@ -197,12 +197,12 @@
     <!-- Chat slide-over panel -->
     <div id="chatPanel" class="chat-panel">
         <div class="chat-panel-header">
-            <h3>&#9883; AI Assistant</h3>
+            <h3>&#129302; AI Assistant</h3>
             <button class="chat-close" onclick="toggleChat()" aria-label="Close">&times;</button>
         </div>
         <div id="chatMessages" class="chat-panel-messages">
             <div class="chat-empty">
-                <div class="chat-empty-icon">&#9883;</div>
+                <div class="chat-empty-icon">&#128172;</div>
                 <div class="chat-empty-text">Ask me anything about your pipeline</div>
                 <div class="chat-empty-hint">Try: "Who should I call today?" or "How's my pipeline looking?" or "Draft a follow-up for John"</div>
             </div>
