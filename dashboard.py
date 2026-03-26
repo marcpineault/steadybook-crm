@@ -1954,6 +1954,54 @@ def reporting():
     return render_template("reporting.html", **ctx)
 
 
+# ── Flow Builder Routes ──
+
+@app.route("/flows")
+def flows():
+    """Flow builder — view and edit nurture sequences."""
+    if not _check_auth():
+        return redirect("/login")
+    import sequences as seq_module
+    tenant_id = 1
+    all_sequences = seq_module.list_sequences(tenant_id)
+    ctx = _common_context()
+    ctx.update({
+        "active_page": "flows",
+        "sequences": all_sequences,
+    })
+    return render_template("flow_builder.html", **ctx)
+
+
+@app.route("/api/flow-steps/<int:seq_id>")
+@_require_auth
+def api_flow_steps(seq_id):
+    """Return steps for a sequence as JSON (for flow builder)."""
+    import sequences as seq_module
+    steps = seq_module.get_sequence_steps(seq_id)
+    return jsonify(steps)
+
+
+@app.route("/api/flow-step/update", methods=["POST"])
+@_require_auth
+def api_flow_step_update():
+    """Update a single sequence step's content_template."""
+    data = request.get_json(silent=True) or {}
+    step_id_raw = data.get("step_id")
+    content = str(data.get("content", "")).strip()
+    try:
+        step_id = int(step_id_raw)
+    except (TypeError, ValueError):
+        return jsonify({"error": "step_id required"}), 400
+    if not content:
+        return jsonify({"error": "content required"}), 400
+    with db.get_db() as conn:
+        conn.execute(
+            "UPDATE sequence_steps SET content_template=? WHERE id=?",
+            (content, step_id),
+        )
+    return jsonify({"status": "ok"})
+
+
 @app.route('/manager')
 def manager_dashboard():
     """Manager view — advisor performance and stale deal tracking."""
