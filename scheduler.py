@@ -19,6 +19,7 @@ import db
 import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from enrichment import process_enrichment_queue
+from omniscient_agent import run_omniscient_cycle
 
 logger = logging.getLogger(__name__)
 
@@ -1204,6 +1205,16 @@ async def _enrichment_queue_job():
         logger.exception("enrichment_queue job failed")
 
 
+# ── Omniscient AI Assistant job ──
+
+async def _omniscient_cycle_job():
+    try:
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, run_omniscient_cycle)
+    except Exception as e:
+        logger.exception("Omniscient cycle job error: %s", e)
+
+
 # ── Scheduler entry point ──
 
 def start_scheduler(telegram_app, event_loop=None):
@@ -1405,6 +1416,15 @@ def start_scheduler(telegram_app, event_loop=None):
         minutes=10,
         id="enrichment_queue",
         name="Prospect Enrichment Queue",
+    )
+
+    # Omniscient AI Assistant — synthesize pipeline insights every 15 minutes
+    scheduler.add_job(
+        _omniscient_cycle_job,
+        "interval",
+        minutes=15,
+        id="omniscient_cycle",
+        name="Omniscient AI Assistant",
     )
 
     scheduler.start()
