@@ -115,7 +115,12 @@ app.config["MAX_CONTENT_LENGTH"] = 1 * 1024 * 1024  # 1 MB max request size
 try:
     from flask_limiter import Limiter
     from flask_limiter.util import get_remote_address
-    limiter = Limiter(get_remote_address, app=app, default_limits=["60 per minute"])
+    limiter = Limiter(
+        get_remote_address,
+        app=app,
+        default_limits=["60 per minute"],
+        storage_uri=os.environ.get("REDIS_URL", "memory://"),
+    )
 except ImportError:
     logging.getLogger(__name__).warning("flask-limiter not installed — rate limiting disabled")
     limiter = None
@@ -923,6 +928,15 @@ def _common_context():
         "user_initials": _get_current_user_initials(),
         "company_name": _get_current_company(),
         "booking_url": _get_current_booking_url(),
+        "setup_complete": os.environ.get("ONBOARDING_COMPLETE", "").lower() == "true",
+        "setup_steps_done": sum([
+            bool(os.environ.get("DASHBOARD_API_KEY")),
+            bool(os.environ.get("TELEGRAM_BOT_TOKEN")),
+            bool(os.environ.get("TELEGRAM_CHAT_ID")),
+            bool(os.environ.get("OPENAI_API_KEY")),
+            bool(os.environ.get("RESEND_API_KEY")),
+        ]),
+        "setup_steps_total": 5,
     }
 
 
@@ -2191,6 +2205,92 @@ def qr_submit(tenant_id):
             db.queue_enrichment(pid)
 
     return jsonify({'status': 'ok'}), 201
+
+
+# ── Onboarding Wizard ──
+
+@app.route("/setup")
+def onboarding_wizard():
+    if os.environ.get("ONBOARDING_COMPLETE", "").lower() == "true":
+        return abort(404)
+    return render_template("onboarding.html")
+
+
+@app.route("/api/setup/generate-key")
+def setup_generate_key():
+    return jsonify({"key": secrets.token_urlsafe(32)})
+
+
+@app.route("/api/setup/test/<service>", methods=["POST"])
+def setup_test_service(service):
+    data = request.get_json() or {}
+    try:
+        if service == "telegram-token":
+            token = data.get("token", "").strip()
+            if not token:
+                return jsonify({"ok": False, "error": "Token is required"})
+            r = requests.get(f"https://api.telegram.org/bot{token}/getMe", timeout=8)
+            result = r.json()
+            if r.ok and result.get("ok"):
+                return jsonify({"ok": True, "name": result["result"].get("username", "")})
+            return jsonify({"ok": False, "error": result.get("description", "Invalid token")})
+
+        elif service == "telegram-chat":
+            token = data.get("token", "").strip()
+            chat_id = data.get("chat_id", "").strip()
+            if not token or not chat_id:
+                return jsonify({"ok": False, "error": "Token and Chat ID are required"})
+            r = requests.post(
+                f"https://api.telegram.org/bot{token}/sendMessage",
+                json={"chat_id": chat_id, "text": "SteadyBook setup test \u2713 \u2014 your bot is connected!"},
+                timeout=8,
+            )
+            result = r.json()
+            if r.ok and result.get("ok"):
+                return jsonify({"ok": True})
+            return jsonify({"ok": False, "error": result.get("description", "Could not send message. Double-check the Chat ID.")})
+
+        elif service == "openai":
+            from openai import OpenAI as _OAI
+            key = data.get("key", "").strip()
+            if not key:
+                return jsonify({"ok": False, "error": "API key is required"})
+            _OAI(api_key=key).models.list()
+            return jsonify({"ok": True})
+
+        elif service == "resend":
+            key = data.get("key", "").strip()
+            if not key:
+                return jsonify({"ok": False, "error": "API key is required"})
+            r = requests.get(
+                "https://api.resend.com/domains",
+                headers={"Authorization": f"Bearer {key}"},
+                timeout=8,
+            )
+            if r.status_code in (200, 201):
+                return jsonify({"ok": True})
+            return jsonify({"ok": False, "error": f"Resend returned {r.status_code} \u2014 check your API key"})
+
+        elif service == "twilio":
+            sid = data.get("sid", "").strip()
+            token = data.get("token", "").strip()
+            if not sid or not token:
+                return jsonify({"ok": False, "error": "Account SID and Auth Token are required"})
+            r = requests.get(
+                f"https://api.twilio.com/2010-04-01/Accounts/{sid}.json",
+                auth=(sid, token),
+                timeout=8,
+            )
+            if r.ok:
+                return jsonify({"ok": True})
+            return jsonify({"ok": False, "error": "Invalid credentials \u2014 check your SID and Auth Token"})
+
+        else:
+            return jsonify({"ok": False, "error": "Unknown service"}), 400
+
+    except Exception as exc:
+        logger.exception("Setup test error for %s", service)
+        return jsonify({"ok": False, "error": str(exc)})
 
 
 def run_dashboard():

@@ -176,6 +176,23 @@
     {% block head %}{% endblock %}
 </head>
 <body>
+    {% if not setup_complete %}
+    <div id="setup-banner" style="background:#1e40af;color:#fff;font-size:13px;font-weight:500;padding:0;position:sticky;top:0;z-index:9999;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 20px;gap:12px;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
+                <span style="opacity:0.8;">&#9881;</span>
+                <span>Setup incomplete &mdash; {{ setup_steps_done }} of {{ setup_steps_total }} required services connected.</span>
+                <a href="/setup" style="color:#93c5fd;font-weight:600;white-space:nowrap;text-decoration:none;">Complete Setup &#8594;</a>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+                <div style="width:120px;height:6px;background:rgba(255,255,255,0.2);border-radius:3px;overflow:hidden;">
+                    <div style="height:100%;width:{{ ((setup_steps_done / setup_steps_total) * 100)|int }}%;background:#22c55e;border-radius:3px;transition:width 0.3s;"></div>
+                </div>
+                <span style="opacity:0.7;font-size:11px;">{{ ((setup_steps_done / setup_steps_total) * 100)|int }}%</span>
+            </div>
+        </div>
+    </div>
+    {% endif %}
     <div class="layout">
         {% include "partials/sidebar.html" %}
         <div class="main-content">

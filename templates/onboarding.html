@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SteadyBook — Setup Wizard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #f4f6f9;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 16px 80px;
+      color: #1a1a2e;
+    }
+
+    .header { text-align: center; margin-bottom: 32px; }
+    .header .logo { font-size: 22px; font-weight: 700; color: #2563eb; letter-spacing: -0.5px; }
+    .header h1 { font-size: 26px; font-weight: 700; margin-top: 4px; color: #1a1a2e; }
+    .header p { font-size: 15px; color: #6b7280; margin-top: 6px; }
+
+    /* Progress bar */
+    .progress {
+      display: flex;
+      align-items: center;
+      margin-bottom: 32px;
+      width: 100%;
+      max-width: 640px;
+    }
+    .progress-step {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      flex: 1;
+      position: relative;
+    }
+    .progress-step:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      top: 16px;
+      left: 50%;
+      width: 100%;
+      height: 2px;
+      background: #e5e7eb;
+      z-index: 0;
+    }
+    .progress-step.done:not(:last-child)::after { background: #22c55e; }
+    .step-circle {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: #e5e7eb;
+      color: #9ca3af;
+      font-size: 13px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      z-index: 1;
+      transition: background 0.2s, color 0.2s;
+    }
+    .progress-step.active .step-circle { background: #2563eb; color: #fff; }
+    .progress-step.done .step-circle { background: #22c55e; color: #fff; }
+    .step-label { font-size: 10px; color: #9ca3af; margin-top: 4px; text-align: center; white-space: nowrap; }
+    .progress-step.active .step-label { color: #2563eb; font-weight: 600; }
+    .progress-step.done .step-label { color: #22c55e; }
+
+    /* Card */
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.04);
+      padding: 32px;
+      width: 100%;
+      max-width: 640px;
+    }
+
+    .step-header { margin-bottom: 20px; }
+    .step-badge { font-size: 12px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+    .step-title { font-size: 20px; font-weight: 700; color: #1a1a2e; }
+    .step-why { font-size: 14px; color: #6b7280; margin-top: 6px; line-height: 1.5; }
+    .optional-badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      background: #f3f4f6;
+      color: #6b7280;
+      padding: 2px 8px;
+      border-radius: 20px;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+
+    /* How-to accordion */
+    .howto { background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 20px; }
+    .howto-toggle {
+      width: 100%;
+      background: none;
+      border: none;
+      padding: 12px 16px;
+      text-align: left;
+      font-size: 13px;
+      font-weight: 600;
+      color: #2563eb;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .howto-toggle::after { content: '\25B8'; font-size: 11px; }
+    .howto-toggle.open::after { content: '\25BE'; }
+    .howto-body { display: none; padding: 0 16px 14px; }
+    .howto-body.open { display: block; }
+    .howto-body ol { padding-left: 18px; font-size: 13px; color: #374151; line-height: 1.8; }
+    .howto-body a { color: #2563eb; }
+    .howto-body code { background: #f1f5f9; padding: 1px 4px; border-radius: 3px; font-size: 12px; }
+
+    /* Form */
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px; }
+    .form-group input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 14px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .form-group input:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+    .hint { font-size: 12px; color: #9ca3af; margin-top: 4px; }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      border: none;
+      transition: background 0.15s, opacity 0.15s;
+    }
+    .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+    .btn-primary { background: #2563eb; color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: #1d4ed8; }
+    .btn-secondary { background: #f3f4f6; color: #374151; border: 1px solid #e5e7eb; }
+    .btn-secondary:hover:not(:disabled) { background: #e5e7eb; }
+    .btn-success { background: #22c55e; color: #fff; }
+    .btn-lg { padding: 12px 28px; font-size: 15px; }
+    .actions { display: flex; align-items: center; gap: 12px; margin-top: 24px; flex-wrap: wrap; }
+
+    /* Status feedback */
+    .status {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      padding: 8px 12px;
+      border-radius: 8px;
+      margin-top: 12px;
+    }
+    .status.ok { display: flex; background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+    .status.error { display: flex; background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+
+    /* Generated key display */
+    .key-display {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      background: #f8fafc;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+    .key-display span { flex: 1; font-family: monospace; font-size: 13px; color: #374151; word-break: break-all; }
+    .copy-btn { padding: 4px 10px; font-size: 12px; }
+
+    /* Loading state on buttons */
+    .btn.loading { opacity: 0.7; pointer-events: none; }
+    .btn.loading::before {
+      content: '';
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border: 2px solid rgba(255,255,255,0.4);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      margin-right: 4px;
+    }
+    .btn-secondary.loading::before { border-color: rgba(0,0,0,0.15); border-top-color: #374151; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Step 8 — done */
+    .done-header { text-align: center; padding: 20px 0 28px; }
+    .done-icon {
+      width: 64px;
+      height: 64px;
+      background: #f0fdf4;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 16px;
+      font-size: 32px;
+    }
+    .done-header h2 { font-size: 22px; font-weight: 700; color: #1a1a2e; }
+    .done-header p { font-size: 14px; color: #6b7280; margin-top: 6px; }
+
+    .env-block {
+      background: #1e293b;
+      color: #e2e8f0;
+      border-radius: 8px;
+      padding: 16px;
+      font-family: monospace;
+      font-size: 12px;
+      line-height: 1.8;
+      white-space: pre;
+      overflow-x: auto;
+      margin: 16px 0;
+    }
+
+    .railway-steps {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin-top: 16px;
+    }
+    .railway-steps h4 { font-size: 13px; font-weight: 700; color: #1e40af; margin-bottom: 8px; }
+    .railway-steps ol { font-size: 13px; color: #1e40af; padding-left: 18px; line-height: 1.9; }
+    .railway-steps code { background: rgba(255,255,255,0.6); padding: 1px 4px; border-radius: 3px; font-size: 12px; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">SteadyBook</div>
+  <h1>Setup Wizard</h1>
+  <p>Let's connect your tools. Takes about 10 minutes.</p>
+</div>
+
+<!-- Progress bar -->
+<div class="progress" id="progress">
+  <div class="progress-step active" data-step="1">
+    <div class="step-circle">1</div>
+    <div class="step-label">API Key</div>
+  </div>
+  <div class="progress-step" data-step="2">
+    <div class="step-circle">2</div>
+    <div class="step-label">Telegram</div>
+  </div>
+  <div class="progress-step" data-step="3">
+    <div class="step-circle">3</div>
+    <div class="step-label">Chat ID</div>
+  </div>
+  <div class="progress-step" data-step="4">
+    <div class="step-circle">4</div>
+    <div class="step-label">OpenAI</div>
+  </div>
+  <div class="progress-step" data-step="5">
+    <div class="step-circle">5</div>
+    <div class="step-label">Email</div>
+  </div>
+  <div class="progress-step" data-step="6">
+    <div class="step-circle">6</div>
+    <div class="step-label">SMS</div>
+  </div>
+  <div class="progress-step" data-step="7">
+    <div class="step-circle">7</div>
+    <div class="step-label">n8n</div>
+  </div>
+  <div class="progress-step" data-step="8">
+    <div class="step-circle">&#10003;</div>
+    <div class="step-label">Done</div>
+  </div>
+</div>
+
+<div class="card" id="card">
+
+  <!-- ── Step 1: Dashboard API Key ── -->
+  <div class="step" id="step-1">
+    <div class="step-header">
+      <div class="step-badge">Step 1 of 7</div>
+      <div class="step-title">Dashboard API Key</div>
+      <div class="step-why">This is the secret password that protects your dashboard. Generate one now — you'll paste it into Railway in the final step.</div>
+    </div>
+
+    <div id="key1-display" style="display:none; margin-bottom:16px;">
+      <label style="font-size:13px;font-weight:600;color:#374151;display:block;margin-bottom:6px;">Your key</label>
+      <div class="key-display">
+        <span id="key1-value"></span>
+        <button class="btn btn-secondary copy-btn" onclick="copyKey('key1-value', this)">Copy</button>
+      </div>
+      <div class="hint" style="margin-top:6px;">&#9888; Save this somewhere safe before continuing.</div>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-primary" id="btn-gen-key" onclick="generateKey()">Generate Key</button>
+      <button class="btn btn-primary btn-lg" id="btn-step1-next" style="display:none" onclick="nextStep()">Next &#8594;</button>
+    </div>
+  </div>
+
+  <!-- ── Step 2: Telegram Bot Token ── -->
+  <div class="step" id="step-2" style="display:none">
+    <div class="step-header">
+      <div class="step-badge">Step 2 of 7</div>
+      <div class="step-title">Telegram Bot Token</div>
+      <div class="step-why">This lets the CRM send you alerts on Telegram when new leads come in or tasks need your attention.</div>
+    </div>
+
+    <div class="howto">
+      <button class="howto-toggle" onclick="toggleHowto(this)">How to create a Telegram bot</button>
+      <div class="howto-body">
+        <ol>
+          <li>Open Telegram and search for <strong>@BotFather</strong></li>
+          <li>Send the message: <strong>/newbot</strong></li>
+          <li>When asked, type a display name for your bot (e.g. "My CRM Bot")</li>
+          <li>When asked, type a username ending in "bot" (e.g. "mycrm_notifications_bot")</li>
+          <li>BotFather will reply with a token — it looks like: <code>123456789:ABC-DEF1234ghijk</code></li>
+          <li>Copy that token and paste it below</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Bot Token</label>
+      <input type="text" id="tg-token" placeholder="123456789:ABC-DEFghijklmnop..." autocomplete="off" spellcheck="false">
+      <div class="hint">Paste exactly as given by BotFather — no spaces.</div>
+    </div>
+
+    <div id="status-tg-token" class="status"></div>
+
+    <div class="actions">
+      <button class="btn btn-primary" id="btn-test-tg-token" onclick="testService('telegram-token')">Test Connection</button>
+      <button class="btn btn-secondary" onclick="prevStep()">&#8592; Back</button>
+    </div>
+  </div>
+
+  <!-- ── Step 3: Telegram Chat ID ── -->
+  <div class="step" id="step-3" style="display:none">
+    <div class="step-header">
+      <div class="step-badge">Step 3 of 7</div>
+      <div class="step-title">Your Telegram Chat ID</div>
+      <div class="step-why">This tells the bot which Telegram account to send alerts to. We'll send you a test message to confirm.</div>
+    </div>
+
+    <div class="howto">
+      <button class="howto-toggle" onclick="toggleHowto(this)">How to find your Chat ID</button>
+      <div class="howto-body">
+        <ol>
+          <li>In Telegram, search for <strong>@userinfobot</strong> and start a chat</li>
+          <li>Send it any message — it will reply with your user info</li>
+          <li>Copy the <strong>Id</strong> number (e.g. <code>123456789</code>)</li>
+          <li>Then go find <strong>your own bot</strong> (the one you just created) and send it any message — this is required before it can message you back</li>
+          <li>Paste your ID below and click "Send Test Message"</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Your Telegram User ID</label>
+      <input type="text" id="tg-chat-id" placeholder="123456789" autocomplete="off" spellcheck="false">
+      <div class="hint">Numbers only, no spaces or symbols.</div>
+    </div>
+
+    <div id="status-tg-chat" class="status"></div>
+
+    <div class="actions">
+      <button class="btn btn-primary" id="btn-test-tg-chat" onclick="testService('telegram-chat')">Send Test Message</button>
+      <button class="btn btn-secondary" onclick="prevStep()">&#8592; Back</button>
+    </div>
+  </div>
+
+  <!-- ── Step 4: OpenAI ── -->
+  <div class="step" id="step-4" style="display:none">
+    <div class="step-header">
+      <div class="step-badge">Step 4 of 7</div>
+      <div class="step-title">OpenAI API Key</div>
+      <div class="step-why">Powers all the AI features — writing follow-up messages, summarising conversations, scoring leads, and more.</div>
+    </div>
+
+    <div class="howto">
+      <button class="howto-toggle" onclick="toggleHowto(this)">How to get an OpenAI API key</button>
+      <div class="howto-body">
+        <ol>
+          <li>Go to <a href="https://platform.openai.com/api-keys" target="_blank">platform.openai.com/api-keys</a></li>
+          <li>Sign in or create an account</li>
+          <li>Click <strong>Create new secret key</strong>, give it a name like "SteadyBook"</li>
+          <li>Copy the key — it starts with <code>sk-</code></li>
+          <li>Make sure your account has billing set up (Settings &#8594; Billing &#8594; Add payment method)</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>API Key</label>
+      <input type="password" id="openai-key" placeholder="sk-..." autocomplete="off" spellcheck="false">
+    </div>
+
+    <div id="status-openai" class="status"></div>
+
+    <div class="actions">
+      <button class="btn btn-primary" id="btn-test-openai" onclick="testService('openai')">Test Connection</button>
+      <button class="btn btn-secondary" onclick="prevStep()">&#8592; Back</button>
+    </div>
+  </div>
+
+  <!-- ── Step 5: Resend (Email) ── -->
+  <div class="step" id="step-5" style="display:none">
+    <div class="step-header">
+      <div class="step-badge">Step 5 of 7</div>
+      <div class="step-title">Email Sending (Resend)</div>
+      <div class="step-why">Used to send automated follow-up emails and nurture sequences to your leads.</div>
+    </div>
+
+    <div class="howto">
+      <button class="howto-toggle" onclick="toggleHowto(this)">How to set up Resend</button>
+      <div class="howto-body">
+        <ol>
+          <li>Go to <a href="https://resend.com" target="_blank">resend.com</a> and create a free account</li>
+          <li>Go to <strong>Domains</strong> and add your domain (e.g. yourdomain.com) — follow the DNS verification steps</li>
+          <li>Go to <strong>API Keys</strong> and click <strong>Create API Key</strong></li>
+          <li>Copy the key (starts with <code>re_</code>) and paste it below</li>
+          <li>Set your "From" email to something like <code>hello@yourdomain.com</code> — must match the domain you verified</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Resend API Key</label>
+      <input type="password" id="resend-key" placeholder="re_..." autocomplete="off" spellcheck="false">
+    </div>
+    <div class="form-group">
+      <label>From Email Address</label>
+      <input type="email" id="resend-from" placeholder="hello@yourdomain.com">
+      <div class="hint">Emails will be sent from this address. Must match your verified Resend domain.</div>
+    </div>
+    <div class="form-group">
+      <label>Reply-To Address <span style="font-weight:400;color:#9ca3af;">(optional)</span></label>
+      <input type="email" id="resend-replyto" placeholder="you@yourdomain.com">
+    </div>
+
+    <div id="status-resend" class="status"></div>
+
+    <div class="actions">
+      <button class="btn btn-primary" id="btn-test-resend" onclick="testService('resend')">Test Connection</button>
+      <button class="btn btn-secondary" onclick="prevStep()">&#8592; Back</button>
+    </div>
+  </div>
+
+  <!-- ── Step 6: Twilio (SMS) ── -->
+  <div class="step" id="step-6" style="display:none">
+    <div class="step-header">
+      <div class="step-badge">Step 6 of 7</div>
+      <div class="step-title">SMS Sending (Twilio) <span class="optional-badge">Optional</span></div>
+      <div class="step-why">Lets the CRM send and receive text messages with your leads. Skip this if you don't need SMS right now.</div>
+    </div>
+
+    <div class="howto">
+      <button class="howto-toggle" onclick="toggleHowto(this)">How to set up Twilio</button>
+      <div class="howto-body">
+        <ol>
+          <li>Go to <a href="https://www.twilio.com" target="_blank">twilio.com</a> and create an account</li>
+          <li>From your Console dashboard, find your <strong>Account SID</strong> and <strong>Auth Token</strong></li>
+          <li>Go to <strong>Phone Numbers &#8594; Manage &#8594; Buy a number</strong> and get a number with SMS capability</li>
+          <li>Paste the SID, Token, and phone number below</li>
+          <li>Phone number format must include country code: <code>+14165551234</code></li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Account SID</label>
+      <input type="text" id="twilio-sid" placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="form-group">
+      <label>Auth Token</label>
+      <input type="password" id="twilio-token" placeholder="Your auth token" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label>Twilio Phone Number</label>
+      <input type="text" id="twilio-number" placeholder="+14165551234">
+      <div class="hint">Include the + and country code. Example: +14165551234</div>
+    </div>
+
+    <div id="status-twilio" class="status"></div>
+
+    <div class="actions">
+      <button class="btn btn-primary" id="btn-test-twilio" onclick="testService('twilio')">Test Connection</button>
+      <button class="btn btn-secondary" onclick="skipStep()">Skip for now &#8594;</button>
+      <button class="btn btn-secondary" onclick="prevStep()">&#8592; Back</button>
+    </div>
+  </div>
+
+  <!-- ── Step 7: n8n Webhook Secret ── -->
+  <div class="step" id="step-7" style="display:none">
+    <div class="step-header">
+      <div class="step-badge">Step 7 of 7</div>
+      <div class="step-title">n8n Webhook Secret <span class="optional-badge">Optional</span></div>
+      <div class="step-why">If you plan to capture leads from Instagram, LinkedIn, or WhatsApp using n8n, this secret key keeps that connection secure. Skip if you're not using n8n yet.</div>
+    </div>
+
+    <div class="howto">
+      <button class="howto-toggle" onclick="toggleHowto(this)">What is n8n and how does it work?</button>
+      <div class="howto-body">
+        <ol>
+          <li>n8n is a free automation tool — it watches your social accounts and forwards new leads to SteadyBook automatically</li>
+          <li>When someone DMs you on Instagram or fills in a LinkedIn lead ad, n8n captures their info and sends it here</li>
+          <li>The webhook secret is like a password — it proves the data really came from your n8n, not someone else</li>
+          <li>Generate a secret below, then paste it into your n8n Webhook node under <strong>Header Auth</strong>, with header name <code>X-Webhook-Secret</code></li>
+          <li>Your SteadyBook webhook URL will be: <code>https://[your-app].railway.app/api/social/intake</code></li>
+        </ol>
+      </div>
+    </div>
+
+    <div id="n8n-key-display" style="display:none; margin-bottom:16px;">
+      <label style="font-size:13px;font-weight:600;color:#374151;display:block;margin-bottom:6px;">Your webhook secret</label>
+      <div class="key-display">
+        <span id="n8n-key-value"></span>
+        <button class="btn btn-secondary copy-btn" onclick="copyKey('n8n-key-value', this)">Copy</button>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-primary" id="btn-gen-n8n" onclick="generateN8nSecret()">Generate Secret</button>
+      <button class="btn btn-secondary" onclick="skipStep()">Skip for now &#8594;</button>
+      <button class="btn btn-secondary" onclick="prevStep()">&#8592; Back</button>
+      <button class="btn btn-primary btn-lg" id="btn-step7-next" style="display:none" onclick="nextStep()">See My Env Variables &#8594;</button>
+    </div>
+  </div>
+
+  <!-- ── Step 8: Done ── -->
+  <div class="step" id="step-8" style="display:none">
+    <div class="done-header">
+      <div class="done-icon">&#10003;</div>
+      <h2>You&#8217;re all set!</h2>
+      <p>Here are your environment variables. Paste them into Railway to go live.</p>
+    </div>
+
+    <label style="font-size:13px;font-weight:600;color:#374151;display:block;margin-bottom:8px;">Your Environment Variables</label>
+    <pre class="env-block" id="env-block"></pre>
+
+    <div style="display:flex;gap:8px;margin-top:8px;">
+      <button class="btn btn-primary" id="btn-copy-env" onclick="copyEnvBlock()">Copy All Variables</button>
+    </div>
+
+    <div class="railway-steps">
+      <h4>How to add these to Railway</h4>
+      <ol>
+        <li>Open your Railway project and click on your service</li>
+        <li>Click the <strong>Variables</strong> tab at the top</li>
+        <li>Click <strong>Raw Editor</strong> and paste everything from the box above</li>
+        <li>Click <strong>Update Variables</strong> — Railway will redeploy automatically</li>
+        <li>Once deployed, visit your app URL and log in with your Dashboard API Key</li>
+        <li>Done! Add <code>ONBOARDING_COMPLETE=true</code> to your variables to hide this setup page</li>
+      </ol>
+    </div>
+  </div>
+
+</div><!-- /card -->
+
+<script>
+  var state = {
+    step: 1,
+    values: {
+      dashboardApiKey: '',
+      telegramBotToken: '',
+      telegramChatId: '',
+      openaiKey: '',
+      resendKey: '',
+      resendFrom: '',
+      resendReplyTo: '',
+      twilioSid: '',
+      twilioToken: '',
+      twilioNumber: '',
+      n8nSecret: ''
+    }
+  };
+
+  function showStep(n) {
+    document.querySelectorAll('.step').forEach(function(el) {
+      el.style.display = 'none';
+    });
+    var el = document.getElementById('step-' + n);
+    if (el) { el.style.display = 'block'; }
+
+    document.querySelectorAll('.progress-step').forEach(function(s) {
+      var sn = parseInt(s.dataset.step, 10);
+      s.classList.remove('active', 'done');
+      if (sn < n) { s.classList.add('done'); }
+      else if (sn === n) { s.classList.add('active'); }
+    });
+
+    state.step = n;
+    if (n === 8) { buildEnvBlock(); }
+  }
+
+  function nextStep() { showStep(state.step + 1); }
+  function prevStep() { showStep(state.step - 1); }
+  function skipStep() { nextStep(); }
+
+  function setStatus(id, ok, msg) {
+    var el = document.getElementById(id);
+    el.className = 'status ' + (ok ? 'ok' : 'error');
+    el.textContent = (ok ? '\u2713  ' : '\u2717  ') + msg;
+  }
+
+  function toggleHowto(btn) {
+    btn.classList.toggle('open');
+    btn.nextElementSibling.classList.toggle('open');
+  }
+
+  function copyKey(id, btn) {
+    var val = document.getElementById(id).textContent;
+    navigator.clipboard.writeText(val).then(function() {
+      var orig = btn.textContent;
+      btn.textContent = 'Copied!';
+      setTimeout(function() { btn.textContent = orig; }, 1500);
+    });
+  }
+
+  function setLoading(btn, loading, originalText) {
+    if (loading) {
+      btn.classList.add('loading');
+      btn.disabled = true;
+      btn.textContent = '';
+    } else {
+      btn.classList.remove('loading');
+      btn.disabled = false;
+      btn.textContent = originalText;
+    }
+  }
+
+  function generateKey() {
+    var btn = document.getElementById('btn-gen-key');
+    var origText = btn.textContent;
+    setLoading(btn, true, origText);
+    fetch('/api/setup/generate-key')
+      .then(function(res) { return res.json(); })
+      .then(function(data) {
+        state.values.dashboardApiKey = data.key;
+        document.getElementById('key1-value').textContent = data.key;
+        document.getElementById('key1-display').style.display = 'block';
+        btn.style.display = 'none';
+        document.getElementById('btn-step1-next').style.display = 'inline-flex';
+      })
+      .catch(function() {
+        setLoading(btn, false, origText);
+        alert('Something went wrong. Please refresh and try again.');
+      });
+  }
+
+  function generateN8nSecret() {
+    var btn = document.getElementById('btn-gen-n8n');
+    var origText = btn.textContent;
+    setLoading(btn, true, origText);
+    fetch('/api/setup/generate-key')
+      .then(function(res) { return res.json(); })
+      .then(function(data) {
+        state.values.n8nSecret = data.key;
+        document.getElementById('n8n-key-value').textContent = data.key;
+        document.getElementById('n8n-key-display').style.display = 'block';
+        btn.style.display = 'none';
+        document.getElementById('btn-step7-next').style.display = 'inline-flex';
+      })
+      .catch(function() {
+        setLoading(btn, false, origText);
+      });
+  }
+
+  function testService(service) {
+    var statusMap = {
+      'telegram-token': 'status-tg-token',
+      'telegram-chat':  'status-tg-chat',
+      'openai':         'status-openai',
+      'resend':         'status-resend',
+      'twilio':         'status-twilio'
+    };
+    var btnMap = {
+      'telegram-token': 'btn-test-tg-token',
+      'telegram-chat':  'btn-test-tg-chat',
+      'openai':         'btn-test-openai',
+      'resend':         'btn-test-resend',
+      'twilio':         'btn-test-twilio'
+    };
+
+    var statusId = statusMap[service];
+    var btn = document.getElementById(btnMap[service]);
+    var origText = btn ? btn.textContent : '';
+    if (btn) { setLoading(btn, true, origText); }
+
+    var body = {};
+    if (service === 'telegram-token') {
+      body = { token: document.getElementById('tg-token').value.trim() };
+    } else if (service === 'telegram-chat') {
+      body = {
+        token: state.values.telegramBotToken,
+        chat_id: document.getElementById('tg-chat-id').value.trim()
+      };
+    } else if (service === 'openai') {
+      body = { key: document.getElementById('openai-key').value.trim() };
+    } else if (service === 'resend') {
+      body = { key: document.getElementById('resend-key').value.trim() };
+    } else if (service === 'twilio') {
+      body = {
+        sid: document.getElementById('twilio-sid').value.trim(),
+        token: document.getElementById('twilio-token').value.trim()
+      };
+    }
+
+    fetch('/api/setup/test/' + service, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    })
+      .then(function(res) { return res.json(); })
+      .then(function(data) {
+        if (btn) { setLoading(btn, false, origText); }
+        if (data.ok) {
+          if (service === 'telegram-token') {
+            state.values.telegramBotToken = body.token;
+            setStatus(statusId, true, 'Connected! Bot: @' + (data.name || 'your bot'));
+          } else if (service === 'telegram-chat') {
+            state.values.telegramChatId = body.chat_id;
+            setStatus(statusId, true, 'Message sent! Check your Telegram.');
+          } else if (service === 'openai') {
+            state.values.openaiKey = body.key;
+            setStatus(statusId, true, 'Connected!');
+          } else if (service === 'resend') {
+            state.values.resendKey = body.key;
+            state.values.resendFrom = document.getElementById('resend-from').value.trim();
+            state.values.resendReplyTo = document.getElementById('resend-replyto').value.trim();
+            setStatus(statusId, true, 'Connected!');
+          } else if (service === 'twilio') {
+            state.values.twilioSid = body.sid;
+            state.values.twilioToken = body.token;
+            state.values.twilioNumber = document.getElementById('twilio-number').value.trim();
+            setStatus(statusId, true, 'Connected!');
+          }
+          setTimeout(function() { nextStep(); }, 800);
+        } else {
+          setStatus(statusId, false, data.error || 'Connection failed. Check your credentials and try again.');
+        }
+      })
+      .catch(function() {
+        if (btn) { setLoading(btn, false, origText); }
+        setStatus(statusId, false, 'Network error. Check your internet connection and try again.');
+      });
+  }
+
+  function buildEnvBlock() {
+    var v = state.values;
+    var lines = [
+      'DASHBOARD_API_KEY=' + v.dashboardApiKey,
+      'TELEGRAM_BOT_TOKEN=' + v.telegramBotToken,
+      'TELEGRAM_CHAT_ID=' + v.telegramChatId,
+      'OPENAI_API_KEY=' + v.openaiKey
+    ];
+    if (v.resendKey) {
+      lines.push('RESEND_API_KEY=' + v.resendKey);
+      if (v.resendFrom) { lines.push('RESEND_FROM_EMAIL=' + v.resendFrom); }
+      if (v.resendReplyTo) { lines.push('RESEND_REPLY_TO=' + v.resendReplyTo); }
+    }
+    if (v.twilioSid) {
+      lines.push('TWILIO_ACCOUNT_SID=' + v.twilioSid);
+      lines.push('TWILIO_AUTH_TOKEN=' + v.twilioToken);
+      if (v.twilioNumber) { lines.push('TWILIO_FROM_NUMBER=' + v.twilioNumber); }
+    }
+    if (v.n8nSecret) {
+      lines.push('STEADYBOOK_WEBHOOK_SECRET=' + v.n8nSecret);
+    }
+    lines.push('ONBOARDING_COMPLETE=true');
+    document.getElementById('env-block').textContent = lines.join('\n');
+  }
+
+  function copyEnvBlock() {
+    var text = document.getElementById('env-block').textContent;
+    var btn = document.getElementById('btn-copy-env');
+    navigator.clipboard.writeText(text).then(function() {
+      var orig = btn.textContent;
+      btn.textContent = 'Copied!';
+      btn.classList.add('btn-success');
+      setTimeout(function() {
+        btn.textContent = orig;
+        btn.classList.remove('btn-success');
+      }, 2000);
+    });
+  }
+</script>
+</body>
+</html>

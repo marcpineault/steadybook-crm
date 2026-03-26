@@ -7,7 +7,7 @@ in Marc's voice, and sends it automatically via Twilio (no human approval step).
 
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytz
 from openai import OpenAI
@@ -162,7 +162,7 @@ def is_opted_out(prospect: dict | None) -> bool:
 
 def was_recently_contacted(phone: str, hours: int = 4) -> bool:
     """Return True if we sent an outbound SMS to this phone in the last N hours."""
-    cutoff = (datetime.utcnow() - timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
     with db.get_db() as conn:
         row = conn.execute(
             "SELECT 1 FROM sms_conversations WHERE phone=? AND direction='outbound' AND created_at >= ? LIMIT 1",
