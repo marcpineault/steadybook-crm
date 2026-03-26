@@ -9,6 +9,8 @@
 
 Marc (Cooperators) and David (brokerage partner) share the same pain: leads lost at events, multi-channel chaos (DMs, business cards, texts), and manual pipeline management that kills follow-through. SteadyBook becomes the flagship product — built for them first, then leveraged to onboard David's employees and future brokerage acquisitions. The goal is to be the best CRM purpose-built for insurance and financial services.
 
+**Important:** SteadyBook is an independent system, not tied to any carrier or distributor platform. This means full integration freedom — Gmail, Outlook, Google Calendar, Calendly, WhatsApp, Instagram, LinkedIn, n8n, and any other tool. No restrictions.
+
 ---
 
 ## Architecture Overview
@@ -23,6 +25,20 @@ CAPTURE LAYER
 │   └── Text → quick-add (existing)
 ├── QR Landing Page (new)
 │   └── Prospect self-fills name/email/phone/company → intake pipeline
+├── Email (via n8n)
+│   ├── Gmail / Outlook two-way sync → sent emails auto-logged to activity feed
+│   └── Inbound replies → captured, logged to prospect record, advisor notified
+├── Calendar (via n8n)
+│   ├── Google Calendar / Outlook Calendar → meetings sync to SteadyBook
+│   └── Calendly / Cal.com → self-booking link → prospect auto-tagged `meeting_booked`
+├── WhatsApp (via n8n)
+│   └── Inbound WhatsApp messages → classified → prospect created or activity logged
+├── Instagram (new, via n8n)
+│   ├── Organic DMs → n8n Instagram trigger → normalized webhook → intake pipeline
+│   └── Lead Ad forms → n8n Meta Lead Ads trigger → normalized webhook → intake pipeline
+├── LinkedIn (new, via n8n)
+│   ├── Lead Gen Forms → n8n LinkedIn trigger → normalized webhook → intake pipeline
+│   └── DMs → NOT available via any API (manual log only)
 └── [Phase 2: PWA mobile app]
 
 ENRICHMENT LAYER (new: enrichment.py)
@@ -99,6 +115,35 @@ The prospect record becomes the central intelligence file on a person. Every fie
 5. Bot replies with extracted fields for quick confirmation
 
 **Text quick-add (existing, no changes needed)**
+
+### Social Intake via n8n
+
+Building directly against Meta's API requires app review, business verification, webhook tokens, and unstable permission scopes. Instead, **n8n** (self-hosted, no per-task fees) handles the platform connections and fires a normalized webhook to SteadyBook. SteadyBook never touches Meta or LinkedIn APIs directly.
+
+**n8n setup (one-time per advisor):**
+- Instagram Business account connected to Facebook Page
+- n8n Instagram DM trigger → HTTP POST to SteadyBook `/api/social-intake`
+- n8n Meta Lead Ads trigger → HTTP POST to SteadyBook `/api/social-intake`
+- n8n LinkedIn Lead Gen trigger → HTTP POST to SteadyBook `/api/social-intake`
+
+**Instagram DM flow:**
+1. Someone DMs your Instagram account
+2. n8n fires normalized payload: `{source: "instagram_dm", name, message, instagram_handle}`
+3. Classifier extracts intent: lead or noise?
+4. If lead: entity resolution → prospect created → enrichment fires → Telegram notification
+5. Optional auto-reply queued for advisor approval ("Thanks for reaching out — Marc will be in touch")
+
+**Instagram Lead Ads flow:**
+1. Someone fills a lead form on your Instagram/Facebook ad
+2. n8n fires: `{source: "instagram_ad", name, email, phone, campaign, answers}`
+3. Fields map directly to prospect record → tagged with campaign name → enrichment fires
+
+**LinkedIn Lead Gen Forms flow:**
+1. Someone fills a lead gen form on a LinkedIn ad
+2. n8n fires: `{source: "linkedin_ad", name, email, title, company, campaign}` (LinkedIn pre-fills from profile — high quality data)
+3. Fields map to prospect record → tagged `source_linkedin_ad` → enrichment fires
+
+**LinkedIn DMs:** No public API exists for any tool. Advisor logs conversations manually via Telegram quick-note or dashboard activity log.
 
 ### QR Landing Page
 
@@ -201,16 +246,38 @@ Formalized from existing SteadyBook logic. Fires after every closed deal.
 
 ---
 
+## n8n Integration Layer
+
+n8n is the middleware that connects all external platforms to SteadyBook. Self-hosted, no per-task fees. All workflows fire a normalized webhook to `/api/social-intake` or `/api/email-inbound`. SteadyBook never integrates directly with Meta, LinkedIn, Google, or Microsoft APIs.
+
+**n8n workflows (one-time setup per tenant):**
+- Gmail / Outlook → sent email logged + reply captured
+- Google Calendar / Outlook Calendar → meeting synced
+- Calendly / Cal.com → booking → `meeting_booked` tag
+- WhatsApp → inbound message → intake pipeline
+- Instagram DMs → intake pipeline
+- Instagram Lead Ads → intake pipeline
+- LinkedIn Lead Gen Forms → intake pipeline
+- Google Contacts → one-time import + enrichment
+
 ## Phase 1 Scope (Build Now)
 
 1. Telegram voice memo capture (Whisper + GPT extraction)
 2. Telegram business card photo capture (GPT-4o Vision)
 3. QR landing page (per-tenant, downloadable QR)
-4. Enrichment engine (`enrichment.py`) — Google + LinkedIn + Instagram
-5. calm-money-bot intake pipeline merger (dedup + entity resolution)
-6. Tag-based trigger system (core tags + flow enrollment)
-7. Life + disability + group benefits intake forms
-8. Formalized cross-sell engine with product matrix + timing rules
+4. n8n integration layer + normalized `/api/social-intake` endpoint
+5. Instagram DM + Lead Ads intake (via n8n)
+6. LinkedIn Lead Gen Form intake (via n8n)
+7. WhatsApp intake (via n8n)
+8. Gmail / Outlook two-way email sync (via n8n)
+9. Calendar sync — Google Calendar / Outlook / Calendly (via n8n)
+10. Enrichment engine (`enrichment.py`) — Google + LinkedIn + Instagram
+11. calm-money-bot intake pipeline merger (dedup + entity resolution)
+12. Tag-based trigger system (core tags + flow enrollment)
+13. Referral tracking (who referred who, referral source tracking, ask sequences)
+14. Self-booking link (Calendly/Cal.com → auto-prospect)
+15. Life + disability + group benefits intake forms
+16. Formalized cross-sell engine with product matrix + timing rules
 
 ## Phase 2 Scope (After Dog-Fooding)
 
@@ -221,6 +288,83 @@ Formalized from existing SteadyBook logic. Fires after every closed deal.
 5. Manager/team dashboard for David's employees
 6. Email open + click tracking
 7. Full GoHighLevel feature parity
+
+---
+
+## The Omniscient AI Assistant
+
+This is the core of the platform. Not a CRM with an AI feature bolted on — an AI assistant that runs the business, with a CRM as its memory. The advisor's job shifts from managing a CRM to reviewing and approving what the AI has already done.
+
+### What It Knows (Full Omniscience)
+
+The assistant has real-time read access to every data source:
+
+- **Gmail / Outlook** — every inbound and outbound email, threads, attachments
+- **WhatsApp / SMS** — full conversation history, tone, response times
+- **Instagram / LinkedIn DMs** — all messages, comments, interactions
+- **Calendar** — every meeting past and future, no-shows, prep state, follow-up status
+- **SteadyBook database** — every prospect, client, policy, interaction, task, note, tag, score
+- **Carrier emails** — application status, approvals, declines, renewal notices landing in inbox
+- **Social posts** — what prospects and clients are posting publicly (Phase 2)
+
+### What It Does (Autonomous Operations)
+
+The assistant operates continuously — not just at 7am. Every 15 minutes and on every new event it reasons across all data and takes action within the configured trust level.
+
+**Trust Level 1 — Draft only:**
+Drafts emails, SMS, follow-ups. Everything queued for advisor approval before sending. Nothing goes out without a human tap.
+
+**Trust Level 2 — Act on routine tasks:**
+Sends pre-approved message templates autonomously. Books follow-up meetings. Moves pipeline stages when signals are clear (prospect replied positively → stage advanced). Creates and closes tasks. Escalates judgment calls to advisor.
+
+**Trust Level 3 — Full autonomy:**
+Runs the entire intake and nurture operation without human involvement. Advisor only touches high-stakes decisions (proposals, closings, complex client situations). Everything else handled.
+
+### What It Synthesizes
+
+The assistant connects dots across channels that no human would catch:
+
+- *"Sarah emailed this morning, DM'd on Instagram 3 days ago, her group benefits renewal is in 28 days, and you haven't spoken in 6 weeks — this is urgent, here's a draft outreach"*
+- *"You told James you'd send a quote by Friday in your WhatsApp conversation — it's Thursday morning, no quote sent — here's a draft"*
+- *"David closed a life policy for the Chen household 31 days ago — disability cross-sell window is open, Mrs. Chen just posted about starting a new business on Instagram — lead this with the business owner angle"*
+- *"Three proposals went silent this week — all sent via email, none followed up by SMS — pattern detected, recommend multi-channel follow-up"*
+
+### What It Learns
+
+Every advisor approval or rejection trains the assistant's behavior:
+- Approved a message → reinforced as the right approach for that scenario
+- Rejected and rewrote → learns the preferred tone, timing, content
+- Skipped a task → learns that prospect type or stage gets lower priority
+- Over time: the assistant's drafts become indistinguishable from what the advisor would write
+
+### Architecture
+
+```
+ALL DATA SOURCES (email, calendar, social, SMS, WhatsApp, database)
+         ↓
+n8n normalizes every event → SteadyBook intake pipeline
+         ↓
+Omniscient Agent (runs every 15 min + on every new event)
+├── Pulls full context for affected prospect/client
+├── Reads recent activity across ALL channels for that person
+├── Synthesizes signals → determines required action
+├── Checks trust level → acts or queues for approval
+└── Logs every action to audit trail (compliance)
+         ↓
+Telegram: advisor sees prioritized action queue
+         ↓
+Approve / Edit / Skip → agent learns from response
+```
+
+### What the Advisor's Day Looks Like
+
+Wake up → Telegram morning brief: top 5 priorities, what the agent handled overnight, what needs your eyes.
+
+Throughout the day → Telegram pings only when something genuinely needs judgment: a complex client situation, a large proposal, an unusual request.
+
+End of day → everything else was handled. Follow-ups sent. Pipeline updated. Tasks created. Renewals flagged. Leads enriched. Sequences running.
+
+The advisor's time goes entirely to relationships, advice, and closing — not CRM admin.
 
 ---
 

@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SteadyBook — Vision Flowchart</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f8f7f4;
+  --panel:#fffdf9;
+  --text:#171717;
+  --muted:#66635f;
+  --line:#e7e2d8;
+  --accent:#6366f1;
+  --accent-soft:#eef0ff;
+  --accent-deep:#4f46e5;
+  --good:#0f9f6e;
+  --good-soft:#ddf7ec;
+  --warn:#d97706;
+  --warn-soft:#fff7ed;
+  --blue:#2563eb;
+  --blue-soft:#eff6ff;
+  --purple:#7c3aed;
+  --purple-soft:#f5f3ff;
+  --pink:#db2777;
+  --pink-soft:#fdf2f8;
+  --shadow:0 4px 24px rgba(28,25,23,.07);
+}
+body{
+  font-family:'Inter',sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  min-height:100vh;
+  padding:48px 32px 80px;
+}
+.page-title{
+  text-align:center;
+  margin-bottom:8px;
+}
+.page-title h1{
+  font-size:28px;
+  font-weight:800;
+  letter-spacing:-.5px;
+}
+.page-title p{
+  font-size:14px;
+  color:var(--muted);
+  margin-top:6px;
+}
+.legend{
+  display:flex;
+  gap:20px;
+  justify-content:center;
+  margin:20px 0 40px;
+  flex-wrap:wrap;
+}
+.legend-item{
+  display:flex;
+  align-items:center;
+  gap:7px;
+  font-size:12px;
+  color:var(--muted);
+  font-weight:500;
+}
+.legend-dot{
+  width:10px;
+  height:10px;
+  border-radius:50%;
+}
+
+/* FLOW */
+.flow{
+  max-width:1060px;
+  margin:0 auto;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:0;
+}
+
+/* SECTION LABEL */
+.section-label{
+  font-size:10px;
+  font-weight:700;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  color:var(--muted);
+  margin-bottom:10px;
+  text-align:center;
+}
+
+/* LAYER WRAPPER */
+.layer{
+  width:100%;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+}
+
+/* ARROW */
+.arrow{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex-direction:column;
+  height:44px;
+  position:relative;
+}
+.arrow::before{
+  content:'';
+  display:block;
+  width:2px;
+  height:28px;
+  background:var(--line);
+}
+.arrow::after{
+  content:'';
+  display:block;
+  width:0;
+  height:0;
+  border-left:7px solid transparent;
+  border-right:7px solid transparent;
+  border-top:9px solid var(--line);
+  margin-top:-1px;
+}
+.arrow.accent::before{ background:var(--accent); }
+.arrow.accent::after{ border-top-color:var(--accent); }
+.arrow.good::before{ background:var(--good); }
+.arrow.good::after{ border-top-color:var(--good); }
+
+/* ROW of cards */
+.row{
+  display:flex;
+  gap:12px;
+  justify-content:center;
+  flex-wrap:wrap;
+  width:100%;
+}
+
+/* CARD */
+.card{
+  background:var(--panel);
+  border:1.5px solid var(--line);
+  border-radius:14px;
+  padding:16px 18px;
+  box-shadow:var(--shadow);
+  flex:1;
+  min-width:160px;
+  max-width:220px;
+  transition:transform .15s, box-shadow .15s;
+}
+.card:hover{
+  transform:translateY(-2px);
+  box-shadow:0 8px 32px rgba(28,25,23,.11);
+}
+.card-icon{
+  font-size:22px;
+  margin-bottom:8px;
+}
+.card-title{
+  font-size:13px;
+  font-weight:700;
+  margin-bottom:4px;
+}
+.card-desc{
+  font-size:11.5px;
+  color:var(--muted);
+  line-height:1.5;
+}
+
+/* COLOR VARIANTS */
+.card.blue{ border-color:#bfdbfe; background:var(--blue-soft); }
+.card.blue .card-title{ color:var(--blue); }
+.card.purple{ border-color:#ddd6fe; background:var(--purple-soft); }
+.card.purple .card-title{ color:var(--purple); }
+.card.green{ border-color:#a7f3d0; background:var(--good-soft); }
+.card.green .card-title{ color:var(--good); }
+.card.amber{ border-color:#fde68a; background:var(--warn-soft); }
+.card.amber .card-title{ color:var(--warn); }
+.card.pink{ border-color:#fbcfe8; background:var(--pink-soft); }
+.card.pink .card-title{ color:var(--pink); }
+.card.indigo{ border-color:#c7d2fe; background:var(--accent-soft); }
+.card.indigo .card-title{ color:var(--accent-deep); }
+
+/* HUB — central prospect record */
+.hub{
+  background:#fff;
+  border:2.5px solid var(--accent);
+  border-radius:18px;
+  padding:22px 28px;
+  box-shadow:0 0 0 6px var(--accent-soft), var(--shadow);
+  width:100%;
+  max-width:700px;
+}
+.hub-title{
+  font-size:17px;
+  font-weight:800;
+  color:var(--accent-deep);
+  margin-bottom:14px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.hub-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(120px,1fr));
+  gap:10px;
+}
+.hub-field{
+  background:var(--accent-soft);
+  border-radius:9px;
+  padding:10px 12px;
+}
+.hub-field-label{
+  font-size:10px;
+  font-weight:700;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:var(--accent);
+  margin-bottom:4px;
+}
+.hub-field-items{
+  font-size:11px;
+  color:#3730a3;
+  line-height:1.6;
+}
+
+/* SPLIT ROW — two columns side by side */
+.split{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:16px;
+  width:100%;
+  max-width:900px;
+}
+.split-block{
+  background:var(--panel);
+  border:1.5px solid var(--line);
+  border-radius:14px;
+  padding:18px 20px;
+  box-shadow:var(--shadow);
+}
+.split-block.green{ border-color:#a7f3d0; background:var(--good-soft); }
+.split-block.purple{ border-color:#ddd6fe; background:var(--purple-soft); }
+.split-block.amber{ border-color:#fde68a; background:var(--warn-soft); }
+.split-block.indigo{ border-color:#c7d2fe; background:var(--accent-soft); }
+.split-block-title{
+  font-size:13px;
+  font-weight:700;
+  margin-bottom:10px;
+  display:flex;
+  align-items:center;
+  gap:7px;
+}
+.split-block.green .split-block-title{ color:var(--good); }
+.split-block.purple .split-block-title{ color:var(--purple); }
+.split-block.amber .split-block-title{ color:var(--warn); }
+.split-block.indigo .split-block-title{ color:var(--accent-deep); }
+
+.tag-list{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+}
+.tag{
+  font-size:10.5px;
+  font-weight:600;
+  padding:3px 9px;
+  border-radius:99px;
+  white-space:nowrap;
+}
+.tag.purple{ background:#ede9fe; color:#5b21b6; }
+.tag.green{ background:#d1fae5; color:#065f46; }
+.tag.amber{ background:#fef3c7; color:#92400e; }
+.tag.blue{ background:#dbeafe; color:#1e40af; }
+.tag.pink{ background:#fce7f3; color:#9d174d; }
+.tag.grey{ background:#f3f4f6; color:#374151; }
+
+.step-list{
+  list-style:none;
+  display:flex;
+  flex-direction:column;
+  gap:7px;
+}
+.step-list li{
+  font-size:11.5px;
+  color:var(--muted);
+  display:flex;
+  gap:8px;
+  align-items:flex-start;
+  line-height:1.45;
+}
+.step-num{
+  font-size:10px;
+  font-weight:700;
+  min-width:18px;
+  height:18px;
+  border-radius:50%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  margin-top:1px;
+  flex-shrink:0;
+}
+.green .step-num{ background:#a7f3d0; color:#065f46; }
+.purple .step-num{ background:#ddd6fe; color:#4c1d95; }
+.amber .step-num{ background:#fde68a; color:#78350f; }
+.indigo .step-num{ background:#c7d2fe; color:#312e81; }
+
+/* OUTPUT ROW */
+.output-row{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  gap:12px;
+  width:100%;
+  max-width:860px;
+}
+.output-card{
+  background:#fff;
+  border:1.5px solid var(--line);
+  border-radius:12px;
+  padding:14px 16px;
+  box-shadow:var(--shadow);
+  text-align:center;
+}
+.output-card-icon{ font-size:20px; margin-bottom:6px; }
+.output-card-title{ font-size:12px; font-weight:700; color:var(--text); margin-bottom:3px; }
+.output-card-desc{ font-size:11px; color:var(--muted); line-height:1.4; }
+
+/* PHASE 2 badge */
+.phase2{
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  background:#f3f4f6;
+  border:1.5px dashed #d1d5db;
+  border-radius:8px;
+  padding:4px 10px;
+  font-size:10.5px;
+  font-weight:600;
+  color:#6b7280;
+  margin-top:6px;
+}
+
+/* ASYNC badge */
+.async-badge{
+  display:inline-flex;
+  font-size:9.5px;
+  font-weight:700;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  background:#fef3c7;
+  color:#92400e;
+  border-radius:99px;
+  padding:2px 8px;
+  margin-left:6px;
+  vertical-align:middle;
+}
+
+/* FORK — one arrow splitting to two */
+.fork-wrapper{
+  width:100%;
+  max-width:760px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+}
+.fork-lines{
+  display:flex;
+  width:100%;
+  justify-content:center;
+  position:relative;
+  height:44px;
+}
+.fork-lines::before{
+  content:'';
+  position:absolute;
+  top:0;
+  left:50%;
+  width:2px;
+  height:22px;
+  background:var(--line);
+  transform:translateX(-50%);
+}
+.fork-lines::after{
+  content:'';
+  position:absolute;
+  top:22px;
+  left:25%;
+  right:25%;
+  height:2px;
+  background:var(--line);
+}
+.fork-arrow-left, .fork-arrow-right{
+  position:absolute;
+  bottom:0;
+  width:2px;
+  height:22px;
+  background:var(--line);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+}
+.fork-arrow-left{ left:25%; transform:translateX(-50%); }
+.fork-arrow-right{ right:25%; transform:translateX(50%); }
+.fork-arrow-left::after, .fork-arrow-right::after{
+  content:'';
+  position:absolute;
+  bottom:-9px;
+  width:0;
+  height:0;
+  border-left:7px solid transparent;
+  border-right:7px solid transparent;
+  border-top:9px solid var(--line);
+}
+
+@media(max-width:640px){
+  .split{ grid-template-columns:1fr; }
+  .card{ max-width:100%; }
+}
+</style>
+</head>
+<body>
+
+<div class="page-title">
+  <h1>SteadyBook CRM — Vision Architecture</h1>
+  <p>How a lead goes from "met at an event" to a closed deal, fully automated</p>
+</div>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:#2563eb"></div>Capture</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#6366f1"></div>Central Record</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#0f9f6e"></div>Enrichment</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#7c3aed"></div>Automation</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#d97706"></div>Tags &amp; Triggers</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#374151"></div>Output / Action</div>
+</div>
+
+<div class="flow">
+
+  <!-- ── CAPTURE LAYER ── -->
+  <div class="layer">
+    <div class="section-label">Capture Layer</div>
+    <div class="row">
+      <div class="card blue">
+        <div class="card-icon">🎙️</div>
+        <div class="card-title">Voice Memo</div>
+        <div class="card-desc">Send voice note to Telegram bot → Whisper transcribes → GPT extracts name, company, interest</div>
+      </div>
+      <div class="card blue">
+        <div class="card-icon">📸</div>
+        <div class="card-title">Business Card Photo</div>
+        <div class="card-desc">Photo to Telegram → GPT-4o Vision reads card → name, title, phone, email extracted</div>
+      </div>
+      <div class="card blue">
+        <div class="card-icon">📲</div>
+        <div class="card-title">QR Landing Page</div>
+        <div class="card-desc">Prospect scans your QR → fills 30-sec form on their phone → submits themselves</div>
+      </div>
+      <div class="card blue">
+        <div class="card-icon">💬</div>
+        <div class="card-title">Text / Quick-Add</div>
+        <div class="card-desc">Quick-add via Telegram text command. Name + one detail = prospect created.</div>
+      </div>
+      <div class="card blue" style="max-width:260px">
+        <div class="card-icon">🔄</div>
+        <div class="card-title">n8n (middleware)</div>
+        <div class="card-desc">
+          Handles platform connections so SteadyBook never touches Meta/LinkedIn APIs directly.<br><br>
+          <strong>Instagram DMs</strong> → normalized webhook<br>
+          <strong>Instagram Lead Ads</strong> → normalized webhook<br>
+          <strong>LinkedIn Lead Forms</strong> → normalized webhook
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:10px;font-size:11px;color:var(--muted);text-align:center;">
+      ⚠️ LinkedIn DMs have no public API on any platform — logged manually via Telegram note or dashboard
+    </div>
+  </div>
+
+  <div class="arrow"></div>
+
+  <!-- ── INTAKE PIPELINE ── -->
+  <div class="layer">
+    <div class="section-label">Intake Pipeline (from Calm Money Bot)</div>
+    <div class="row">
+      <div class="card indigo">
+        <div class="card-icon">🔍</div>
+        <div class="card-title">Classifier</div>
+        <div class="card-desc">GPT classifies intent &amp; extracts structured data from raw input</div>
+      </div>
+      <div class="card indigo">
+        <div class="card-icon">🔗</div>
+        <div class="card-title">Entity Resolver</div>
+        <div class="card-desc">Deduplicates by email → phone → name. Same person from 2 sources = 1 record</div>
+      </div>
+      <div class="card indigo">
+        <div class="card-icon">⚡</div>
+        <div class="card-title">Action Executor</div>
+        <div class="card-desc">Writes to DB, applies initial tags, triggers post-processing</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow accent"></div>
+
+  <!-- ── PROSPECT RECORD ── -->
+  <div class="layer">
+    <div class="section-label">Central Intelligence File</div>
+    <div class="hub">
+      <div class="hub-title">
+        <span>👤</span> Prospect Record
+      </div>
+      <div class="hub-grid">
+        <div class="hub-field">
+          <div class="hub-field-label">Identity</div>
+          <div class="hub-field-items">Name · Phone · Email<br>Company · Title<br>LinkedIn · Instagram<br>Headshot · Source</div>
+        </div>
+        <div class="hub-field">
+          <div class="hub-field-label">Relationship</div>
+          <div class="hub-field-items">How you met<br>Context note<br>Life events flagged<br>Comm. preference</div>
+        </div>
+        <div class="hub-field">
+          <div class="hub-field-label">Commercial</div>
+          <div class="hub-field-items">Products of interest<br>AUM tier<br>Lead score 0–100<br>Pipeline stage</div>
+        </div>
+        <div class="hub-field">
+          <div class="hub-field-label">Memory</div>
+          <div class="hub-field-items">AI-extracted facts<br>from every interaction<br>Linked to source</div>
+        </div>
+        <div class="hub-field">
+          <div class="hub-field-label">Tags</div>
+          <div class="hub-field-items">Drive all automation<br>Applied by system<br>or advisor manually</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow accent"></div>
+
+  <!-- ── OMNISCIENT AI ASSISTANT ── -->
+  <div class="layer">
+    <div class="section-label">The Brain</div>
+    <div style="width:100%;max-width:860px;">
+      <div style="background:linear-gradient(135deg,#1e1b4b 0%,#312e81 50%,#4c1d95 100%);border-radius:20px;padding:28px 32px;box-shadow:0 8px 40px rgba(79,70,229,.35);">
+        <div style="font-size:18px;font-weight:800;color:#fff;margin-bottom:6px;display:flex;align-items:center;gap:10px;">
+          <span>🧠</span> Omniscient AI Assistant
+        </div>
+        <div style="font-size:12px;color:#c4b5fd;margin-bottom:20px;">Runs every 15 min + on every new event — reads everything, connects every dot, acts within your trust level</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;">
+          <div style="background:rgba(255,255,255,.08);border-radius:12px;padding:14px 16px;">
+            <div style="font-size:11px;font-weight:700;color:#a5b4fc;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;">Reads</div>
+            <div style="font-size:11.5px;color:#e0e7ff;line-height:1.7;">Gmail / Outlook inbox<br>WhatsApp + SMS threads<br>Instagram + LinkedIn DMs<br>Calendar past + future<br>Full SteadyBook database<br>Carrier emails + notices</div>
+          </div>
+          <div style="background:rgba(255,255,255,.08);border-radius:12px;padding:14px 16px;">
+            <div style="font-size:11px;font-weight:700;color:#a5b4fc;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;">Synthesizes</div>
+            <div style="font-size:11.5px;color:#e0e7ff;line-height:1.7;">Cross-channel signals<br>Promises made → kept?<br>Sentiment shifts<br>Silence after proposals<br>Cross-sell timing<br>Renewal urgency</div>
+          </div>
+          <div style="background:rgba(255,255,255,.08);border-radius:12px;padding:14px 16px;">
+            <div style="font-size:11px;font-weight:700;color:#a5b4fc;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;">Acts</div>
+            <div style="font-size:11.5px;color:#e0e7ff;line-height:1.7;">Drafts emails + SMS<br>Moves pipeline stages<br>Creates + closes tasks<br>Enrolls in sequences<br>Books follow-ups<br>Fires cross-sell flows</div>
+          </div>
+          <div style="background:rgba(255,255,255,.08);border-radius:12px;padding:14px 16px;">
+            <div style="font-size:11px;font-weight:700;color:#a5b4fc;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;">Learns</div>
+            <div style="font-size:11.5px;color:#e0e7ff;line-height:1.7;">Approved → reinforced<br>Rejected → adapted<br>Skipped → deprioritized<br>Improves every session<br>Drafts become your voice</div>
+          </div>
+        </div>
+        <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap;">
+          <div style="background:rgba(255,255,255,.12);border-radius:99px;padding:5px 14px;font-size:11px;font-weight:700;color:#c4b5fd;">Trust L1: Draft only</div>
+          <div style="background:rgba(255,255,255,.12);border-radius:99px;padding:5px 14px;font-size:11px;font-weight:700;color:#c4b5fd;">Trust L2: Routine tasks auto</div>
+          <div style="background:rgba(255,255,255,.12);border-radius:99px;padding:5px 14px;font-size:11px;font-weight:700;color:#c4b5fd;">Trust L3: Full autonomy</div>
+          <div style="background:rgba(255,255,255,.12);border-radius:99px;padding:5px 14px;font-size:11px;font-weight:700;color:#c4b5fd;">Compliance filter on every action</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow good"></div>
+
+  <!-- ── ENGINES ── -->
+  <div class="layer">
+    <div class="section-label">Engines</div>
+    <div class="split" style="max-width:960px;width:100%;grid-template-columns:repeat(4,1fr);">
+
+      <div class="split-block green">
+        <div class="split-block-title">🌐 Enrichment</div>
+        <ul class="step-list">
+          <li><span class="step-num">1</span>Google → LinkedIn URL, company</li>
+          <li><span class="step-num">2</span>LinkedIn → headshot, bio, career</li>
+          <li><span class="step-num">3</span>Instagram → profile, bio</li>
+          <li><span class="step-num">4</span>Re-score on completion</li>
+        </ul>
+      </div>
+
+      <div class="split-block amber">
+        <div class="split-block-title">🏷️ Tag + Flows</div>
+        <div class="tag-list" style="margin-bottom:8px">
+          <span class="tag amber">new_lead</span>
+          <span class="tag amber">closed_life</span>
+          <span class="tag amber">renewal_90</span>
+          <span class="tag amber">job_change</span>
+          <span class="tag grey">hot</span>
+          <span class="tag grey">vip</span>
+        </div>
+        <div style="font-size:11px;color:var(--muted)">Tag → eligibility → enroll in sequence → steps fire on schedule</div>
+      </div>
+
+      <div class="split-block purple">
+        <div class="split-block-title">📋 Intake Forms</div>
+        <ul class="step-list">
+          <li><span class="step-num">→</span>Life insurance</li>
+          <li><span class="step-num">→</span>Disability</li>
+          <li><span class="step-num">→</span>Group benefits</li>
+          <li><span class="step-num">→</span>Critical illness</li>
+          <li><span class="step-num">→</span>Home / Auto</li>
+        </ul>
+      </div>
+
+      <div class="split-block purple">
+        <div class="split-block-title">💡 Cross-Sell</div>
+        <ul class="step-list">
+          <li><span class="step-num">→</span>Close → scan product gaps</li>
+          <li><span class="step-num">→</span>Life → Disability → CI chain</li>
+          <li><span class="step-num">→</span>Biz owner → Group / KP</li>
+          <li><span class="step-num">→</span>30-day cooldown</li>
+          <li><span class="step-num">→</span>Task + talking point</li>
+        </ul>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="arrow good"></div>
+
+  <!-- ── OUTPUTS ── -->
+  <div class="layer">
+    <div class="section-label">What You See Every Day</div>
+    <div class="output-row">
+      <div class="output-card">
+        <div class="output-card-icon">☀️</div>
+        <div class="output-card-title">Morning Brief</div>
+        <div class="output-card-desc">Top priorities + what the agent handled overnight</div>
+      </div>
+      <div class="output-card">
+        <div class="output-card-icon">✅</div>
+        <div class="output-card-title">Approval Queue</div>
+        <div class="output-card-desc">Tap to send. AI drafts are ready — you just review</div>
+      </div>
+      <div class="output-card">
+        <div class="output-card-icon">🔔</div>
+        <div class="output-card-title">Real-Time Alerts</div>
+        <div class="output-card-desc">Only pings you when judgment is genuinely needed</div>
+      </div>
+      <div class="output-card">
+        <div class="output-card-icon">📊</div>
+        <div class="output-card-title">Pipeline Dashboard</div>
+        <div class="output-card-desc">Scored, enriched, always up to date — agent keeps it current</div>
+      </div>
+      <div class="output-card">
+        <div class="output-card-icon">🤝</div>
+        <div class="output-card-title">Referral Tracker</div>
+        <div class="output-card-desc">Who referred who, ask sequences, referral source ROI</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Phase 2 note -->
+  <div style="margin-top:40px;text-align:center;max-width:700px;">
+    <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:12px">Phase 2 — After Dog-Fooding</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;">
+      <span class="phase2">📱 PWA Mobile App</span>
+      <span class="phase2">👀 Social Life-Event Monitoring</span>
+      <span class="phase2">🏠 Home / Auto Intake Forms</span>
+      <span class="phase2">🧱 Drag-and-Drop Flow Builder</span>
+      <span class="phase2">👥 Team / Manager Dashboard</span>
+      <span class="phase2">📧 Email Open &amp; Click Tracking</span>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>
