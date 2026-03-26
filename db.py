@@ -641,6 +641,54 @@ def _migrate_sequences():
             CREATE INDEX IF NOT EXISTS idx_seq_step_logs_enrollment
                 ON sequence_step_logs(enrollment_id, executed_at)
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS prospect_tags (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                prospect_id INTEGER NOT NULL,
+                tag TEXT NOT NULL,
+                applied_by TEXT DEFAULT 'system',
+                applied_at TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY (prospect_id) REFERENCES prospects(id) ON DELETE CASCADE,
+                UNIQUE(prospect_id, tag)
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS enrichment_queue (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                prospect_id INTEGER NOT NULL UNIQUE,
+                status TEXT DEFAULT 'pending',
+                attempts INTEGER DEFAULT 0,
+                last_attempt TEXT,
+                linkedin_url TEXT,
+                instagram_handle TEXT,
+                headshot_url TEXT,
+                bio TEXT,
+                company_website TEXT,
+                created_at TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY (prospect_id) REFERENCES prospects(id) ON DELETE CASCADE
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS referrals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                referrer_prospect_id INTEGER,
+                referred_prospect_id INTEGER NOT NULL,
+                referral_date TEXT DEFAULT (datetime('now')),
+                notes TEXT,
+                FOREIGN KEY (referrer_prospect_id) REFERENCES prospects(id),
+                FOREIGN KEY (referred_prospect_id) REFERENCES prospects(id)
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS intake_form_responses (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                prospect_id INTEGER NOT NULL,
+                form_type TEXT NOT NULL,
+                responses TEXT NOT NULL,
+                submitted_at TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY (prospect_id) REFERENCES prospects(id) ON DELETE CASCADE
+            )
+        """)
 
     logger.info("Sequence tables migration complete")
 
@@ -1460,3 +1508,43 @@ def migrate_from_excel(excel_path: str) -> str:
     )
     logger.info(summary)
     return summary
+
+
+# ── Tag helpers ──
+
+def apply_tag(prospect_id: int, tag: str, applied_by: str = "system") -> bool:
+    """Apply a tag to a prospect. Returns True if new, False if already existed."""
+    with get_db() as conn:
+        try:
+            conn.execute(
+                "INSERT INTO prospect_tags (prospect_id, tag, applied_by) VALUES (?,?,?)",
+                (prospect_id, tag, applied_by)
+            )
+            return True
+        except sqlite3.IntegrityError:
+            return False
+
+def remove_tag(prospect_id: int, tag: str) -> None:
+    with get_db() as conn:
+        conn.execute("DELETE FROM prospect_tags WHERE prospect_id=? AND tag=?", (prospect_id, tag))
+
+def get_tags(prospect_id: int) -> list[str]:
+    with get_db() as conn:
+        rows = conn.execute("SELECT tag FROM prospect_tags WHERE prospect_id=?", (prospect_id,)).fetchall()
+        return [r["tag"] for r in rows]
+
+def get_prospects_by_tag(tag: str) -> list[dict]:
+    with get_db() as conn:
+        rows = conn.execute("""
+            SELECT p.* FROM prospects p
+            JOIN prospect_tags t ON t.prospect_id = p.id
+            WHERE t.tag = ?
+        """, (tag,)).fetchall()
+        return _rows_to_dicts(rows)
+
+def queue_enrichment(prospect_id: int) -> None:
+    with get_db() as conn:
+        conn.execute("""
+            INSERT INTO enrichment_queue (prospect_id) VALUES (?)
+            ON CONFLICT(prospect_id) DO NOTHING
+        """, (prospect_id,))
