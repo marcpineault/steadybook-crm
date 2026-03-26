@@ -10,6 +10,7 @@ Usage:
     start_scheduler(telegram_app)
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -17,6 +18,7 @@ from datetime import date, datetime, timedelta
 import db
 import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from enrichment import process_enrichment_queue
 
 logger = logging.getLogger(__name__)
 
@@ -1191,6 +1193,17 @@ async def _process_sequence_steps_job():
         logger.exception("sequence_steps job failed")
 
 
+# ── Enrichment queue job ──
+
+async def _enrichment_queue_job():
+    """Async wrapper: runs sync process_enrichment_queue in a thread executor."""
+    try:
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, process_enrichment_queue)
+    except Exception:
+        logger.exception("enrichment_queue job failed")
+
+
 # ── Scheduler entry point ──
 
 def start_scheduler(telegram_app, event_loop=None):
@@ -1383,6 +1396,15 @@ def start_scheduler(telegram_app, event_loop=None):
         minutes=5,
         id="sequence_steps",
         name="Sequence Automation Engine",
+    )
+
+    # Prospect enrichment queue — search LinkedIn/Instagram every 10 minutes
+    scheduler.add_job(
+        _enrichment_queue_job,
+        "interval",
+        minutes=10,
+        id="enrichment_queue",
+        name="Prospect Enrichment Queue",
     )
 
     scheduler.start()
