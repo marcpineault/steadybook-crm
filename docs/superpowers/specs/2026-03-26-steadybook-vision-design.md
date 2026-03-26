@@ -260,34 +260,40 @@ n8n is the middleware that connects all external platforms to SteadyBook. Self-h
 - LinkedIn Lead Gen Forms → intake pipeline
 - Google Contacts → one-time import + enrichment
 
-## Phase 1 Scope (Build Now)
+## Full Build Scope
 
+Everything ships in one phase, built in parallel across independent workstreams.
+
+### Workstream A — Capture Layer
 1. Telegram voice memo capture (Whisper + GPT extraction)
 2. Telegram business card photo capture (GPT-4o Vision)
-3. QR landing page (per-tenant, downloadable QR)
-4. n8n integration layer + normalized `/api/social-intake` endpoint
+3. QR landing page (per-tenant, downloadable QR code)
+4. n8n integration layer + normalized `/api/social-intake` and `/api/email-inbound` endpoints
 5. Instagram DM + Lead Ads intake (via n8n)
 6. LinkedIn Lead Gen Form intake (via n8n)
 7. WhatsApp intake (via n8n)
-8. Gmail / Outlook two-way email sync (via n8n)
-9. Calendar sync — Google Calendar / Outlook / Calendly (via n8n)
-10. Enrichment engine (`enrichment.py`) — Google + LinkedIn + Instagram
-11. calm-money-bot intake pipeline merger (dedup + entity resolution)
-12. Tag-based trigger system (core tags + flow enrollment)
-13. Referral tracking (who referred who, referral source tracking, ask sequences)
-14. Self-booking link (Calendly/Cal.com → auto-prospect)
-15. Life + disability + group benefits intake forms
+8. Gmail / Outlook two-way email sync — sent logged, replies captured (via n8n)
+9. Calendar sync — Google Calendar / Outlook / Calendly → meeting_booked tag (via n8n)
+
+### Workstream B — Intelligence Pipeline
+10. calm-money-bot intake pipeline merger (IntakeClassifier + EntityResolver + ActionExecutor)
+11. Enrichment engine (`enrichment.py`) — Google Search + LinkedIn + Instagram
+12. Omniscient AI assistant — continuous monitoring, cross-channel synthesis, trust-level action
+13. Learning loop — advisor approvals/rejections train assistant behavior
+
+### Workstream C — Automation Engine
+14. Tag-based trigger system (core tags + flow enrollment logic)
+15. Life, disability, group benefits, critical illness, home/auto intake forms
 16. Formalized cross-sell engine with product matrix + timing rules
+17. Referral tracking — source attribution, ask sequences, referral source ROI
+18. Self-booking link (Calendly/Cal.com → prospect auto-created + meeting_booked tag)
 
-## Phase 2 Scope (After Dog-Fooding)
-
-1. Social monitoring for life events → auto-tagging
-2. PWA mobile capture app
-3. Home/auto intake forms
-4. Flow builder UI (drag-and-drop sequences)
-5. Manager/team dashboard for David's employees
-6. Email open + click tracking
-7. Full GoHighLevel feature parity
+### Workstream D — Dashboard + Reporting
+19. Pipeline dashboard — enriched, scored, always current
+20. Manager/team view for David's employees
+21. Reporting — conversion by source, close rate by product, FYC by advisor, average stage time
+22. Email open + click tracking
+23. Flow builder UI — edit sequences and nurture flows without code
 
 ---
 
