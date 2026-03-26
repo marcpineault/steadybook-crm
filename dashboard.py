@@ -2013,19 +2013,13 @@ def qr_landing(tenant_id):
     return render_template('qr_landing.html', tenant_id=tenant_id, advisor_name=advisor_name)
 
 
-@app.route('/api/qr-submit', methods=['POST'])
-def qr_submit():
+@app.route('/api/qr-submit/<int:tenant_id>', methods=['POST'])
+def qr_submit(tenant_id):
     """Handle QR landing page form submission."""
     data = request.get_json(silent=True) or {}
     name = str(data.get('name', '')).strip()
     if not name:
         return jsonify({'error': 'Name is required'}), 400
-
-    tenant_id_raw = data.get('tenant_id', '1')
-    try:
-        tenant_id = int(tenant_id_raw)
-    except (ValueError, TypeError):
-        tenant_id = 1
 
     phone = str(data.get('phone', '')).strip()
     email = str(data.get('email', '')).strip()

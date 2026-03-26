@@ -91,8 +91,7 @@
         <div id="form-section">
             <h1>{{ advisor_name | e }}</h1>
             <p class="subtitle">Let's stay connected</p>
-            <form id="qr-form">
-                <input type="hidden" id="tenant_id" value="{{ tenant_id | e }}">
+            <form id="qr-form" data-submit-url="/api/qr-submit/{{ tenant_id | e }}">
                 <div class="form-group">
                     <label for="name">Your Name *</label>
                     <input type="text" id="name" name="name" placeholder="Jane Smith" required autocomplete="name">
@@ -126,10 +125,7 @@
             btn.disabled = true;
             btn.textContent = 'Saving...';
 
-            var tid = document.getElementById('tenant_id').value;
-
             var payload = {
-                tenant_id: tid,
                 name: document.getElementById('name').value,
                 email: document.getElementById('email').value,
                 phone: document.getElementById('phone').value,
@@ -137,7 +133,7 @@
             };
 
             try {
-                var resp = await fetch('/api/qr-submit', {
+                var resp = await fetch(document.getElementById('qr-form').dataset.submitUrl, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify(payload)
