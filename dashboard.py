@@ -123,6 +123,9 @@ except ImportError:
 from social_intake import social_intake_bp
 app.register_blueprint(social_intake_bp)
 
+from intake_forms import intake_forms_bp
+app.register_blueprint(intake_forms_bp)
+
 
 @app.after_request
 def _set_security_headers(response):

@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ form.title | e }}</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #0f172a;
+            color: #f1f5f9;
+            padding: 2rem 1rem;
+        }
+        .container { max-width: 560px; margin: 0 auto; }
+        h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.25rem; }
+        .subtitle { color: #94a3b8; font-size: 0.9rem; margin-bottom: 2rem; }
+        .group { margin-bottom: 2rem; }
+        .group h2 { font-size: 1rem; font-weight: 600; color: #6366f1; margin-bottom: 1rem; border-bottom: 1px solid #1e293b; padding-bottom: 0.5rem; }
+        .field { margin-bottom: 1rem; }
+        label { display: block; font-size: 0.85rem; color: #94a3b8; margin-bottom: 0.35rem; font-weight: 500; }
+        .required-star { color: #f43f5e; }
+        input[type=text], input[type=date], textarea, select {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 0.5rem;
+            color: #f1f5f9;
+            font-size: 0.95rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        input:focus, textarea:focus, select:focus { border-color: #6366f1; }
+        textarea { min-height: 80px; resize: vertical; }
+        select option { background: #1e293b; }
+        .btn {
+            width: 100%;
+            padding: 0.875rem;
+            background: #6366f1;
+            color: white;
+            border: none;
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 1rem;
+            transition: background 0.2s;
+        }
+        .btn:hover { background: #4f46e5; }
+        .btn:disabled { background: #334155; cursor: not-allowed; }
+        .success { text-align: center; padding: 3rem 0; }
+        .success .icon { font-size: 3rem; margin-bottom: 1rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="form-section">
+            <h1>{{ form.title | e }}</h1>
+            <p class="subtitle">{{ form.description | e }}</p>
+
+            <form id="intake-form"
+                  data-form-type="{{ form_type | e }}"
+                  data-prospect-id="{{ prospect_id | e }}">
+                {% for group in form.groups %}
+                <div class="group">
+                    <h2>{{ group.heading | e }}</h2>
+                    {% for field in group.fields %}
+                    <div class="field">
+                        <label for="field_{{ field.name | e }}">
+                            {{ field.label | e }}
+                            {% if field.required %}<span class="required-star">*</span>{% endif %}
+                        </label>
+                        {% if field.type == 'select' %}
+                        <select id="field_{{ field.name | e }}"
+                                name="{{ field.name | e }}"
+                                {% if field.required %}required{% endif %}>
+                            <option value="">Select...</option>
+                            {% for opt in field.options %}
+                            <option value="{{ opt | e }}">{{ opt | e }}</option>
+                            {% endfor %}
+                        </select>
+                        {% elif field.type == 'textarea' %}
+                        <textarea id="field_{{ field.name | e }}"
+                                  name="{{ field.name | e }}"
+                                  {% if field.required %}required{% endif %}
+                                  placeholder=""></textarea>
+                        {% else %}
+                        <input type="{{ field.type | e }}"
+                               id="field_{{ field.name | e }}"
+                               name="{{ field.name | e }}"
+                               {% if field.required %}required{% endif %}>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endfor %}
+                <button type="submit" class="btn" id="submit-btn">Submit &#8594;</button>
+            </form>
+        </div>
+
+        <div id="success-section" class="success" style="display:none;">
+            <div class="icon">&#9989;</div>
+            <h2>Thank you!</h2>
+            <p style="color:#94a3b8;">Your information has been submitted.</p>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('intake-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            var btn = document.getElementById('submit-btn');
+            btn.disabled = true;
+            btn.textContent = 'Submitting...';
+
+            var form = document.getElementById('intake-form');
+            var formType = form.dataset.formType;
+            var prospectId = form.dataset.prospectId;
+
+            // Collect all field values using data attributes (no innerHTML)
+            var responses = {};
+            var inputs = form.querySelectorAll('input, select, textarea');
+            inputs.forEach(function(el) {
+                if (el.name) {
+                    responses[el.name] = el.value;
+                }
+            });
+
+            try {
+                var resp = await fetch('/api/intake-form-submit', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        form_type: formType,
+                        prospect_id: prospectId,
+                        responses: responses
+                    })
+                });
+                if (resp.ok) {
+                    document.getElementById('form-section').style.display = 'none';
+                    document.getElementById('success-section').style.display = 'block';
+                } else {
+                    btn.disabled = false;
+                    btn.textContent = 'Submit \u2192';
+                    alert('Something went wrong. Please try again.');
+                }
+            } catch(err) {
+                btn.disabled = false;
+                btn.textContent = 'Submit \u2192';
+                alert('Network error. Please try again.');
+            }
+        });
+    </script>
+</body>
+</html>
