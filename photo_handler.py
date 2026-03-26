@@ -115,7 +115,7 @@ async def save_card_to_pipeline(card: dict, tenant_id: int = 1) -> int:
         tenant_id=tenant_id,
     )
 
-    prospect = db.get_prospect_by_name(card.get("name", "Unknown"))
+    prospect = db.get_prospect_by_name(card.get("name", "Unknown"), tenant_id=tenant_id)
     if not prospect:
         return 0
 
@@ -182,6 +182,9 @@ async def handle_card_confirmation(update: Update, context: ContextTypes.DEFAULT
     tenant_id = context.bot_data.get("tenant_id", 1)
     try:
         prospect_id = await save_card_to_pipeline(card, tenant_id)
+        if not prospect_id:
+            await query.edit_message_text("Failed to save — could not locate prospect after adding. Please try again.")
+            return
         await query.edit_message_text(
             f"✅ *{card.get('name')}* saved to pipeline!\n"
             f"Lead ID: #{prospect_id}",
