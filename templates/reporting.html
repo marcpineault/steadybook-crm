@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Reporting{% endblock %}
+{% block content %}
+
+<div class="page-header">
+    <h1 class="page-title">Pipeline Reporting</h1>
+</div>
+
+<!-- Metric Cards -->
+<div class="metrics-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem;margin-bottom:2rem;">
+    <div class="metric-card card">
+        <div class="metric-value">{{ metrics.total | default(0) }}</div>
+        <div class="metric-label">Total Prospects</div>
+    </div>
+    <div class="metric-card card">
+        <div class="metric-value">{{ metrics.active | default(0) }}</div>
+        <div class="metric-label">Active</div>
+    </div>
+    <div class="metric-card card">
+        <div class="metric-value">{{ metrics.closed_won | default(0) }}</div>
+        <div class="metric-label">Closed Won</div>
+    </div>
+    <div class="metric-card card">
+        <div class="metric-value">{{ metrics.new_leads | default(0) }}</div>
+        <div class="metric-label">New Leads</div>
+    </div>
+    {% if metrics.total and metrics.total > 0 %}
+    <div class="metric-card card">
+        <div class="metric-value">{{ "%.0f" | format(100 * metrics.closed_won / metrics.total) }}%</div>
+        <div class="metric-label">Close Rate</div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Stage Funnel + Conversion by Source -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-bottom:2rem;">
+    <div class="card">
+        <h3 style="margin-bottom:1rem;font-size:1rem;color:#94a3b8;">Stage Funnel</h3>
+        {% if funnel %}
+        <table style="width:100%;border-collapse:collapse;">
+            <thead>
+                <tr>
+                    <th style="text-align:left;padding:0.5rem 0;color:#94a3b8;font-size:0.8rem;font-weight:500;">Stage</th>
+                    <th style="text-align:right;padding:0.5rem 0;color:#94a3b8;font-size:0.8rem;font-weight:500;">Count</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in funnel %}
+                <tr style="border-top:1px solid #1e293b;">
+                    <td style="padding:0.5rem 0;font-size:0.9rem;">{{ row.stage | e }}</td>
+                    <td style="padding:0.5rem 0;text-align:right;font-weight:600;">{{ row.count }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p style="color:#475569;font-size:0.9rem;">No data yet.</p>
+        {% endif %}
+    </div>
+
+    <!-- Conversion by Source -->
+    <div class="card">
+        <h3 style="margin-bottom:1rem;font-size:1rem;color:#94a3b8;">Conversion by Source</h3>
+        {% if by_source %}
+        <table style="width:100%;border-collapse:collapse;">
+            <thead>
+                <tr>
+                    <th style="text-align:left;padding:0.5rem 0;color:#94a3b8;font-size:0.8rem;font-weight:500;">Source</th>
+                    <th style="text-align:right;padding:0.5rem 0;color:#94a3b8;font-size:0.8rem;font-weight:500;">Leads</th>
+                    <th style="text-align:right;padding:0.5rem 0;color:#94a3b8;font-size:0.8rem;font-weight:500;">Rate</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in by_source %}
+                <tr style="border-top:1px solid #1e293b;">
+                    <td style="padding:0.5rem 0;font-size:0.9rem;">{{ row.source | e }}</td>
+                    <td style="padding:0.5rem 0;text-align:right;">{{ row.total_leads }}</td>
+                    <td style="padding:0.5rem 0;text-align:right;color:#6366f1;font-weight:600;">{{ row.conversion_rate | default(0) }}%</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p style="color:#475569;font-size:0.9rem;">No data yet.</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- FYC by Advisor -->
+<div class="card" style="margin-bottom:2rem;">
+    <h3 style="margin-bottom:1rem;font-size:1rem;color:#94a3b8;">Pipeline by Advisor</h3>
+    {% if fyc %}
+    <table style="width:100%;border-collapse:collapse;">
+        <thead>
+            <tr>
+                <th style="text-align:left;padding:0.5rem 0;color:#94a3b8;font-size:0.8rem;font-weight:500;">Advisor</th>
+                <th style="text-align:right;padding:0.5rem 0;color:#94a3b8;font-size:0.8rem;font-weight:500;">Total</th>
+                <th style="text-align:right;padding:0.5rem 0;color:#94a3b8;font-size:0.8rem;font-weight:500;">Closed Won</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in fyc %}
+            <tr style="border-top:1px solid #1e293b;">
+                <td style="padding:0.5rem 0;font-size:0.9rem;">{{ row.advisor | e }}</td>
+                <td style="padding:0.5rem 0;text-align:right;">{{ row.total_closed }}</td>
+                <td style="padding:0.5rem 0;text-align:right;color:#22c55e;font-weight:600;">{{ row.closed_won }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="color:#475569;font-size:0.9rem;">No advisor data yet.</p>
+    {% endif %}
+</div>
+
+{% endblock %}

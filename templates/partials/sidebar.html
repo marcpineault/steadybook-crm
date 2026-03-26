@@ -5,39 +5,43 @@
     </div>
     <div class="sidebar-nav">
         <a href="/" class="sidebar-item {{ 'active' if active_page == 'dashboard' }}">
-            <span class="sidebar-icon">&#9633;</span>
+            <span class="sidebar-icon">&#8962;</span>
             Dashboard
         </a>
         <a href="/pipeline" class="sidebar-item {{ 'active' if active_page == 'pipeline' }}">
-            <span class="sidebar-icon">&#9645;</span>
+            <span class="sidebar-icon">&#128202;</span>
             Pipeline
             {% if pipeline_count %}<span class="sidebar-badge info">{{ pipeline_count }}</span>{% endif %}
         </a>
         <a href="/tasks" class="sidebar-item {{ 'active' if active_page == 'tasks' }}">
-            <span class="sidebar-icon">&#9744;</span>
+            <span class="sidebar-icon">&#9989;</span>
             Tasks
             {% if overdue_task_count %}<span class="sidebar-badge danger">{{ overdue_task_count }}</span>{% endif %}
         </a>
         <a href="/conversations" class="sidebar-item {{ 'active' if active_page == 'conversations' }}">
-            <span class="sidebar-icon">&#9993;</span>
+            <span class="sidebar-icon">&#128172;</span>
             Conversations
             {% if unread_count %}<span class="sidebar-badge info">{{ unread_count }}</span>{% endif %}
         </a>
         <a href="/forecast" class="sidebar-item {{ 'active' if active_page == 'forecast' }}">
-            <span class="sidebar-icon">&#9650;</span>
+            <span class="sidebar-icon">&#128200;</span>
             Forecast
         </a>
+        <a href="/reporting" class="sidebar-item {{ 'active' if active_page == 'reporting' }}">
+            <span class="sidebar-icon">&#128202;</span>
+            Reporting
+        </a>
         <a href="/clients" class="sidebar-item {{ 'active' if active_page == 'clients' }}">
-            <span class="sidebar-icon">&#9734;</span>
+            <span class="sidebar-icon">&#128100;</span>
             Clients
             {% if won_count %}<span class="sidebar-badge" style="background:#dcfce7;color:#166534">{{ won_count }}</span>{% endif %}
         </a>
         <a href="/chat" class="sidebar-item {{ 'active' if active_page == 'chat' }}">
-            <span class="sidebar-icon">&#9883;</span>
+            <span class="sidebar-icon">&#129302;</span>
             AI Chat
         </a>
         <a href="/sequences" class="sidebar-item {{ 'active' if active_page == 'sequences' }}">
-            <span class="sidebar-icon">&#9881;</span>
+            <span class="sidebar-icon">&#9654;</span>
             Sequences
         </a>
         <a href="/settings" class="sidebar-item {{ 'active' if active_page == 'settings' }}">
@@ -68,6 +72,6 @@
             <div style="font-size:11px;font-weight:500;color:var(--text-primary)">{{ user_name|default('User') }}</div>
             <div style="font-size:10px;color:var(--text-muted)">{{ company_name|default('') }}</div>
         </div>
-        <a href="/logout" style="margin-left:auto;font-size:10px;color:var(--text-muted);text-decoration:none" title="Sign out">&#x2192;</a>
+        <a href="/logout" style="margin-left:auto;font-size:11px;color:var(--text-muted);text-decoration:none" title="Sign out">&#x2192;</a>
     </div>
 </nav>

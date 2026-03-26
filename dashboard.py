@@ -1940,6 +1940,20 @@ def sequences_page():
     return render_template("sequences.html", **ctx)
 
 
+@app.route("/reporting")
+def reporting():
+    """Pipeline reporting and metrics dashboard."""
+    if not _check_auth():
+        return redirect("/login")
+    ctx = _common_context()
+    ctx["active_page"] = "reporting"
+    ctx["metrics"] = db.get_pipeline_metrics()
+    ctx["funnel"] = db.get_stage_funnel()
+    ctx["by_source"] = db.get_conversion_by_source()
+    ctx["fyc"] = db.get_fyc_by_advisor()
+    return render_template("reporting.html", **ctx)
+
+
 # ── Tenant settings page ──
 
 @app.route("/settings")
