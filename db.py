@@ -11,6 +11,7 @@ Usage:
 
 import os
 import re
+import secrets
 import sqlite3
 import logging
 from contextlib import contextmanager
@@ -689,6 +690,19 @@ def _migrate_sequences():
                 FOREIGN KEY (prospect_id) REFERENCES prospects(id) ON DELETE CASCADE
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS email_tracking (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                prospect_id INTEGER,
+                prospect_name TEXT,
+                email_type TEXT,
+                token TEXT UNIQUE,
+                opened_at TEXT,
+                link_clicked_at TEXT,
+                created_at TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY (prospect_id) REFERENCES prospects(id) ON DELETE SET NULL
+            )
+        """)
 
     logger.info("Sequence tables migration complete")
 
@@ -704,6 +718,16 @@ def _migrate_phase6():
         if "resend_email_id" not in outcome_cols:
             conn.execute("ALTER TABLE outcomes ADD COLUMN resend_email_id TEXT")
             logger.info("Migration: added resend_email_id to outcomes")
+        # Migration: add assigned_to if not present
+        try:
+            conn.execute("ALTER TABLE prospects ADD COLUMN assigned_to TEXT DEFAULT ''")
+        except Exception:
+            pass  # Column already exists
+        # Migration: add trust_level to tenants if not present
+        try:
+            conn.execute("ALTER TABLE tenants ADD COLUMN trust_level INTEGER DEFAULT 1")
+        except Exception:
+            pass  # Column already exists
 
 
 # ── Prospects CRUD ──
@@ -1548,3 +1572,132 @@ def queue_enrichment(prospect_id: int) -> None:
             INSERT INTO enrichment_queue (prospect_id) VALUES (?)
             ON CONFLICT(prospect_id) DO NOTHING
         """, (prospect_id,))
+
+
+# ── Reporting queries ──
+
+def get_conversion_by_source() -> list[dict]:
+    """Conversion rate by lead source."""
+    with get_db() as conn:
+        rows = conn.execute("""
+            SELECT
+                source,
+                COUNT(*) as total_leads,
+                SUM(CASE WHEN stage = 'Closed Won' THEN 1 ELSE 0 END) as closed,
+                ROUND(
+                    100.0 * SUM(CASE WHEN stage = 'Closed Won' THEN 1 ELSE 0 END) / COUNT(*),
+                    1
+                ) as conversion_rate
+            FROM prospects
+            WHERE source IS NOT NULL AND source != ''
+            GROUP BY source
+            ORDER BY total_leads DESC
+        """).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_pipeline_metrics() -> dict:
+    """High-level pipeline summary metrics."""
+    with get_db() as conn:
+        row = conn.execute("""
+            SELECT
+                COUNT(*) as total,
+                SUM(CASE WHEN stage = 'Closed Won' THEN 1 ELSE 0 END) as closed_won,
+                SUM(CASE WHEN stage = 'New Lead' THEN 1 ELSE 0 END) as new_leads,
+                SUM(CASE WHEN stage NOT IN ('Closed Won', 'Closed Lost') THEN 1 ELSE 0 END) as active
+            FROM prospects
+        """).fetchone()
+    if not row:
+        return {"total": 0, "closed_won": 0, "new_leads": 0, "active": 0}
+    return dict(row)
+
+
+def get_stage_funnel() -> list[dict]:
+    """Count of prospects per pipeline stage, ordered logically."""
+    with get_db() as conn:
+        rows = conn.execute("""
+            SELECT stage, COUNT(*) as count
+            FROM prospects
+            GROUP BY stage
+            ORDER BY count DESC
+        """).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_fyc_by_advisor() -> list[dict]:
+    """First-year commission summary by assigned advisor."""
+    with get_db() as conn:
+        rows = conn.execute("""
+            SELECT
+                COALESCE(assigned_to, 'Unassigned') as advisor,
+                COUNT(*) as total_closed,
+                SUM(CASE WHEN stage = 'Closed Won' THEN 1 ELSE 0 END) as closed_won
+            FROM prospects
+            GROUP BY assigned_to
+            ORDER BY closed_won DESC
+        """).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_avg_stage_time() -> list[dict]:
+    """Average days prospects spend in each stage (approximate)."""
+    with get_db() as conn:
+        rows = conn.execute("""
+            SELECT stage, COUNT(*) as count
+            FROM prospects
+            GROUP BY stage
+        """).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_trust_level(tenant_id: int = 1) -> int:
+    """Return the AI trust level for a tenant (1=draft only, 2=routine auto, 3=full autonomy)."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT trust_level FROM tenants WHERE id=?", (tenant_id,)
+        ).fetchone()
+    if row and row["trust_level"]:
+        return int(row["trust_level"])
+    return 1  # Default to most conservative
+
+
+def create_email_tracking_token(prospect_id: int, prospect_name: str, email_type: str) -> str:
+    """Create a unique tracking token for an outgoing email. Returns the token."""
+    token = secrets.token_urlsafe(20)
+    with get_db() as conn:
+        conn.execute("""
+            INSERT INTO email_tracking (prospect_id, prospect_name, email_type, token)
+            VALUES (?, ?, ?, ?)
+        """, (prospect_id, prospect_name, email_type, token))
+    return token
+
+
+def record_email_open(token: str) -> bool:
+    """Record that a tracking pixel was fired. Returns True if token existed."""
+    with get_db() as conn:
+        cur = conn.execute("""
+            UPDATE email_tracking
+            SET opened_at = COALESCE(opened_at, datetime('now'))
+            WHERE token = ? AND opened_at IS NULL
+        """, (token,))
+    return cur.rowcount > 0
+
+
+def record_link_click(token: str) -> str | None:
+    """Record a link click. Returns None (destination URL stored in notes, not here)."""
+    with get_db() as conn:
+        conn.execute("""
+            UPDATE email_tracking
+            SET link_clicked_at = COALESCE(link_clicked_at, datetime('now'))
+            WHERE token = ?
+        """, (token,))
+    return None
+
+
+def add_intake_form_response(prospect_id: int, form_type: str, responses: str) -> None:
+    """Save a completed intake form response (JSON string)."""
+    with get_db() as conn:
+        conn.execute("""
+            INSERT INTO intake_form_responses (prospect_id, form_type, responses)
+            VALUES (?, ?, ?)
+        """, (prospect_id, form_type, responses))
