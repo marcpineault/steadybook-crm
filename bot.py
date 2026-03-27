@@ -3718,6 +3718,51 @@ async def handle_nurture_offer(update, context):
             await query.edit_message_text(f"Could not start nurture for {name}.")
 
 
+async def handle_create_opp_callback(update, context) -> None:
+    """Handle Create Opportunity / Skip buttons from stage_engine cross-sell alerts."""
+    query = update.callback_query
+    await query.answer()
+    data = query.data  # "create_opp_{prospect_id}_{Product_Name}" or "create_opp_skip_{prospect_id}"
+
+    if data.startswith("create_opp_skip_"):
+        await query.edit_message_reply_markup(reply_markup=None)
+        return
+
+    # parse: create_opp_{prospect_id}_{product_with_underscores}
+    remainder = data[len("create_opp_"):]
+    parts = remainder.split("_", 1)
+    if len(parts) != 2:
+        logger.warning("create_opp callback: unexpected format %s", data)
+        return
+
+    try:
+        prospect_id = int(parts[0])
+        product = parts[1].replace("_", " ")
+    except ValueError:
+        logger.warning("create_opp callback: could not parse prospect_id from %s", data)
+        return
+
+    original = db.get_prospect_by_id(prospect_id)
+    if not original:
+        await query.edit_message_text("Could not find original prospect.")
+        return
+
+    new_prospect = {
+        "name": original["name"],
+        "phone": original.get("phone", ""),
+        "email": original.get("email", ""),
+        "stage": "New Lead",
+        "product": product,
+        "source": f"Cross-sell - {original.get('product', 'existing')}",
+        "notes": "Cross-sell from existing client",
+        "priority": "medium",
+    }
+    result = db.add_prospect(new_prospect, tenant_id=original.get("tenant_id", 1))
+    await query.edit_message_text(
+        f"Opportunity created for {original['name']}.\nProduct: {product}\n{result}"
+    )
+
+
 def build_application():
     """Build the Telegram Application with all handlers (shared by main and webhook)."""
     app = ApplicationBuilder().token(_DEFAULT_TELEGRAM_TOKEN).build()
@@ -3755,6 +3800,7 @@ def build_application():
     app.add_handler(CallbackQueryHandler(handle_outcome_callback, pattern=r"^outcome_"))
     app.add_handler(CallbackQueryHandler(handle_draft_callback, pattern=r"^draft_"))
     app.add_handler(CallbackQueryHandler(handle_nurture_offer, pattern=r"^nurture_offer_"))
+    app.add_handler(CallbackQueryHandler(handle_create_opp_callback, pattern=r"^create_opp_"))
     app.add_handler(CommandHandler("voice", cmd_voice))
     app.add_handler(CommandHandler("calendar", cmd_calendar))
     app.add_handler(CommandHandler("news", cmd_calendar))  # alias for /calendar
