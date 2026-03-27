@@ -604,9 +604,11 @@ def _create_tracking_tables():
 def _ensure_default_tenant():
     """Create tenant id=1 if no tenants exist (single-user migration path)."""
     with get_db() as conn:
-        row = conn.execute("SELECT id FROM tenants LIMIT 1").fetchone()
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM tenants LIMIT 1")
+        row = cur.fetchone()
         if not row:
-            conn.execute("""
+            cur.execute("""
                 INSERT INTO tenants (name, slug, company, timezone, plan, status)
                 VALUES ('Default', 'default', '', 'America/Toronto', 'pro', 'active')
             """)
@@ -664,14 +666,15 @@ def add_prospect(data: dict, tenant_id: int = None) -> str:
     return f"Added {name} to pipeline."
 
 
-def update_prospect(name: str, updates: dict) -> str:
+def update_prospect(name: str, updates: dict, tenant_id: int = None) -> str:
     """Update a prospect by partial name match (case insensitive).
     Skips empty values. Returns status string."""
+    tid = tenant_id or _current_tenant_id.get()
     with get_db() as conn:
         cur = conn.cursor()
         cur.execute(
-            "SELECT id, name FROM prospects WHERE LOWER(name) LIKE %s LIMIT 1",
-            (f"%{name.lower()}%",),
+            "SELECT id, name FROM prospects WHERE LOWER(name) LIKE %s AND tenant_id = %s LIMIT 1",
+            (f"%{name.lower()}%", tid),
         )
         row = cur.fetchone()
 
@@ -718,13 +721,14 @@ def update_prospect(name: str, updates: dict) -> str:
     return f"Updated {matched_name}: {', '.join(f'{f} → {v}' for f, v in safe_fields.items())}"
 
 
-def delete_prospect(name: str) -> str:
+def delete_prospect(name: str, tenant_id: int = None) -> str:
     """Delete a prospect by partial name match. Returns status string."""
+    tid = tenant_id or _current_tenant_id.get()
     with get_db() as conn:
         cur = conn.cursor()
         cur.execute(
-            "SELECT id, name FROM prospects WHERE LOWER(name) LIKE %s LIMIT 1",
-            (f"%{name.lower()}%",),
+            "SELECT id, name FROM prospects WHERE LOWER(name) LIKE %s AND tenant_id = %s LIMIT 1",
+            (f"%{name.lower()}%", tid),
         )
         row = cur.fetchone()
 
@@ -1502,7 +1506,7 @@ def record_email_open(token: str) -> bool:
             SET opened_at = COALESCE(opened_at, NOW())
             WHERE token = %s AND opened_at IS NULL
         """, (token,))
-    return cur.rowcount > 0
+        return cur.rowcount > 0
 
 
 def record_link_click(token: str) -> str | None:
