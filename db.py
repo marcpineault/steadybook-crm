@@ -1,43 +1,43 @@
 """
-SQLite database module for Calm Money Pipeline Bot.
+PostgreSQL database module for SteadyBook CRM.
 
-Replaces all Excel (openpyxl) operations with SQLite for reliability
-and concurrent access. Uses WAL mode for safe concurrent reads.
+Multi-tenant: all queries scoped by tenant_id via _current_tenant_id context var.
+The context var is set by the auth middleware in dashboard.py on every request.
 
 Usage:
-    from db import init_db, add_prospect, read_pipeline, ...
+    from db import init_db, add_prospect, read_pipeline
     init_db()
 """
 
 import os
 import re
 import secrets
-import sqlite3
 import logging
 from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import date, datetime, timedelta
+
+import psycopg2
+import psycopg2.extras
 
 logger = logging.getLogger(__name__)
 
-# ── Database path ──
+# ── Tenant context ──
+# Set this at the start of every authenticated request.
+# All query functions read it as their default tenant_id.
+_current_tenant_id: ContextVar[int] = ContextVar("_current_tenant_id", default=1)
 
-DATA_DIR = os.environ.get("DATA_DIR", "")
-if DATA_DIR:
-    os.makedirs(DATA_DIR, exist_ok=True)
-    DB_PATH = os.path.join(DATA_DIR, "pipeline.db")
-else:
-    DB_PATH = "pipeline.db"
+# ── Connection ──
 
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+if not DATABASE_URL:
+    logger.warning("DATABASE_URL not set — database operations will fail")
 
-# ── Connection management ──
 
 @contextmanager
 def get_db():
-    """Context manager for database connections with WAL mode."""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
+    """Context manager for Postgres connections using RealDictCursor."""
+    conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         yield conn
         conn.commit()
@@ -49,15 +49,15 @@ def get_db():
 
 
 def _row_to_dict(row):
-    """Convert a sqlite3.Row to a plain dict."""
+    """Convert a RealDictRow to a plain dict."""
     if row is None:
         return None
     return dict(row)
 
 
 def _rows_to_dicts(rows):
-    """Convert a list of sqlite3.Row to list of dicts."""
-    return [dict(r) for r in rows]
+    """Convert a list of RealDictRow to list of dicts."""
+    return [dict(r) for r in rows] if rows else []
 
 
 # ── Numeric parsing ──
