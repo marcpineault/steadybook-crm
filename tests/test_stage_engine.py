@@ -49,3 +49,62 @@ def test_rate_limit_allows_after_10_minutes():
     updated = stage_engine._last_evaluated.get(99)
     assert updated is not None
     assert datetime.now(timezone.utc) - updated < timedelta(seconds=5), "Timestamp should be updated after evaluation"
+
+
+def test_call_gpt_returns_parsed_response():
+    """_call_gpt should return parsed dict from a valid GPT JSON response."""
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = (
+        '{"should_change": true, "new_stage": "Discovery Call", '
+        '"reason": "Booked a call", "cross_sell_opportunity": false, "cross_sell_product": null}'
+    )
+    with patch.object(stage_engine.openai_client.chat.completions, "create", return_value=mock_response):
+        result = stage_engine._call_gpt(
+            current_stage="Contacted",
+            product="Life Insurance",
+            sms_thread=[{"direction": "inbound", "body": "Sure let's chat"}],
+            activities=[],
+            meetings=[],
+        )
+    assert result["should_change"] is True
+    assert result["new_stage"] == "Discovery Call"
+    assert result["reason"] == "Booked a call"
+
+
+def test_call_gpt_invalid_json_returns_none():
+    """_call_gpt should return None on malformed GPT response."""
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = "not json at all"
+    with patch.object(stage_engine.openai_client.chat.completions, "create", return_value=mock_response):
+        result = stage_engine._call_gpt(
+            current_stage="Contacted", product="Life",
+            sms_thread=[], activities=[], meetings=[],
+        )
+    assert result is None
+
+
+def test_validate_stage_rejects_unknown():
+    """_validate_gpt_result should return None for an unknown stage name."""
+    result = stage_engine._validate_gpt_result({
+        "should_change": True, "new_stage": "Banana Stage",
+        "reason": "test", "cross_sell_opportunity": False, "cross_sell_product": None,
+    })
+    assert result is None
+
+
+def test_validate_stage_accepts_valid():
+    """_validate_gpt_result should return the dict unchanged for a known stage."""
+    payload = {
+        "should_change": True, "new_stage": "Negotiation",
+        "reason": "Close to signing", "cross_sell_opportunity": False, "cross_sell_product": None,
+    }
+    assert stage_engine._validate_gpt_result(payload) == payload
+
+
+def test_validate_stage_passes_no_change():
+    """_validate_gpt_result should pass through when should_change is False."""
+    payload = {
+        "should_change": False, "new_stage": None,
+        "reason": "", "cross_sell_opportunity": False, "cross_sell_product": None,
+    }
+    assert stage_engine._validate_gpt_result(payload) == payload
