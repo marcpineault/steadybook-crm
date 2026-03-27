@@ -36,5 +36,7 @@ def test_init_db_creates_tables():
 def test_tenant_context_var():
     import db
     db._current_tenant_id.set(42)
-    assert db._current_tenant_id.get() == 42
-    db._current_tenant_id.set(1)
+    try:
+        assert db._current_tenant_id.get() == 42
+    finally:
+        db._current_tenant_id.set(1)
