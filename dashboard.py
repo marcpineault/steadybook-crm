@@ -438,6 +438,10 @@ def api_conversation_thread(phone):
 @_require_auth
 def api_chat():
     """Send a message to the bot and return its reply."""
+    tid = _tenant_id()
+    openai_key = get_config(tid, "OPENAI_API_KEY")
+    if not openai_key:
+        return jsonify({"reply": "AI chat is not configured. Add your OpenAI API key in Settings to enable it."}), 200
     data = request.get_json(silent=True) or {}
     user_msg = (data.get("message") or "").strip()
     if not user_msg:
@@ -457,6 +461,10 @@ def api_chat():
 @_require_auth
 def api_send_sms(phone):
     """Send an outbound SMS directly from the dashboard."""
+    tid = _tenant_id()
+    twilio_sid = get_config(tid, "TWILIO_ACCOUNT_SID")
+    if not twilio_sid:
+        return jsonify({"error": "Twilio not configured. Add credentials in Settings to enable SMS."}), 400
     data = request.get_json(silent=True) or {}
     body = (data.get("body") or "").strip()
     if not body:
@@ -950,7 +958,7 @@ def _common_context():
         "user_initials": _get_current_user_initials(),
         "company_name": _get_current_company(),
         "booking_url": _get_current_booking_url(),
-        "setup_complete": os.environ.get("ONBOARDING_COMPLETE", "").lower() == "true",
+        "setup_complete": bool(get_config(_tenant_id(), "OPENAI_API_KEY")),
         "setup_steps_done": sum([
             bool(os.environ.get("DASHBOARD_API_KEY")),
             bool(os.environ.get("TELEGRAM_BOT_TOKEN")),
@@ -2136,29 +2144,35 @@ def settings_page():
 
 @app.route("/api/tenant/config", methods=["GET"])
 @_require_auth
-def api_get_tenant_config():
-    """Get current tenant config."""
-    import tenants
-    tenant_id = getattr(request, 'tenant_id', 1)
-    tenant = tenants.get_tenant(tenant_id)
-    if not tenant:
-        return jsonify({"error": "Tenant not found"}), 404
-    config = tenants.get_tenant_config(tenant_id)
-    return jsonify({"ok": True, "tenant": tenant, "config": config})
+def api_tenant_config_get():
+    user = _check_auth()
+    all_cfg = get_all_config(user["tenant_id"])
+    keys = [
+        "OPENAI_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID",
+        "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_PHONE_NUMBER",
+        "RESEND_API_KEY", "INTAKE_WEBHOOK_SECRET", "BOOKING_URL",
+        "COMPANY_NAME", "ADVISOR_NAME",
+    ]
+    return jsonify({k: bool(all_cfg.get(k)) for k in keys})
 
 
 @app.route("/api/tenant/config", methods=["PUT"])
 @_require_auth
-def api_update_tenant_config():
-    """Update tenant config."""
-    data = request.json
-    if not data:
-        return jsonify({"error": "No data"}), 400
-
-    import tenants
-    tenant_id = getattr(request, 'tenant_id', 1)
-    config = tenants.update_tenant_config(tenant_id, data)
-    return jsonify({"ok": True, "config": config})
+def api_tenant_config_put():
+    user = _check_auth()
+    data = request.get_json() or {}
+    allowed_keys = {
+        "OPENAI_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID",
+        "TELEGRAM_WEBHOOK_SECRET", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN",
+        "TWILIO_PHONE_NUMBER", "RESEND_API_KEY", "INTAKE_WEBHOOK_SECRET",
+        "BOOKING_URL", "COMPANY_NAME", "ADVISOR_NAME",
+    }
+    saved = []
+    for key, value in data.items():
+        if key in allowed_keys and isinstance(value, str):
+            set_config(user["tenant_id"], key, value)
+            saved.append(key)
+    return jsonify({"ok": True, "saved": saved})
 
 
 @app.route("/api/tenant/users", methods=["GET"])
@@ -2251,75 +2265,66 @@ def setup_generate_key():
 
 
 @app.route("/api/setup/test/<service>", methods=["POST"])
-def setup_test_service(service):
+@_require_auth
+def api_setup_test(service):
+    user = _check_auth()
+    tid = user["tenant_id"]
     data = request.get_json() or {}
-    try:
-        if service == "telegram-token":
-            token = data.get("token", "").strip()
-            if not token:
-                return jsonify({"ok": False, "error": "Token is required"})
-            r = requests.get(f"https://api.telegram.org/bot{token}/getMe", timeout=8)
-            result = r.json()
-            if r.ok and result.get("ok"):
-                return jsonify({"ok": True, "name": result["result"].get("username", "")})
-            return jsonify({"ok": False, "error": result.get("description", "Invalid token")})
 
-        elif service == "telegram-chat":
-            token = data.get("token", "").strip()
-            chat_id = data.get("chat_id", "").strip()
-            if not token or not chat_id:
-                return jsonify({"ok": False, "error": "Token and Chat ID are required"})
-            r = requests.post(
-                f"https://api.telegram.org/bot{token}/sendMessage",
-                json={"chat_id": chat_id, "text": "SteadyBook setup test \u2713 \u2014 your bot is connected!"},
-                timeout=8,
-            )
-            result = r.json()
-            if r.ok and result.get("ok"):
-                return jsonify({"ok": True})
-            return jsonify({"ok": False, "error": result.get("description", "Could not send message. Double-check the Chat ID.")})
-
-        elif service == "openai":
-            from openai import OpenAI as _OAI
-            key = data.get("key", "").strip()
-            if not key:
-                return jsonify({"ok": False, "error": "API key is required"})
-            _OAI(api_key=key).models.list()
+    if service == "openai":
+        key = data.get("key") or get_config(tid, "OPENAI_API_KEY")
+        if not key:
+            return jsonify({"ok": False, "error": "No API key provided"})
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=key)
+            client.models.list()
             return jsonify({"ok": True})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)})
 
-        elif service == "resend":
-            key = data.get("key", "").strip()
-            if not key:
-                return jsonify({"ok": False, "error": "API key is required"})
-            r = requests.get(
+    elif service == "telegram":
+        token = data.get("key") or get_config(tid, "TELEGRAM_BOT_TOKEN")
+        if not token:
+            return jsonify({"ok": False, "error": "No token provided"})
+        try:
+            resp = requests.get(f"https://api.telegram.org/bot{token}/getMe", timeout=5)
+            if resp.ok:
+                return jsonify({"ok": True, "bot": resp.json().get("result", {}).get("username")})
+            return jsonify({"ok": False, "error": resp.json().get("description", "Invalid token")})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)})
+
+    elif service == "twilio":
+        sid = data.get("account_sid") or get_config(tid, "TWILIO_ACCOUNT_SID")
+        auth = data.get("auth_token") or get_config(tid, "TWILIO_AUTH_TOKEN")
+        if not sid or not auth:
+            return jsonify({"ok": False, "error": "Account SID and Auth Token required"})
+        try:
+            from twilio.rest import Client as TwilioClient
+            tc = TwilioClient(sid, auth)
+            tc.api.accounts(sid).fetch()
+            return jsonify({"ok": True})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)})
+
+    elif service == "resend":
+        key = data.get("key") or get_config(tid, "RESEND_API_KEY")
+        if not key:
+            return jsonify({"ok": False, "error": "No API key provided"})
+        try:
+            resp = requests.get(
                 "https://api.resend.com/domains",
                 headers={"Authorization": f"Bearer {key}"},
-                timeout=8,
+                timeout=5,
             )
-            if r.status_code in (200, 201):
+            if resp.status_code == 200:
                 return jsonify({"ok": True})
-            return jsonify({"ok": False, "error": f"Resend returned {r.status_code} \u2014 check your API key"})
+            return jsonify({"ok": False, "error": f"HTTP {resp.status_code}"})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)})
 
-        elif service == "twilio":
-            sid = data.get("sid", "").strip()
-            token = data.get("token", "").strip()
-            if not sid or not token:
-                return jsonify({"ok": False, "error": "Account SID and Auth Token are required"})
-            r = requests.get(
-                f"https://api.twilio.com/2010-04-01/Accounts/{sid}.json",
-                auth=(sid, token),
-                timeout=8,
-            )
-            if r.ok:
-                return jsonify({"ok": True})
-            return jsonify({"ok": False, "error": "Invalid credentials \u2014 check your SID and Auth Token"})
-
-        else:
-            return jsonify({"ok": False, "error": "Unknown service"}), 400
-
-    except Exception as exc:
-        logger.exception("Setup test error for %s", service)
-        return jsonify({"ok": False, "error": str(exc)})
+    return jsonify({"ok": False, "error": f"Unknown service: {service}"}), 400
 
 
 def run_dashboard():
