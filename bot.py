@@ -10,7 +10,9 @@ from pathlib import Path
 
 import requests
 from openai import OpenAI
+import db as _db
 import db
+from config_store import get_config
 from dotenv import load_dotenv
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
@@ -22,11 +24,11 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-TELEGRAM_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-OPENAI_KEY = os.environ["OPENAI_API_KEY"]
-ADMIN_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
+# Default token for single-tenant / self-hosted mode
+_DEFAULT_TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+_DEFAULT_OPENAI_KEY = os.environ.get("OPENAI_API_KEY", "")
 
-if not ADMIN_CHAT_ID:
+if not os.environ.get("TELEGRAM_CHAT_ID"):
     logger.warning("TELEGRAM_CHAT_ID not set -admin-only commands will be disabled for all users")
 if not os.environ.get("DASHBOARD_API_KEY"):
     logger.warning("DASHBOARD_API_KEY not set -dashboard will refuse to start")
@@ -36,7 +38,35 @@ if not os.environ.get("INTAKE_WEBHOOK_SECRET"):
 # DATA_DIR kept for migration path reference
 DATA_DIR = os.environ.get("DATA_DIR", "")
 
-client = OpenAI(api_key=OPENAI_KEY)
+client = OpenAI(api_key=_DEFAULT_OPENAI_KEY)
+
+
+def _get_tenant_for_chat(chat_id: str) -> int:
+    """Find tenant_id from a registered Telegram chat_id. Returns 1 as fallback."""
+    try:
+        with _db.get_db() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT tenant_id FROM tenant_config WHERE key = 'TELEGRAM_CHAT_ID' AND value = %s LIMIT 1",
+                (str(chat_id),),
+            )
+            row = cur.fetchone()
+            if row:
+                return row["tenant_id"]
+    except Exception:
+        logger.warning("Could not resolve tenant for chat_id=%s", chat_id)
+    return 1
+
+
+def _get_openai_key(tenant_id: int) -> str:
+    """Get OpenAI API key for tenant, falling back to env var."""
+    key = get_config(tenant_id, "OPENAI_API_KEY")
+    return key or _DEFAULT_OPENAI_KEY
+
+
+def _get_admin_chat_id(tenant_id: int) -> str:
+    """Get Telegram admin chat ID for tenant, falling back to env var."""
+    return get_config(tenant_id, "TELEGRAM_CHAT_ID") or os.environ.get("TELEGRAM_CHAT_ID", "")
 
 
 def _draft_keyboard(queue_id):
@@ -70,8 +100,11 @@ async def send_draft_to_telegram(bot, draft_result):
 
 
 def _is_admin(update) -> bool:
-    """Check if the message sender is the admin (Marc)."""
-    return str(update.effective_chat.id) == str(ADMIN_CHAT_ID)
+    """Check if the message sender is the admin for their tenant."""
+    chat_id = str(update.effective_chat.id)
+    tenant_id = _get_tenant_for_chat(chat_id)
+    admin_id = _get_admin_chat_id(tenant_id)
+    return bool(admin_id) and chat_id == str(admin_id)
 
 
 async def _require_admin(update) -> bool:
@@ -91,9 +124,10 @@ async def _require_admin(update) -> bool:
 def get_trust_level():
     """Get the current trust level (1-3). Defaults to 1."""
     try:
-        with db.get_db() as conn:
-            row = conn.execute("SELECT trust_level FROM trust_config ORDER BY id DESC LIMIT 1").fetchone()
-            return row["trust_level"] if row else 1
+        # Try to get from the default admin chat's tenant
+        default_chat = os.environ.get("TELEGRAM_CHAT_ID", "1")
+        tenant_id = _get_tenant_for_chat(default_chat)
+        return _db.get_trust_level(tenant_id)
     except Exception:
         return 1
 
@@ -3682,7 +3716,7 @@ async def handle_nurture_offer(update, context):
 
 def build_application():
     """Build the Telegram Application with all handlers (shared by main and webhook)."""
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    app = ApplicationBuilder().token(_DEFAULT_TELEGRAM_TOKEN).build()
 
     # Seed market calendar with default events
     try:
@@ -3852,6 +3886,17 @@ def process_dashboard_message(user_msg: str) -> str:
 
 def main():
     """Start the bot + dashboard (webhook mode)."""
+    token = _DEFAULT_TELEGRAM_TOKEN
+    if not token:
+        logger.warning(
+            "No TELEGRAM_BOT_TOKEN set — bot will not start. "
+            "Configure via Settings in the dashboard."
+        )
+        import time
+        while True:
+            time.sleep(3600)
+        return
+
     from dashboard import app as flask_app, register_webhook
 
     # Initialize bot (sets up webhook with Telegram)
