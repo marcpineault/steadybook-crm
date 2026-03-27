@@ -151,3 +151,22 @@ def test_send_telegram_no_op_when_loop_missing():
          patch("asyncio.run_coroutine_threadsafe") as mock_rctf:
         stage_engine._send_telegram("hello")
         assert not mock_rctf.called
+
+
+def test_notify_cross_sell_sends_inline_keyboard():
+    """_notify_cross_sell should send a Telegram message with Create/Skip buttons."""
+    with patch("stage_engine._send_telegram") as mock_send:
+        stage_engine._notify_cross_sell(
+            prospect_id=7,
+            prospect_name="Alice Brown",
+            current_product="Life Insurance",
+            cross_sell_product="Disability Insurance",
+            reason="Asked about income protection",
+        )
+        assert mock_send.called
+        call_text = mock_send.call_args[0][0]
+        assert "Alice Brown" in call_text
+        assert "Disability Insurance" in call_text
+        # reply_markup kwarg must not be None
+        call_kwargs = mock_send.call_args[1]
+        assert call_kwargs.get("reply_markup") is not None

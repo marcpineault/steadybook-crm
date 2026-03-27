@@ -13,6 +13,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 from openai import OpenAI
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 import db
 
@@ -225,6 +226,35 @@ def _apply_stage_change(
     db.update_prospect(prospect_name, {"stage": new_stage}, tenant_id)
     _log_audit(prospect_name, old_stage, new_stage, reason, tenant_id)
     _notify_stage_change(prospect_name, old_stage, new_stage, reason)
+
+
+def _notify_cross_sell(
+    prospect_id: int,
+    prospect_name: str,
+    current_product: str,
+    cross_sell_product: str,
+    reason: str,
+) -> None:
+    """Send a Telegram cross-sell alert with Create Opportunity / Skip buttons."""
+    text = (
+        f"Cross-sell opportunity: {prospect_name}\n"
+        f"{reason}\n"
+        f"Suggested product: {cross_sell_product}"
+    )
+    safe_product = cross_sell_product.replace(" ", "_")[:30]
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                "Create Opportunity",
+                callback_data=f"create_opp_{prospect_id}_{safe_product}",
+            ),
+            InlineKeyboardButton(
+                "Skip",
+                callback_data=f"create_opp_skip_{prospect_id}",
+            ),
+        ]
+    ])
+    _send_telegram(text, reply_markup=keyboard)
 
 
 async def evaluate_prospect(prospect_id: int, tenant_id: int) -> None:
