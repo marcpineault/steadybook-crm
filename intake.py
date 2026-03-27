@@ -202,7 +202,8 @@ def process_calendar_event(data: dict) -> str:
         try:
             with db.get_db() as _conn:
                 _owner = _conn.execute(
-                    "SELECT email FROM users WHERE role = 'owner' AND tenant_id = 1 LIMIT 1"
+                    "SELECT email FROM users WHERE role = 'owner' AND tenant_id = %s LIMIT 1",
+                    (db._current_tenant_id.get(1),)
                 ).fetchone()
                 if _owner:
                     owner_email = (_owner["email"] or "").lower()

@@ -10,8 +10,10 @@ from functools import wraps
 
 import json
 
+import bcrypt
 import db
-from flask import Flask, Response, request, jsonify, render_template, redirect, make_response, send_file, abort
+from config_store import get_config, set_config, get_all_config
+from flask import Flask, Response, request, jsonify, render_template, redirect, make_response, send_file, abort, session
 
 logger = logging.getLogger(__name__)
 
@@ -42,11 +44,6 @@ def _json_script(value):
 
 
 DASHBOARD_API_KEY = os.environ.get("DASHBOARD_API_KEY", "")
-if not DASHBOARD_API_KEY:
-    raise RuntimeError(
-        "DASHBOARD_API_KEY must be set. Generate one with: "
-        "python -c 'import secrets; print(secrets.token_urlsafe(32))'"
-    )
 
 # CSRF tokens with expiry timestamps for proper lifecycle management.
 # Each token expires after _CSRF_TOKEN_TTL seconds.
@@ -86,30 +83,45 @@ def _validate_csrf_token(token: str) -> bool:
     return False
 
 
+_tenants_exist: bool | None = None  # None = not yet checked
+
+def _check_tenants_exist() -> bool:
+    """Returns True if at least one tenant exists. Cached for process lifetime."""
+    global _tenants_exist
+    if _tenants_exist is None:
+        try:
+            with db.get_db() as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT id FROM tenants LIMIT 1")
+                _tenants_exist = cur.fetchone() is not None
+        except Exception:
+            return True  # If DB is unavailable, don't redirect to register
+    return _tenants_exist
+
+
 def _require_auth(f):
-    """Decorator: accepts API key, CSRF token, or login cookie."""
     @wraps(f)
     def decorated(*args, **kwargs):
-        # Check API key first (for external/programmatic access)
-        api_key = request.headers.get("X-API-Key", "")
-        if DASHBOARD_API_KEY and api_key and hmac.compare_digest(api_key, DASHBOARD_API_KEY):
-            return f(*args, **kwargs)
-        # Check CSRF token (for dashboard UI) — validates existence and expiry
-        csrf_token = request.headers.get("X-CSRF-Token", "")
-        if csrf_token and _validate_csrf_token(csrf_token):
-            return f(*args, **kwargs)
-        # Check login cookie (set by /login form — hash of API key)
-        dash_cookie = request.cookies.get("dash_auth", "")
-        if dash_cookie and DASHBOARD_API_KEY:
-            import hashlib
-            expected = hashlib.sha256(DASHBOARD_API_KEY.encode()).hexdigest()
-            if hmac.compare_digest(dash_cookie, expected):
-                return f(*args, **kwargs)
-        return jsonify({"error": "Unauthorized"}), 401
+        if not _check_tenants_exist():
+            return redirect("/register")
+        user = _check_auth()
+        if not user:
+            if request.path.startswith("/api/"):
+                return jsonify({"error": "unauthorized"}), 401
+            return redirect("/login")
+        return f(*args, **kwargs)
     return decorated
 
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
+_secret_key = os.environ.get("SECRET_KEY")
+if not _secret_key:
+    _secret_key = secrets.token_urlsafe(32)
+    logger.warning(
+        "SECRET_KEY not set — using ephemeral key. All sessions will be lost on restart. "
+        "Set SECRET_KEY env var in Railway to persist sessions."
+    )
+app.secret_key = _secret_key
 app.config["MAX_CONTENT_LENGTH"] = 1 * 1024 * 1024  # 1 MB max request size
 
 try:
@@ -426,6 +438,10 @@ def api_conversation_thread(phone):
 @_require_auth
 def api_chat():
     """Send a message to the bot and return its reply."""
+    tid = _tenant_id()
+    openai_key = get_config(tid, "OPENAI_API_KEY")
+    if not openai_key:
+        return jsonify({"reply": "AI chat is not configured. Add your OpenAI API key in Settings to enable it."}), 200
     data = request.get_json(silent=True) or {}
     user_msg = (data.get("message") or "").strip()
     if not user_msg:
@@ -445,6 +461,10 @@ def api_chat():
 @_require_auth
 def api_send_sms(phone):
     """Send an outbound SMS directly from the dashboard."""
+    tid = _tenant_id()
+    twilio_sid = get_config(tid, "TWILIO_ACCOUNT_SID")
+    if not twilio_sid:
+        return jsonify({"error": "Twilio not configured. Add credentials in Settings to enable SMS."}), 400
     data = request.get_json(silent=True) or {}
     body = (data.get("body") or "").strip()
     if not body:
@@ -808,19 +828,29 @@ def _calc_deal_velocity(prospects, activities):
 # ── Auth & Context Helpers ──
 
 def _check_auth():
-    """Check if user is authenticated. Returns True if authed."""
-    import hashlib
-    dash_cookie = request.cookies.get("dash_auth", "")
-    if dash_cookie and DASHBOARD_API_KEY:
-        expected = hashlib.sha256(DASHBOARD_API_KEY.encode()).hexdigest()
-        if hmac.compare_digest(dash_cookie, expected):
-            return True
-    api_key = request.headers.get("X-API-Key", "") or request.args.get("key", "")
-    if DASHBOARD_API_KEY and api_key and hmac.compare_digest(api_key, DASHBOARD_API_KEY):
-        return True
-    if not DASHBOARD_API_KEY:
-        return True
-    return False
+    """Return current user dict from session, or None."""
+    user_id = session.get("user_id")
+    if not user_id:
+        return None
+    try:
+        with db.get_db() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT id, tenant_id, email, name, role FROM users WHERE id = %s AND status = 'active'",
+                (user_id,),
+            )
+            row = cur.fetchone()
+        if row:
+            db._current_tenant_id.set(row["tenant_id"])
+            return dict(row)
+    except Exception:
+        logger.exception("Auth check failed")
+    return None
+
+
+def _tenant_id() -> int:
+    """Return current request's tenant_id from session, defaulting to 1."""
+    return session.get("tenant_id", 1)
 
 
 def _get_current_user_name():
@@ -873,12 +903,7 @@ def _get_current_booking_url():
     """Get the booking URL from tenant config."""
     try:
         import tenants
-        tenant_id = 1
-        token = request.cookies.get("dash_session", "")
-        if token:
-            session = tenants.validate_session(token)
-            if session:
-                tenant_id = session["tenant_id"]
+        tenant_id = _tenant_id()
         config = tenants.get_tenant_config(tenant_id)
         return config.get("booking_url", "")
     except Exception:
@@ -928,7 +953,7 @@ def _common_context():
         "user_initials": _get_current_user_initials(),
         "company_name": _get_current_company(),
         "booking_url": _get_current_booking_url(),
-        "setup_complete": os.environ.get("ONBOARDING_COMPLETE", "").lower() == "true",
+        "setup_complete": bool(get_config(_tenant_id(), "OPENAI_API_KEY")),
         "setup_steps_done": sum([
             bool(os.environ.get("DASHBOARD_API_KEY")),
             bool(os.environ.get("TELEGRAM_BOT_TOKEN")),
@@ -1679,106 +1704,113 @@ def register_page():
 
 
 @app.route("/api/auth/register", methods=["POST"])
-def api_register():
-    """Register a new tenant + owner account."""
-    data = request.json
-    if not data:
-        return jsonify({"error": "No data"}), 400
+def api_auth_register():
+    data = request.get_json() or {}
+    firm_name = data.get("firm_name", "").strip()
+    name = data.get("name", "").strip()
+    email = data.get("email", "").strip().lower()
+    password = data.get("password", "")
 
-    required = ["name", "slug", "email", "password"]
-    missing = [f for f in required if not data.get(f)]
-    if missing:
-        return jsonify({"error": f"Missing fields: {', '.join(missing)}"}), 400
-
-    if len(data["password"]) < 8:
+    if not all([firm_name, name, email, password]):
+        return jsonify({"error": "All fields required"}), 400
+    if len(password) < 8:
         return jsonify({"error": "Password must be at least 8 characters"}), 400
 
-    try:
-        import tenants
-        tenant = tenants.create_tenant(
-            name=data["name"],
-            slug=data["slug"],
-            owner_email=data["email"],
-            owner_password=data["password"],
-            owner_name=data.get("owner_name", ""),
-            company=data.get("company", ""),
-            timezone=data.get("timezone", "America/Toronto"),
-            products=data.get("products"),
-        )
-        # Install default sequence templates
-        import sequences
-        sequences.install_default_templates(tenant["id"])
+    pw_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    slug = _re.sub(r"[^a-z0-9]+", "-", firm_name.lower()).strip("-")
 
-        return jsonify({"ok": True, "tenant": tenant})
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
+    try:
+        with db.get_db() as conn:
+            cur = conn.cursor()
+            # Check email not already registered
+            cur.execute("SELECT id FROM users WHERE LOWER(email) = %s", (email,))
+            if cur.fetchone():
+                return jsonify({"error": "Email already registered"}), 409
+
+            # Create tenant
+            cur.execute(
+                """INSERT INTO tenants (name, slug, status, plan)
+                   VALUES (%s, %s, 'active', 'starter') RETURNING id""",
+                (firm_name, slug),
+            )
+            tenant_id = cur.fetchone()["id"]
+
+            # Create owner user
+            cur.execute(
+                """INSERT INTO users (tenant_id, email, password_hash, name, role)
+                   VALUES (%s, %s, %s, %s, 'owner') RETURNING id""",
+                (tenant_id, email, pw_hash, name),
+            )
+            user_id = cur.fetchone()["id"]
+
+        global _tenants_exist
+        _tenants_exist = True
+        session["user_id"] = user_id
+        session["tenant_id"] = tenant_id
+        db._current_tenant_id.set(tenant_id)
+
+        return jsonify({"ok": True, "tenant_id": tenant_id, "user_id": user_id})
+    except Exception:
+        logger.exception("Registration failed")
+        return jsonify({"error": "Registration failed"}), 500
 
 
 @app.route("/api/auth/login", methods=["POST"])
-def api_tenant_login():
-    """Authenticate user and return session token."""
-    data = request.json
-    if not data or not data.get("email") or not data.get("password"):
+def api_auth_login():
+    data = request.get_json() or {}
+    email = data.get("email", "").strip().lower()
+    password = data.get("password", "")
+
+    if not email or not password:
         return jsonify({"error": "Email and password required"}), 400
 
-    import tenants
-    user = tenants.authenticate_user(data["email"], data["password"])
-    if not user:
+    try:
+        with db.get_db() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT id, tenant_id, password_hash, name, role FROM users WHERE LOWER(email) = %s AND status = 'active'",
+                (email,),
+            )
+            user = cur.fetchone()
+    except Exception:
+        logger.exception("Login DB error")
+        return jsonify({"error": "Login failed"}), 500
+
+    if not user or not bcrypt.checkpw(password.encode(), user["password_hash"].encode()):
         return jsonify({"error": "Invalid email or password"}), 401
 
-    token = tenants.create_session(user["tenant_id"], user["id"])
-    resp = make_response(jsonify({
-        "ok": True,
-        "user": {
-            "id": user["id"],
-            "email": user["email"],
-            "name": user["name"],
-            "role": user["role"],
-            "tenant_id": user["tenant_id"],
-            "tenant_name": user["tenant_name"],
-        },
-    }))
-    resp.set_cookie("dash_session", token, httponly=True, samesite="Lax",
-                     max_age=86400, secure=request.is_secure)
-    return resp
+    session["user_id"] = user["id"]
+    session["tenant_id"] = user["tenant_id"]
+    db._current_tenant_id.set(user["tenant_id"])
+
+    try:
+        with db.get_db() as conn:
+            cur = conn.cursor()
+            cur.execute("UPDATE users SET last_login = NOW() WHERE id = %s", (user["id"],))
+    except Exception:
+        pass
+
+    return jsonify({"ok": True, "name": user["name"], "role": user["role"]})
 
 
 @app.route("/api/auth/logout", methods=["POST"])
-def api_tenant_logout():
-    """Destroy session."""
-    import tenants
-    token = request.cookies.get("dash_session", "")
-    if token:
-        tenants.destroy_session(token)
-    resp = make_response(jsonify({"ok": True}))
-    resp.delete_cookie("dash_session")
-    return resp
+def api_auth_logout():
+    session.clear()
+    return jsonify({"ok": True})
 
 
 @app.route("/api/auth/me")
 def api_auth_me():
-    """Get current user info."""
-    import tenants
-    token = request.cookies.get("dash_session", "")
-    if not token:
-        return jsonify({"error": "Not authenticated"}), 401
-
-    session = tenants.validate_session(token)
-    if not session:
-        return jsonify({"error": "Session expired"}), 401
-
-    with db.get_db() as conn:
-        user = conn.execute(
-            """SELECT u.id, u.email, u.name, u.role, u.tenant_id,
-                      t.name as tenant_name, t.slug as tenant_slug, t.plan
-               FROM users u JOIN tenants t ON u.tenant_id = t.id
-               WHERE u.id = ?""",
-            (session["user_id"],),
-        ).fetchone()
-
+    user = _check_auth()
     if not user:
-        return jsonify({"error": "User not found"}), 404
-    return jsonify({"ok": True, "user": dict(user)})
+        return jsonify({"error": "Not authenticated"}), 401
+    return jsonify({
+        "id": user["id"],
+        "email": user["email"],
+        "name": user["name"],
+        "role": user["role"],
+        "tenant_id": user["tenant_id"],
+    })
 
 
 # ── Sequence API Routes ──
@@ -1973,10 +2005,11 @@ def reporting():
 @app.route("/flows")
 def flows():
     """Flow builder — view and edit nurture sequences."""
-    if not _check_auth():
+    user = _check_auth()
+    if not user:
         return redirect("/login")
     import sequences as seq_module
-    tenant_id = 1
+    tenant_id = user["tenant_id"]
     all_sequences = seq_module.list_sequences(tenant_id)
     ctx = _common_context()
     ctx.update({
@@ -2107,29 +2140,35 @@ def settings_page():
 
 @app.route("/api/tenant/config", methods=["GET"])
 @_require_auth
-def api_get_tenant_config():
-    """Get current tenant config."""
-    import tenants
-    tenant_id = getattr(request, 'tenant_id', 1)
-    tenant = tenants.get_tenant(tenant_id)
-    if not tenant:
-        return jsonify({"error": "Tenant not found"}), 404
-    config = tenants.get_tenant_config(tenant_id)
-    return jsonify({"ok": True, "tenant": tenant, "config": config})
+def api_tenant_config_get():
+    user = _check_auth()
+    all_cfg = get_all_config(user["tenant_id"])
+    keys = [
+        "OPENAI_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID",
+        "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_PHONE_NUMBER",
+        "RESEND_API_KEY", "INTAKE_WEBHOOK_SECRET", "BOOKING_URL",
+        "COMPANY_NAME", "ADVISOR_NAME",
+    ]
+    return jsonify({k: bool(all_cfg.get(k)) for k in keys})
 
 
 @app.route("/api/tenant/config", methods=["PUT"])
 @_require_auth
-def api_update_tenant_config():
-    """Update tenant config."""
-    data = request.json
-    if not data:
-        return jsonify({"error": "No data"}), 400
-
-    import tenants
-    tenant_id = getattr(request, 'tenant_id', 1)
-    config = tenants.update_tenant_config(tenant_id, data)
-    return jsonify({"ok": True, "config": config})
+def api_tenant_config_put():
+    user = _check_auth()
+    data = request.get_json() or {}
+    allowed_keys = {
+        "OPENAI_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID",
+        "TELEGRAM_WEBHOOK_SECRET", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN",
+        "TWILIO_PHONE_NUMBER", "RESEND_API_KEY", "INTAKE_WEBHOOK_SECRET",
+        "BOOKING_URL", "COMPANY_NAME", "ADVISOR_NAME",
+    }
+    saved = []
+    for key, value in data.items():
+        if key in allowed_keys and isinstance(value, str):
+            set_config(user["tenant_id"], key, value)
+            saved.append(key)
+    return jsonify({"ok": True, "saved": saved})
 
 
 @app.route("/api/tenant/users", methods=["GET"])
@@ -2222,80 +2261,177 @@ def setup_generate_key():
 
 
 @app.route("/api/setup/test/<service>", methods=["POST"])
-def setup_test_service(service):
+@_require_auth
+def api_setup_test(service):
+    user = _check_auth()
+    tid = user["tenant_id"]
     data = request.get_json() or {}
-    try:
-        if service == "telegram-token":
-            token = data.get("token", "").strip()
-            if not token:
-                return jsonify({"ok": False, "error": "Token is required"})
-            r = requests.get(f"https://api.telegram.org/bot{token}/getMe", timeout=8)
-            result = r.json()
-            if r.ok and result.get("ok"):
-                return jsonify({"ok": True, "name": result["result"].get("username", "")})
-            return jsonify({"ok": False, "error": result.get("description", "Invalid token")})
 
-        elif service == "telegram-chat":
-            token = data.get("token", "").strip()
-            chat_id = data.get("chat_id", "").strip()
-            if not token or not chat_id:
-                return jsonify({"ok": False, "error": "Token and Chat ID are required"})
-            r = requests.post(
-                f"https://api.telegram.org/bot{token}/sendMessage",
-                json={"chat_id": chat_id, "text": "SteadyBook setup test \u2713 \u2014 your bot is connected!"},
-                timeout=8,
-            )
-            result = r.json()
-            if r.ok and result.get("ok"):
-                return jsonify({"ok": True})
-            return jsonify({"ok": False, "error": result.get("description", "Could not send message. Double-check the Chat ID.")})
-
-        elif service == "openai":
-            from openai import OpenAI as _OAI
-            key = data.get("key", "").strip()
-            if not key:
-                return jsonify({"ok": False, "error": "API key is required"})
-            _OAI(api_key=key).models.list()
+    if service == "openai":
+        key = data.get("key") or get_config(tid, "OPENAI_API_KEY")
+        if not key:
+            return jsonify({"ok": False, "error": "No API key provided"})
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=key)
+            client.models.list()
             return jsonify({"ok": True})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)})
 
-        elif service == "resend":
-            key = data.get("key", "").strip()
-            if not key:
-                return jsonify({"ok": False, "error": "API key is required"})
-            r = requests.get(
+    elif service == "telegram":
+        token = data.get("key") or get_config(tid, "TELEGRAM_BOT_TOKEN")
+        if not token:
+            return jsonify({"ok": False, "error": "No token provided"})
+        try:
+            resp = requests.get(f"https://api.telegram.org/bot{token}/getMe", timeout=5)
+            if resp.ok:
+                return jsonify({"ok": True, "bot": resp.json().get("result", {}).get("username")})
+            return jsonify({"ok": False, "error": resp.json().get("description", "Invalid token")})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)})
+
+    elif service == "twilio":
+        sid = data.get("account_sid") or get_config(tid, "TWILIO_ACCOUNT_SID")
+        auth = data.get("auth_token") or get_config(tid, "TWILIO_AUTH_TOKEN")
+        if not sid or not auth:
+            return jsonify({"ok": False, "error": "Account SID and Auth Token required"})
+        try:
+            from twilio.rest import Client as TwilioClient
+            tc = TwilioClient(sid, auth)
+            tc.api.accounts(sid).fetch()
+            return jsonify({"ok": True})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)})
+
+    elif service == "resend":
+        key = data.get("key") or get_config(tid, "RESEND_API_KEY")
+        if not key:
+            return jsonify({"ok": False, "error": "No API key provided"})
+        try:
+            resp = requests.get(
                 "https://api.resend.com/domains",
                 headers={"Authorization": f"Bearer {key}"},
-                timeout=8,
+                timeout=5,
             )
-            if r.status_code in (200, 201):
+            if resp.status_code == 200:
                 return jsonify({"ok": True})
-            return jsonify({"ok": False, "error": f"Resend returned {r.status_code} \u2014 check your API key"})
+            return jsonify({"ok": False, "error": f"HTTP {resp.status_code}"})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)})
 
-        elif service == "twilio":
-            sid = data.get("sid", "").strip()
-            token = data.get("token", "").strip()
-            if not sid or not token:
-                return jsonify({"ok": False, "error": "Account SID and Auth Token are required"})
-            r = requests.get(
-                f"https://api.twilio.com/2010-04-01/Accounts/{sid}.json",
-                auth=(sid, token),
-                timeout=8,
+    return jsonify({"ok": False, "error": f"Unknown service: {service}"}), 400
+
+
+import time as _time
+
+
+def _make_invite_token(tenant_id: int, role: str) -> str:
+    """Create a signed invite token valid for 7 days."""
+    import base64
+    expiry = int(_time.time()) + 7 * 24 * 3600
+    payload = f"{tenant_id}:{role}:{expiry}"
+    sig = hmac.new(app.secret_key.encode(), payload.encode(), "sha256").hexdigest()[:16]
+    token = base64.urlsafe_b64encode(f"{payload}:{sig}".encode()).decode()
+    return token
+
+
+def _verify_invite_token(token: str):
+    """Verify invite token. Returns (tenant_id, role) or raises ValueError."""
+    import base64
+    try:
+        decoded = base64.urlsafe_b64decode(token.encode()).decode()
+        tenant_id_str, role, expiry_str, sig = decoded.rsplit(":", 3)
+        payload = f"{tenant_id_str}:{role}:{expiry_str}"
+        expected_sig = hmac.new(app.secret_key.encode(), payload.encode(), "sha256").hexdigest()[:16]
+        if not hmac.compare_digest(sig, expected_sig):
+            raise ValueError("Invalid signature")
+        if int(expiry_str) < int(_time.time()):
+            raise ValueError("Invite link has expired")
+        return int(tenant_id_str), role
+    except ValueError:
+        raise
+    except Exception:
+        raise ValueError("Malformed invite token")
+
+
+@app.route("/api/invite/generate", methods=["POST"])
+@_require_auth
+def api_generate_invite():
+    user = _check_auth()
+    if user["role"] not in ("owner", "manager"):
+        return jsonify({"error": "Not authorized"}), 403
+    data = request.get_json() or {}
+    role = data.get("role", "advisor")
+    if role not in ("advisor", "manager"):
+        return jsonify({"error": "Invalid role"}), 400
+    token = _make_invite_token(user["tenant_id"], role)
+    base_url = request.host_url.rstrip("/")
+    return jsonify({"invite_url": f"{base_url}/invite/{token}"})
+
+
+@app.route("/invite/<token>")
+def invite_page(token):
+    try:
+        _verify_invite_token(token)
+    except ValueError as e:
+        return f"<h2>Invalid or expired invite link: {_esc(str(e))}</h2>", 400
+    return render_template("register.html", invite_token=token)
+
+
+@app.route("/api/invite/accept", methods=["POST"])
+def api_accept_invite():
+    data = request.get_json() or {}
+    token = data.get("token", "")
+    name = data.get("name", "").strip()
+    password = data.get("password", "")
+    email = data.get("email", "").strip().lower()
+
+    if not all([token, name, password, email]):
+        return jsonify({"error": "All fields required"}), 400
+    if len(password) < 8:
+        return jsonify({"error": "Password must be at least 8 characters"}), 400
+
+    try:
+        tenant_id, role = _verify_invite_token(token)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    pw_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+    try:
+        with db.get_db() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT id FROM users WHERE LOWER(email) = %s", (email,))
+            if cur.fetchone():
+                return jsonify({"error": "Email already registered"}), 409
+            cur.execute(
+                """INSERT INTO users (tenant_id, email, password_hash, name, role)
+                   VALUES (%s, %s, %s, %s, %s) RETURNING id""",
+                (tenant_id, email, pw_hash, name, role),
             )
-            if r.ok:
-                return jsonify({"ok": True})
-            return jsonify({"ok": False, "error": "Invalid credentials \u2014 check your SID and Auth Token"})
+            user_id = cur.fetchone()["id"]
 
-        else:
-            return jsonify({"ok": False, "error": "Unknown service"}), 400
-
-    except Exception as exc:
-        logger.exception("Setup test error for %s", service)
-        return jsonify({"ok": False, "error": str(exc)})
+        session["user_id"] = user_id
+        session["tenant_id"] = tenant_id
+        db._current_tenant_id.set(tenant_id)
+        return jsonify({"ok": True})
+    except Exception:
+        logger.exception("Accept invite failed")
+        return jsonify({"error": "Failed to create account"}), 500
 
 
 def run_dashboard():
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
+
+
+# Initialize database on startup (idempotent — safe to call every startup)
+try:
+    db.init_db()
+    logger.info("Database initialized on startup")
+except Exception as _startup_err:
+    logger.error("Database init failed on startup: %s", _startup_err)
 
 
 def start_dashboard_thread():
