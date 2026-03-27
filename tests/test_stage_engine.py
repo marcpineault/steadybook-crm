@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import stage_engine
 
 
+
 def test_rate_limit_skips_recent_prospect():
     """Should skip DB query entirely when called within 10 minutes."""
     stage_engine._last_evaluated.clear()
@@ -108,3 +109,45 @@ def test_validate_stage_passes_no_change():
         "reason": "", "cross_sell_opportunity": False, "cross_sell_product": None,
     }
     assert stage_engine._validate_gpt_result(payload) == payload
+
+
+def test_apply_stage_change_calls_update_and_notify():
+    """_apply_stage_change should update DB, write audit log, and notify."""
+    with patch("stage_engine.db") as mock_db, \
+         patch("stage_engine._notify_stage_change") as mock_notify, \
+         patch("stage_engine._log_audit") as mock_audit:
+        stage_engine._apply_stage_change(
+            prospect_name="Jane Doe",
+            old_stage="New Lead",
+            new_stage="Contacted",
+            reason="Returned the call",
+            tenant_id=1,
+        )
+        mock_db.update_prospect.assert_called_once_with("Jane Doe", {"stage": "Contacted"}, 1)
+        mock_notify.assert_called_once_with("Jane Doe", "New Lead", "Contacted", "Returned the call")
+        mock_audit.assert_called_once()
+
+
+def test_send_telegram_calls_run_coroutine_threadsafe():
+    """_send_telegram should use run_coroutine_threadsafe when bot_event_loop is available."""
+    mock_main = MagicMock()
+    mock_main.telegram_app = MagicMock()
+    mock_main.bot_event_loop = MagicMock()
+
+    with patch.dict(sys.modules, {"__main__": mock_main}), \
+         patch("os.environ.get", return_value="123456"), \
+         patch("asyncio.run_coroutine_threadsafe") as mock_rctf:
+        stage_engine._send_telegram("hello")
+        assert mock_rctf.called
+
+
+def test_send_telegram_no_op_when_loop_missing():
+    """_send_telegram should silently skip when bot_event_loop is None."""
+    mock_main = MagicMock()
+    mock_main.telegram_app = None
+    mock_main.bot_event_loop = None
+
+    with patch.dict(sys.modules, {"__main__": mock_main}), \
+         patch("asyncio.run_coroutine_threadsafe") as mock_rctf:
+        stage_engine._send_telegram("hello")
+        assert not mock_rctf.called

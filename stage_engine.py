@@ -6,8 +6,10 @@ Public entry point:
 
 Rate-limited to once per 10 minutes per prospect (in-memory).
 """
+import asyncio
 import logging
 import os
+import sys
 from datetime import datetime, timedelta, timezone
 
 from openai import OpenAI
@@ -162,6 +164,67 @@ def _validate_gpt_result(result: dict) -> dict | None:
         logger.warning("Stage engine: GPT returned unknown stage '%s'", result.get("new_stage"))
         return None
     return result
+
+
+def _send_telegram(text: str, reply_markup=None) -> None:
+    """Send a Telegram message to ADMIN_CHAT_ID. Best-effort, non-blocking."""
+    try:
+        main_mod = sys.modules.get("__main__")
+        telegram_app = getattr(main_mod, "telegram_app", None)
+        bot_event_loop = getattr(main_mod, "bot_event_loop", None)
+        chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
+
+        if not telegram_app or not bot_event_loop or not chat_id:
+            logger.debug("Stage engine: Telegram not available, skipping")
+            return
+
+        async def _send():
+            kwargs = {"chat_id": chat_id, "text": text}
+            if reply_markup:
+                kwargs["reply_markup"] = reply_markup
+            await telegram_app.bot.send_message(**kwargs)
+
+        asyncio.run_coroutine_threadsafe(_send(), bot_event_loop)
+    except Exception:
+        logger.warning("Stage engine: Telegram send failed")
+
+
+def _notify_stage_change(
+    prospect_name: str, old_stage: str, new_stage: str, reason: str
+) -> None:
+    text = f"Stage updated: {prospect_name}\n{old_stage} \u2192 {new_stage}\n\"{reason}\""
+    _send_telegram(text)
+
+
+def _log_audit(
+    prospect_name: str, old_stage: str, new_stage: str, reason: str, tenant_id: int
+) -> None:
+    try:
+        with db.get_db() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """INSERT INTO audit_log (action, details, tenant_id, created_at)
+                   VALUES (%s, %s, %s, NOW())""",
+                (
+                    "stage_change",
+                    f"{prospect_name}: {old_stage} \u2192 {new_stage}. Reason: {reason}",
+                    tenant_id,
+                ),
+            )
+    except Exception:
+        logger.exception("Stage engine: audit log write failed")
+
+
+def _apply_stage_change(
+    prospect_name: str,
+    old_stage: str,
+    new_stage: str,
+    reason: str,
+    tenant_id: int,
+) -> None:
+    db.update_prospect(prospect_name, {"stage": new_stage}, tenant_id)
+    _log_audit(prospect_name, old_stage, new_stage, reason, tenant_id)
+    _notify_stage_change(prospect_name, old_stage, new_stage, reason)
 
 
 async def evaluate_prospect(prospect_id: int, tenant_id: int) -> None:
