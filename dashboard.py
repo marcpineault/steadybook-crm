@@ -2426,6 +2426,14 @@ def run_dashboard():
     app.run(host="0.0.0.0", port=port)
 
 
+# Initialize database on startup (idempotent — safe to call every startup)
+try:
+    db.init_db()
+    logger.info("Database initialized on startup")
+except Exception as _startup_err:
+    logger.error("Database init failed on startup: %s", _startup_err)
+
+
 def start_dashboard_thread():
     t = threading.Thread(target=run_dashboard, daemon=True)
     t.start()
