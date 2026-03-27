@@ -6,8 +6,10 @@ the opening message is approved, until the goal is met, the
 prospect declines, or the thread goes cold.
 """
 
+import asyncio
 import logging
 import os
+import sys
 from datetime import datetime, timezone
 
 from openai import OpenAI
@@ -15,6 +17,7 @@ from openai import OpenAI
 import approval_queue
 import compliance
 import db
+import stage_engine
 import memory_engine
 import sms_conversations
 from branding import build_advisor_intro, build_anti_injection_warning, get_prompt_context
@@ -418,15 +421,20 @@ def complete_mission(
         except Exception:
             logger.exception("Memory extraction failed for agent mission %d", agent_id)
 
-    # Update prospect stage on success
-    if status == "success":
-        if prospect_id:
-            try:
-                db.update_prospect(prospect_name, {"stage": "Discovery Call Booked"})
-            except Exception:
-                logger.exception("Stage update failed after agent success")
-        else:
-            logger.warning("Cannot update stage -no prospect_id for mission %d", agent_id)
+    # Trigger smart stage evaluation after mission completes (any status)
+    if prospect_id:
+        try:
+            main_mod = sys.modules.get("__main__")
+            bot_event_loop = getattr(main_mod, "bot_event_loop", None)
+            original = db.get_prospect_by_id(prospect_id)
+            tenant_id = original.get("tenant_id", 1) if original else 1
+            if bot_event_loop:
+                asyncio.run_coroutine_threadsafe(
+                    stage_engine.evaluate_prospect(prospect_id, tenant_id),
+                    bot_event_loop,
+                )
+        except Exception:
+            logger.exception("Stage engine trigger failed after mission %d", agent_id)
 
     # Build notification
     last_msg = thread[-1]["body"][:100] if thread else ""
