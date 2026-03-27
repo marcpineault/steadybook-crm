@@ -170,3 +170,89 @@ def test_notify_cross_sell_sends_inline_keyboard():
         # reply_markup kwarg must not be None
         call_kwargs = mock_send.call_args[1]
         assert call_kwargs.get("reply_markup") is not None
+
+
+def test_evaluate_prospect_applies_stage_change():
+    """evaluate_prospect should apply stage change when GPT says to."""
+    stage_engine._last_evaluated.pop(55, None)
+
+    async def run():
+        with patch("stage_engine.db") as mock_db, \
+             patch("stage_engine._get_sms_thread", return_value=[{"direction": "inbound", "body": "Sure let's meet"}]), \
+             patch("stage_engine._get_activities", return_value=[]), \
+             patch("stage_engine._get_meetings", return_value=[]), \
+             patch("stage_engine._call_gpt", return_value={
+                 "should_change": True, "new_stage": "Discovery Call",
+                 "reason": "Prospect agreed to meet",
+                 "cross_sell_opportunity": False, "cross_sell_product": None,
+             }), \
+             patch("stage_engine._apply_stage_change") as mock_apply, \
+             patch("stage_engine._notify_cross_sell") as mock_cross:
+            mock_db.get_prospect_by_id.return_value = {
+                "id": 55, "name": "Tom Harris", "stage": "Contacted",
+                "phone": "+15550001234", "product": "Life Insurance",
+            }
+            await stage_engine.evaluate_prospect(55, tenant_id=1)
+            mock_apply.assert_called_once_with(
+                prospect_name="Tom Harris",
+                old_stage="Contacted",
+                new_stage="Discovery Call",
+                reason="Prospect agreed to meet",
+                tenant_id=1,
+            )
+            mock_cross.assert_not_called()
+
+    asyncio.run(run())
+
+
+def test_evaluate_prospect_notifies_cross_sell():
+    """evaluate_prospect should call _notify_cross_sell when GPT flags opportunity."""
+    stage_engine._last_evaluated.pop(66, None)
+
+    async def run():
+        with patch("stage_engine.db") as mock_db, \
+             patch("stage_engine._get_sms_thread", return_value=[]), \
+             patch("stage_engine._get_activities", return_value=[]), \
+             patch("stage_engine._get_meetings", return_value=[]), \
+             patch("stage_engine._call_gpt", return_value={
+                 "should_change": False, "new_stage": None, "reason": "Mentioned no disability coverage",
+                 "cross_sell_opportunity": True, "cross_sell_product": "Disability Insurance",
+             }), \
+             patch("stage_engine._apply_stage_change") as mock_apply, \
+             patch("stage_engine._notify_cross_sell") as mock_cross:
+            mock_db.get_prospect_by_id.return_value = {
+                "id": 66, "name": "Sara Lee", "stage": "Closed Won",
+                "phone": "+15559876543", "product": "Life Insurance",
+            }
+            await stage_engine.evaluate_prospect(66, tenant_id=1)
+            mock_apply.assert_not_called()
+            mock_cross.assert_called_once_with(
+                prospect_id=66,
+                prospect_name="Sara Lee",
+                current_product="Life Insurance",
+                cross_sell_product="Disability Insurance",
+                reason="Mentioned no disability coverage",
+            )
+
+    asyncio.run(run())
+
+
+def test_evaluate_prospect_skips_on_gpt_failure():
+    """evaluate_prospect should silently skip when GPT returns None."""
+    stage_engine._last_evaluated.pop(77, None)
+
+    async def run():
+        with patch("stage_engine.db") as mock_db, \
+             patch("stage_engine._get_sms_thread", return_value=[]), \
+             patch("stage_engine._get_activities", return_value=[]), \
+             patch("stage_engine._get_meetings", return_value=[]), \
+             patch("stage_engine._call_gpt", return_value=None), \
+             patch("stage_engine._apply_stage_change") as mock_apply:
+            mock_db.get_prospect_by_id.return_value = {
+                "id": 77, "name": "Ed Flynn", "stage": "New Lead",
+                "phone": "+15551112222", "product": "Life",
+            }
+            await stage_engine.evaluate_prospect(77, tenant_id=1)
+            mock_apply.assert_not_called()
+
+    asyncio.run(run())

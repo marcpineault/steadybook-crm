@@ -271,6 +271,41 @@ async def evaluate_prospect(prospect_id: int, tenant_id: int) -> None:
             logger.warning("Stage engine: prospect %d not found", prospect_id)
             return
 
-        # placeholder — expanded in Task 5
+        name = prospect["name"]
+        stage = prospect.get("stage", "New Lead")
+        phone = prospect.get("phone", "")
+        product = prospect.get("product", "")
+
+        sms_thread = _get_sms_thread(phone)
+        activities = _get_activities(name, tenant_id)
+        meetings = _get_meetings(name, tenant_id)
+
+        result = _call_gpt(stage, product, sms_thread, activities, meetings)
+        if result is None:
+            logger.warning("Stage engine: GPT returned no result for prospect %d", prospect_id)
+            return
+
+        result = _validate_gpt_result(result)
+        if result is None:
+            return
+
+        if result["should_change"] and result["new_stage"]:
+            _apply_stage_change(
+                prospect_name=name,
+                old_stage=stage,
+                new_stage=result["new_stage"],
+                reason=result["reason"],
+                tenant_id=tenant_id,
+            )
+
+        if result.get("cross_sell_opportunity") and result.get("cross_sell_product"):
+            _notify_cross_sell(
+                prospect_id=prospect_id,
+                prospect_name=name,
+                current_product=product,
+                cross_sell_product=result["cross_sell_product"],
+                reason=result["reason"],
+            )
+
     except Exception:
         logger.exception("Stage engine: unhandled error for prospect %d", prospect_id)
