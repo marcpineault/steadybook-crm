@@ -1702,6 +1702,21 @@ async def _llm_respond(update, messages, tools=None):
                 except Exception:
                     logger.exception("Follow-up draft generation failed (non-blocking)")
 
+            # Trigger stage evaluation after activity logged
+            if tool_name == "add_activity" and "prospect" in tool_input:
+                try:
+                    import stage_engine as _stage_engine
+                    _prospect_obj = db.get_prospect_by_name(tool_input["prospect"])
+                    if _prospect_obj and _prospect_obj.get("id"):
+                        asyncio.ensure_future(
+                            _stage_engine.evaluate_prospect(
+                                _prospect_obj["id"],
+                                _prospect_obj.get("tenant_id", 1),
+                            )
+                        )
+                except Exception:
+                    logger.exception("Stage engine trigger failed after activity (non-blocking)")
+
             # After successful add_prospect in _llm_respond tool dispatch
             if tool_name == "add_prospect" and "added" in result.lower():
                 stage = tool_input.get("stage", "")
