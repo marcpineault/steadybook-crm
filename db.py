@@ -219,7 +219,8 @@ def _create_core_tables():
                 action      TEXT DEFAULT '',
                 outcome     TEXT DEFAULT '',
                 next_step   TEXT DEFAULT '',
-                notes       TEXT DEFAULT ''
+                notes       TEXT DEFAULT '',
+                created_at  TIMESTAMPTZ DEFAULT NOW()
             )
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_activities_prospect ON activities(prospect)")
@@ -306,6 +307,19 @@ def _create_core_tables():
                 tenant_id   INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id),
                 name        TEXT NOT NULL,
                 status      TEXT DEFAULT 'draft',
+                created_at  TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS campaign_messages (
+                id          SERIAL PRIMARY KEY,
+                tenant_id   INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id),
+                campaign_id INTEGER REFERENCES campaigns(id) ON DELETE CASCADE,
+                prospect    TEXT DEFAULT '',
+                channel     TEXT DEFAULT '',
+                message     TEXT DEFAULT '',
+                status      TEXT DEFAULT 'pending',
+                sent_at     TIMESTAMPTZ,
                 created_at  TIMESTAMPTZ DEFAULT NOW()
             )
         """)
@@ -1249,7 +1263,7 @@ def apply_tag(prospect_id: int, tag: str, applied_by: str = "system") -> bool:
                 (prospect_id, tag, applied_by)
             )
             return True
-        except sqlite3.IntegrityError:
+        except psycopg2.Error:
             return False
 
 def remove_tag(prospect_id: int, tag: str) -> None:
