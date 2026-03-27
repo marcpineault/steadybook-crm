@@ -18,6 +18,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from voice_handler import handle_voice_message
 from photo_handler import handle_photo_message, handle_card_confirmation
+import stage_engine as _stage_engine
 
 load_dotenv()
 
@@ -1705,7 +1706,6 @@ async def _llm_respond(update, messages, tools=None):
             # Trigger stage evaluation after activity logged
             if tool_name == "add_activity" and "prospect" in tool_input:
                 try:
-                    import stage_engine as _stage_engine
                     _prospect_obj = db.get_prospect_by_name(tool_input["prospect"])
                     if _prospect_obj and _prospect_obj.get("id"):
                         asyncio.ensure_future(

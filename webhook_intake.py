@@ -5,6 +5,7 @@ Handles:
   - /api/email-inbound -CloudMailin inbound email forwarding (validated by CLOUDMAILIN_SECRET)
 """
 
+import asyncio
 import hmac
 import html as html_module
 import logging
@@ -15,6 +16,7 @@ import sys
 import db as _db
 import sms_agent as _sms_agent
 import sms_conversations
+import stage_engine as _stage_engine
 
 from flask import Blueprint, jsonify, request
 from twilio.request_validator import RequestValidator
@@ -332,8 +334,6 @@ def sms_reply():
         # Trigger stage evaluation after inbound SMS
         if prospect_id:
             try:
-                import asyncio
-                import stage_engine as _stage_engine
                 main_mod = sys.modules.get("__main__")
                 bot_event_loop = getattr(main_mod, "bot_event_loop", None)
                 if bot_event_loop:
