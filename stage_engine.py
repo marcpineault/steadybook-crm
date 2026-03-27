@@ -43,10 +43,11 @@ def _get_sms_thread(phone: str, limit: int = 10) -> list[dict]:
     with db.get_db() as conn:
         cur = conn.cursor()
         cur.execute(
-            """SELECT direction, body, created_at
-               FROM sms_messages
-               WHERE phone = %s
-               ORDER BY id DESC LIMIT %s""",
+            """SELECT m.direction, m.body, m.sent_at
+               FROM sms_messages m
+               JOIN sms_conversations c ON c.id = m.conversation_id
+               WHERE c.phone = %s
+               ORDER BY m.id DESC LIMIT %s""",
             (phone, limit),
         )
         rows = cur.fetchall()
@@ -204,8 +205,8 @@ def _log_audit(
         with db.get_db() as conn:
             cur = conn.cursor()
             cur.execute(
-                """INSERT INTO audit_log (action, details, tenant_id, created_at)
-                   VALUES (%s, %s, %s, NOW())""",
+                """INSERT INTO audit_log (action, details, tenant_id)
+                   VALUES (%s, %s, %s)""",
                 (
                     "stage_change",
                     f"{prospect_name}: {old_stage} \u2192 {new_stage}. Reason: {reason}",
