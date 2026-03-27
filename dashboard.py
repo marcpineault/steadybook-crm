@@ -10,7 +10,9 @@ from functools import wraps
 
 import json
 
+import bcrypt
 import db
+from config_store import get_config, set_config, get_all_config
 from flask import Flask, Response, request, jsonify, render_template, redirect, make_response, send_file, abort
 
 logger = logging.getLogger(__name__)
@@ -42,11 +44,6 @@ def _json_script(value):
 
 
 DASHBOARD_API_KEY = os.environ.get("DASHBOARD_API_KEY", "")
-if not DASHBOARD_API_KEY:
-    raise RuntimeError(
-        "DASHBOARD_API_KEY must be set. Generate one with: "
-        "python -c 'import secrets; print(secrets.token_urlsafe(32))'"
-    )
 
 # CSRF tokens with expiry timestamps for proper lifecycle management.
 # Each token expires after _CSRF_TOKEN_TTL seconds.
@@ -87,29 +84,29 @@ def _validate_csrf_token(token: str) -> bool:
 
 
 def _require_auth(f):
-    """Decorator: accepts API key, CSRF token, or login cookie."""
     @wraps(f)
     def decorated(*args, **kwargs):
-        # Check API key first (for external/programmatic access)
-        api_key = request.headers.get("X-API-Key", "")
-        if DASHBOARD_API_KEY and api_key and hmac.compare_digest(api_key, DASHBOARD_API_KEY):
-            return f(*args, **kwargs)
-        # Check CSRF token (for dashboard UI) — validates existence and expiry
-        csrf_token = request.headers.get("X-CSRF-Token", "")
-        if csrf_token and _validate_csrf_token(csrf_token):
-            return f(*args, **kwargs)
-        # Check login cookie (set by /login form — hash of API key)
-        dash_cookie = request.cookies.get("dash_auth", "")
-        if dash_cookie and DASHBOARD_API_KEY:
-            import hashlib
-            expected = hashlib.sha256(DASHBOARD_API_KEY.encode()).hexdigest()
-            if hmac.compare_digest(dash_cookie, expected):
-                return f(*args, **kwargs)
-        return jsonify({"error": "Unauthorized"}), 401
+        # Check if any tenants exist — if not, redirect to register
+        try:
+            with db.get_db() as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT id FROM tenants LIMIT 1")
+                if not cur.fetchone():
+                    return redirect("/register")
+        except Exception:
+            pass
+
+        user = _check_auth()
+        if not user:
+            if request.path.startswith("/api/"):
+                return jsonify({"error": "unauthorized"}), 401
+            return redirect("/login")
+        return f(*args, **kwargs)
     return decorated
 
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
+app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_urlsafe(32)
 app.config["MAX_CONTENT_LENGTH"] = 1 * 1024 * 1024  # 1 MB max request size
 
 try:
@@ -808,19 +805,31 @@ def _calc_deal_velocity(prospects, activities):
 # ── Auth & Context Helpers ──
 
 def _check_auth():
-    """Check if user is authenticated. Returns True if authed."""
-    import hashlib
-    dash_cookie = request.cookies.get("dash_auth", "")
-    if dash_cookie and DASHBOARD_API_KEY:
-        expected = hashlib.sha256(DASHBOARD_API_KEY.encode()).hexdigest()
-        if hmac.compare_digest(dash_cookie, expected):
-            return True
-    api_key = request.headers.get("X-API-Key", "") or request.args.get("key", "")
-    if DASHBOARD_API_KEY and api_key and hmac.compare_digest(api_key, DASHBOARD_API_KEY):
-        return True
-    if not DASHBOARD_API_KEY:
-        return True
-    return False
+    """Return current user dict from session, or None."""
+    from flask import session
+    user_id = session.get("user_id")
+    if not user_id:
+        return None
+    try:
+        with db.get_db() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT id, tenant_id, email, name, role FROM users WHERE id = %s AND status = 'active'",
+                (user_id,),
+            )
+            row = cur.fetchone()
+        if row:
+            db._current_tenant_id.set(row["tenant_id"])
+            return dict(row)
+    except Exception:
+        logger.exception("Auth check failed")
+    return None
+
+
+def _tenant_id() -> int:
+    """Return current request's tenant_id from session, defaulting to 1."""
+    from flask import session
+    return session.get("tenant_id", 1)
 
 
 def _get_current_user_name():
@@ -1679,106 +1688,115 @@ def register_page():
 
 
 @app.route("/api/auth/register", methods=["POST"])
-def api_register():
-    """Register a new tenant + owner account."""
-    data = request.json
-    if not data:
-        return jsonify({"error": "No data"}), 400
+def api_auth_register():
+    import re as _re
+    data = request.get_json() or {}
+    firm_name = data.get("firm_name", "").strip()
+    name = data.get("name", "").strip()
+    email = data.get("email", "").strip().lower()
+    password = data.get("password", "")
 
-    required = ["name", "slug", "email", "password"]
-    missing = [f for f in required if not data.get(f)]
-    if missing:
-        return jsonify({"error": f"Missing fields: {', '.join(missing)}"}), 400
-
-    if len(data["password"]) < 8:
+    if not all([firm_name, name, email, password]):
+        return jsonify({"error": "All fields required"}), 400
+    if len(password) < 8:
         return jsonify({"error": "Password must be at least 8 characters"}), 400
 
-    try:
-        import tenants
-        tenant = tenants.create_tenant(
-            name=data["name"],
-            slug=data["slug"],
-            owner_email=data["email"],
-            owner_password=data["password"],
-            owner_name=data.get("owner_name", ""),
-            company=data.get("company", ""),
-            timezone=data.get("timezone", "America/Toronto"),
-            products=data.get("products"),
-        )
-        # Install default sequence templates
-        import sequences
-        sequences.install_default_templates(tenant["id"])
+    pw_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    slug = _re.sub(r"[^a-z0-9]+", "-", firm_name.lower()).strip("-")
 
-        return jsonify({"ok": True, "tenant": tenant})
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
+    try:
+        with db.get_db() as conn:
+            cur = conn.cursor()
+            # Check email not already registered
+            cur.execute("SELECT id FROM users WHERE LOWER(email) = %s", (email,))
+            if cur.fetchone():
+                return jsonify({"error": "Email already registered"}), 409
+
+            # Create tenant
+            cur.execute(
+                """INSERT INTO tenants (name, slug, status, plan)
+                   VALUES (%s, %s, 'active', 'starter') RETURNING id""",
+                (firm_name, slug),
+            )
+            tenant_id = cur.fetchone()["id"]
+
+            # Create owner user
+            cur.execute(
+                """INSERT INTO users (tenant_id, email, password_hash, name, role)
+                   VALUES (%s, %s, %s, %s, 'owner') RETURNING id""",
+                (tenant_id, email, pw_hash, name),
+            )
+            user_id = cur.fetchone()["id"]
+
+        from flask import session
+        session["user_id"] = user_id
+        session["tenant_id"] = tenant_id
+        db._current_tenant_id.set(tenant_id)
+
+        return jsonify({"ok": True, "tenant_id": tenant_id, "user_id": user_id})
+    except Exception:
+        logger.exception("Registration failed")
+        return jsonify({"error": "Registration failed"}), 500
 
 
 @app.route("/api/auth/login", methods=["POST"])
-def api_tenant_login():
-    """Authenticate user and return session token."""
-    data = request.json
-    if not data or not data.get("email") or not data.get("password"):
+def api_auth_login():
+    data = request.get_json() or {}
+    email = data.get("email", "").strip().lower()
+    password = data.get("password", "")
+
+    if not email or not password:
         return jsonify({"error": "Email and password required"}), 400
 
-    import tenants
-    user = tenants.authenticate_user(data["email"], data["password"])
-    if not user:
+    try:
+        with db.get_db() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT id, tenant_id, password_hash, name, role FROM users WHERE LOWER(email) = %s AND status = 'active'",
+                (email,),
+            )
+            user = cur.fetchone()
+    except Exception:
+        logger.exception("Login DB error")
+        return jsonify({"error": "Login failed"}), 500
+
+    if not user or not bcrypt.checkpw(password.encode(), user["password_hash"].encode()):
         return jsonify({"error": "Invalid email or password"}), 401
 
-    token = tenants.create_session(user["tenant_id"], user["id"])
-    resp = make_response(jsonify({
-        "ok": True,
-        "user": {
-            "id": user["id"],
-            "email": user["email"],
-            "name": user["name"],
-            "role": user["role"],
-            "tenant_id": user["tenant_id"],
-            "tenant_name": user["tenant_name"],
-        },
-    }))
-    resp.set_cookie("dash_session", token, httponly=True, samesite="Lax",
-                     max_age=86400, secure=request.is_secure)
-    return resp
+    from flask import session
+    session["user_id"] = user["id"]
+    session["tenant_id"] = user["tenant_id"]
+    db._current_tenant_id.set(user["tenant_id"])
+
+    try:
+        with db.get_db() as conn:
+            cur = conn.cursor()
+            cur.execute("UPDATE users SET last_login = NOW() WHERE id = %s", (user["id"],))
+    except Exception:
+        pass
+
+    return jsonify({"ok": True, "name": user["name"], "role": user["role"]})
 
 
 @app.route("/api/auth/logout", methods=["POST"])
-def api_tenant_logout():
-    """Destroy session."""
-    import tenants
-    token = request.cookies.get("dash_session", "")
-    if token:
-        tenants.destroy_session(token)
-    resp = make_response(jsonify({"ok": True}))
-    resp.delete_cookie("dash_session")
-    return resp
+def api_auth_logout():
+    from flask import session
+    session.clear()
+    return jsonify({"ok": True})
 
 
 @app.route("/api/auth/me")
 def api_auth_me():
-    """Get current user info."""
-    import tenants
-    token = request.cookies.get("dash_session", "")
-    if not token:
-        return jsonify({"error": "Not authenticated"}), 401
-
-    session = tenants.validate_session(token)
-    if not session:
-        return jsonify({"error": "Session expired"}), 401
-
-    with db.get_db() as conn:
-        user = conn.execute(
-            """SELECT u.id, u.email, u.name, u.role, u.tenant_id,
-                      t.name as tenant_name, t.slug as tenant_slug, t.plan
-               FROM users u JOIN tenants t ON u.tenant_id = t.id
-               WHERE u.id = ?""",
-            (session["user_id"],),
-        ).fetchone()
-
+    user = _check_auth()
     if not user:
-        return jsonify({"error": "User not found"}), 404
-    return jsonify({"ok": True, "user": dict(user)})
+        return jsonify({"error": "Not authenticated"}), 401
+    return jsonify({
+        "id": user["id"],
+        "email": user["email"],
+        "name": user["name"],
+        "role": user["role"],
+        "tenant_id": user["tenant_id"],
+    })
 
 
 # ── Sequence API Routes ──
