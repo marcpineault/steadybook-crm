@@ -13,7 +13,7 @@ import json
 import bcrypt
 import db
 from config_store import get_config, set_config, get_all_config
-from flask import Flask, Response, request, jsonify, render_template, redirect, make_response, send_file, abort
+from flask import Flask, Response, request, jsonify, render_template, redirect, make_response, send_file, abort, session
 
 logger = logging.getLogger(__name__)
 
@@ -83,19 +83,27 @@ def _validate_csrf_token(token: str) -> bool:
     return False
 
 
-def _require_auth(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        # Check if any tenants exist — if not, redirect to register
+_tenants_exist: bool | None = None  # None = not yet checked
+
+def _check_tenants_exist() -> bool:
+    """Returns True if at least one tenant exists. Cached for process lifetime."""
+    global _tenants_exist
+    if _tenants_exist is None:
         try:
             with db.get_db() as conn:
                 cur = conn.cursor()
                 cur.execute("SELECT id FROM tenants LIMIT 1")
-                if not cur.fetchone():
-                    return redirect("/register")
+                _tenants_exist = cur.fetchone() is not None
         except Exception:
-            pass
+            return True  # If DB is unavailable, don't redirect to register
+    return _tenants_exist
 
+
+def _require_auth(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not _check_tenants_exist():
+            return redirect("/register")
         user = _check_auth()
         if not user:
             if request.path.startswith("/api/"):
@@ -106,7 +114,14 @@ def _require_auth(f):
 
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
-app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_urlsafe(32)
+_secret_key = os.environ.get("SECRET_KEY")
+if not _secret_key:
+    _secret_key = secrets.token_urlsafe(32)
+    logger.warning(
+        "SECRET_KEY not set — using ephemeral key. All sessions will be lost on restart. "
+        "Set SECRET_KEY env var in Railway to persist sessions."
+    )
+app.secret_key = _secret_key
 app.config["MAX_CONTENT_LENGTH"] = 1 * 1024 * 1024  # 1 MB max request size
 
 try:
@@ -806,7 +821,6 @@ def _calc_deal_velocity(prospects, activities):
 
 def _check_auth():
     """Return current user dict from session, or None."""
-    from flask import session
     user_id = session.get("user_id")
     if not user_id:
         return None
@@ -828,7 +842,6 @@ def _check_auth():
 
 def _tenant_id() -> int:
     """Return current request's tenant_id from session, defaulting to 1."""
-    from flask import session
     return session.get("tenant_id", 1)
 
 
@@ -1689,7 +1702,6 @@ def register_page():
 
 @app.route("/api/auth/register", methods=["POST"])
 def api_auth_register():
-    import re as _re
     data = request.get_json() or {}
     firm_name = data.get("firm_name", "").strip()
     name = data.get("name", "").strip()
@@ -1728,7 +1740,8 @@ def api_auth_register():
             )
             user_id = cur.fetchone()["id"]
 
-        from flask import session
+        global _tenants_exist
+        _tenants_exist = True
         session["user_id"] = user_id
         session["tenant_id"] = tenant_id
         db._current_tenant_id.set(tenant_id)
@@ -1763,7 +1776,6 @@ def api_auth_login():
     if not user or not bcrypt.checkpw(password.encode(), user["password_hash"].encode()):
         return jsonify({"error": "Invalid email or password"}), 401
 
-    from flask import session
     session["user_id"] = user["id"]
     session["tenant_id"] = user["tenant_id"]
     db._current_tenant_id.set(user["tenant_id"])
@@ -1780,7 +1792,6 @@ def api_auth_login():
 
 @app.route("/api/auth/logout", methods=["POST"])
 def api_auth_logout():
-    from flask import session
     session.clear()
     return jsonify({"ok": True})
 

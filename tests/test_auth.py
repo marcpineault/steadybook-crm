@@ -85,3 +85,16 @@ def test_me_returns_user_when_logged_in(client):
     data = resp.get_json()
     assert data["email"] == email
     assert data["role"] == "owner"
+
+
+def test_no_tenants_redirects_to_register(client):
+    """First-boot: if no tenants exist, any request should redirect to /register."""
+    import db
+    with db.get_db() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM users")
+        cur.execute("DELETE FROM tenants")
+    resp = client.get("/")
+    assert resp.status_code in (302, 303)
+    location = resp.headers.get("Location", "")
+    assert "/register" in location
