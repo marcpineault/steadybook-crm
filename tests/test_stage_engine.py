@@ -8,6 +8,7 @@ import stage_engine
 
 def test_rate_limit_skips_recent_prospect():
     """Should skip DB query entirely when called within 10 minutes."""
+    stage_engine._last_evaluated.clear()
     stage_engine._last_evaluated[42] = datetime.now(timezone.utc)
     queried = []
 
@@ -23,6 +24,7 @@ def test_rate_limit_skips_recent_prospect():
 
 def test_rate_limit_allows_after_10_minutes():
     """Should proceed when last evaluation was >10 minutes ago."""
+    stage_engine._last_evaluated.clear()
     stage_engine._last_evaluated[99] = datetime.now(timezone.utc) - timedelta(minutes=11)
     queried = []
 
@@ -44,3 +46,6 @@ def test_rate_limit_allows_after_10_minutes():
 
     asyncio.run(run())
     assert queried[0] is True
+    updated = stage_engine._last_evaluated.get(99)
+    assert updated is not None
+    assert datetime.now(timezone.utc) - updated < timedelta(seconds=5), "Timestamp should be updated after evaluation"

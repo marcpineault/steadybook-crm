@@ -6,10 +6,8 @@ Public entry point:
 
 Rate-limited to once per 10 minutes per prospect (in-memory).
 """
-import asyncio
 import logging
 import os
-import sys
 from datetime import datetime, timedelta, timezone
 
 from openai import OpenAI
@@ -99,6 +97,8 @@ async def evaluate_prospect(prospect_id: int, tenant_id: int) -> None:
         if _is_rate_limited(prospect_id):
             logger.debug("Stage engine: prospect %d rate-limited, skipping", prospect_id)
             return
+
+        _last_evaluated[prospect_id] = datetime.now(timezone.utc)
 
         prospect = db.get_prospect_by_id(prospect_id)
         if not prospect:
