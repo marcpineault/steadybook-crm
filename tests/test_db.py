@@ -2,13 +2,11 @@
 import os
 import pytest
 
-# Skip all tests if no DATABASE_URL
-pytestmark = pytest.mark.skipif(
+
+@pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
     reason="DATABASE_URL not set — skipping Postgres integration tests"
 )
-
-
 def test_get_db_connects():
     import db
     with db.get_db() as conn:
@@ -18,6 +16,10 @@ def test_get_db_connects():
     assert row["val"] == 1
 
 
+@pytest.mark.skipif(
+    not os.environ.get("DATABASE_URL"),
+    reason="DATABASE_URL not set — skipping Postgres integration tests"
+)
 def test_init_db_creates_tables():
     import db
     db.init_db()
