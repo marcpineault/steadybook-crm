@@ -121,613 +121,479 @@ def get_prospect_by_phone(phone: str, tenant_id: int = 1):
 # ── Schema ──
 
 def init_db():
-    """Create all tables if they don't exist."""
+    """Create all tables and run migrations. Safe to call repeatedly."""
+    _create_core_tables()
+    _create_sequence_tables()
+    _create_sms_tables()
+    _create_tracking_tables()
+    _ensure_default_tenant()
+    logger.info("Database initialization complete")
+
+
+def _create_core_tables():
     with get_db() as conn:
-        conn.executescript("""
-            CREATE TABLE IF NOT EXISTS prospects (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                phone TEXT DEFAULT '',
-                email TEXT DEFAULT '',
-                source TEXT DEFAULT '',
-                priority TEXT DEFAULT '',
-                stage TEXT DEFAULT 'New Lead',
-                product TEXT DEFAULT '',
-                aum REAL,
-                revenue REAL,
-                first_contact TEXT,
-                next_followup TEXT,
-                notes TEXT DEFAULT '',
-                send_channel TEXT DEFAULT 'outlook',
-                created_at TEXT DEFAULT (datetime('now')),
-                updated_at TEXT DEFAULT (datetime('now'))
-            );
-
-            CREATE TABLE IF NOT EXISTS activities (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                date TEXT,
-                prospect TEXT DEFAULT '',
-                action TEXT DEFAULT '',
-                outcome TEXT DEFAULT '',
-                next_step TEXT DEFAULT '',
-                notes TEXT DEFAULT ''
-            );
-
-            CREATE TABLE IF NOT EXISTS meetings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                date TEXT,
-                time TEXT DEFAULT '',
-                prospect TEXT DEFAULT '',
-                type TEXT DEFAULT '',
-                prep_notes TEXT DEFAULT '',
-                status TEXT DEFAULT 'Scheduled'
-            );
-
-            CREATE TABLE IF NOT EXISTS insurance_book (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                phone TEXT DEFAULT '',
-                address TEXT DEFAULT '',
-                policy_start TEXT DEFAULT '',
-                status TEXT DEFAULT 'Not Called',
-                last_called TEXT,
-                notes TEXT DEFAULT '',
-                retry_date TEXT
-            );
-
-            CREATE TABLE IF NOT EXISTS win_loss_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                date TEXT,
-                prospect TEXT DEFAULT '',
-                outcome TEXT DEFAULT '',
-                reason TEXT DEFAULT '',
-                product TEXT DEFAULT ''
-            );
-
-            CREATE TABLE IF NOT EXISTS interactions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                date TEXT DEFAULT (datetime('now')),
-                prospect TEXT DEFAULT '',
-                source TEXT DEFAULT '',
-                raw_text TEXT DEFAULT '',
-                summary TEXT DEFAULT '',
-                action_items TEXT DEFAULT '',
-                created_at TEXT DEFAULT (datetime('now')),
-                tenant_id INTEGER DEFAULT 1
-            );
-
-            CREATE TABLE IF NOT EXISTS tasks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT NOT NULL,
-                prospect TEXT DEFAULT '',
-                due_date TEXT,
-                remind_at TEXT,
-                assigned_to TEXT DEFAULT '',
-                created_by TEXT DEFAULT '',
-                status TEXT DEFAULT 'pending',
-                notes TEXT DEFAULT '',
-                created_at TEXT DEFAULT (datetime('now')),
-                completed_at TEXT
-            );
-
-            CREATE TABLE IF NOT EXISTS client_memory (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                prospect_id INTEGER REFERENCES prospects(id),
-                category    TEXT NOT NULL,
-                fact        TEXT NOT NULL,
-                source      TEXT,
-                needs_review INTEGER DEFAULT 0,
-                extracted_at TEXT DEFAULT (datetime('now'))
-            );
-
-            CREATE TABLE IF NOT EXISTS approval_queue (
-                id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-                type                TEXT NOT NULL,
-                prospect_id         INTEGER REFERENCES prospects(id),
-                channel             TEXT NOT NULL,
-                content             TEXT NOT NULL,
-                context             TEXT,
-                status              TEXT DEFAULT 'pending',
-                created_at          TEXT DEFAULT (datetime('now')),
-                acted_on_at         TEXT,
-                telegram_message_id TEXT
-            );
-
-            CREATE TABLE IF NOT EXISTS audit_log (
-                id               INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp        TEXT DEFAULT (datetime('now')),
-                action_type      TEXT NOT NULL,
-                target           TEXT,
-                content          TEXT,
-                compliance_check TEXT,
-                approved_by      TEXT,
-                outcome          TEXT
-            );
-
-            CREATE TABLE IF NOT EXISTS brand_voice (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                platform TEXT NOT NULL DEFAULT 'linkedin',
-                content TEXT NOT NULL,
-                post_type TEXT NOT NULL DEFAULT 'general',
-                created_at TEXT DEFAULT (datetime('now'))
-            );
-
-            CREATE TABLE IF NOT EXISTS market_calendar (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                event_type TEXT NOT NULL,
-                title TEXT NOT NULL,
-                date TEXT NOT NULL,
-                description TEXT DEFAULT '',
-                relevance_products TEXT DEFAULT '',
-                recurring INTEGER DEFAULT 0
-            );
-
-        CREATE TABLE IF NOT EXISTS trust_config (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            trust_level INTEGER NOT NULL DEFAULT 1,
-            changed_at TEXT DEFAULT (datetime('now')),
-            changed_by TEXT DEFAULT 'system'
-        );
-
-        CREATE TABLE IF NOT EXISTS campaigns (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            description TEXT DEFAULT '',
-            segment_query TEXT DEFAULT '',
-            status TEXT DEFAULT 'draft',
-            channel TEXT DEFAULT 'email_draft',
-            wave_count INTEGER DEFAULT 1,
-            created_at TEXT DEFAULT (datetime('now'))
-        );
-
-        CREATE TABLE IF NOT EXISTS campaign_messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            campaign_id INTEGER NOT NULL,
-            prospect_name TEXT NOT NULL,
-            content TEXT NOT NULL,
-            status TEXT DEFAULT 'pending',
-            queue_id INTEGER,
-            wave INTEGER DEFAULT 1,
-            created_at TEXT DEFAULT (datetime('now')),
-            FOREIGN KEY (campaign_id) REFERENCES campaigns(id)
-        );
-
-        CREATE TABLE IF NOT EXISTS nurture_sequences (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            prospect_id INTEGER,
-            prospect_name TEXT NOT NULL,
-            status TEXT DEFAULT 'active',
-            current_touch INTEGER DEFAULT 0,
-            total_touches INTEGER DEFAULT 4,
-            next_touch_date TEXT,
-            created_at TEXT DEFAULT (datetime('now')),
-            FOREIGN KEY (prospect_id) REFERENCES prospects(id)
-        );
-
-        CREATE TABLE IF NOT EXISTS outcomes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            action_id INTEGER,
-            action_type TEXT NOT NULL,
-            target TEXT,
-            sent_at TEXT,
-            response_received INTEGER DEFAULT 0,
-            response_at TEXT,
-            response_type TEXT,
-            converted INTEGER DEFAULT 0,
-            notes TEXT DEFAULT '',
-            resend_email_id TEXT,
-            created_at TEXT DEFAULT (datetime('now')),
-            FOREIGN KEY (action_id) REFERENCES audit_log(id)
-        );
-        """)
-
-        # Performance indexes
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_prospects_email ON prospects(email)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_outcomes_resend_id ON outcomes(resend_email_id)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_outcomes_target ON outcomes(target, sent_at)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status_due ON tasks(status, due_date)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_remind ON tasks(remind_at)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_approval_queue_status ON approval_queue(status)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_nurture_status ON nurture_sequences(status, next_touch_date)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_activities_prospect ON activities(prospect)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_interactions_prospect ON interactions(prospect)")
-
-    # Seed default trust level (idempotent — skips if any row exists)
-    with get_db() as conn:
-        conn.execute(
-            "INSERT OR IGNORE INTO trust_config (id, trust_level, changed_by) VALUES (1, 1, 'system')"
-        )
-
-    _migrate_phase6()
-    _migrate_booking_nurture()
-    _migrate_sms_conversations()
-    _migrate_sms_agent()
-    _migrate_multi_tenant()
-    _migrate_sequences()
-    cleanup_old_data()
-    logger.info(f"Database initialized at {DB_PATH}")
-
-
-def cleanup_old_data():
-    """Remove interactions older than 90 days and audit log older than 7 years."""
-    cutoff_interactions = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
-    cutoff_audit = (datetime.now() - timedelta(days=AUDIT_LOG_RETENTION_DAYS)).strftime("%Y-%m-%d")
-    with get_db() as conn:
-        deleted_interactions = conn.execute(
-            "DELETE FROM interactions WHERE date < ? AND date != ''", (cutoff_interactions,)
-        ).rowcount
-        deleted_audit = conn.execute(
-            "DELETE FROM audit_log WHERE timestamp < ?", (cutoff_audit,)
-        ).rowcount
-        if deleted_interactions or deleted_audit:
-            logger.info(
-                "Cleanup: removed %d old interactions, %d old audit entries",
-                deleted_interactions, deleted_audit,
-            )
-            conn.execute("VACUUM")
-
-
-def _migrate_booking_nurture():
-    """Create booking_nurture_sequences table and indexes (safe to run repeatedly)."""
-    with get_db() as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS booking_nurture_sequences (
-                id               INTEGER PRIMARY KEY AUTOINCREMENT,
-                prospect_id      INTEGER REFERENCES prospects(id),
-                prospect_name    TEXT NOT NULL,
-                phone            TEXT NOT NULL,
-                touch_number     INTEGER NOT NULL,
-                scheduled_for    TEXT NOT NULL,
-                meeting_datetime TEXT NOT NULL,
-                meeting_date     TEXT NOT NULL,
-                meeting_time     TEXT NOT NULL,
-                meeting_type     TEXT DEFAULT '',
-                product          TEXT DEFAULT '',
-                status           TEXT DEFAULT 'queued',
-                queue_id         INTEGER,
-                created_at       TEXT DEFAULT (datetime('now'))
-            )
-        """)
-        conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_booking_nurture_status_sched
-                ON booking_nurture_sequences(status, scheduled_for)
-        """)
-        conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_booking_nurture_prospect
-                ON booking_nurture_sequences(prospect_id, status)
-        """)
-
-
-def _migrate_sms_conversations():
-    """Create sms_conversations table and indexes (safe to run repeatedly)."""
-    with get_db() as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS sms_conversations (
-                id            INTEGER PRIMARY KEY AUTOINCREMENT,
-                prospect_id   INTEGER,
-                prospect_name TEXT NOT NULL DEFAULT '',
-                phone         TEXT NOT NULL,
-                direction     TEXT NOT NULL,
-                body          TEXT NOT NULL,
-                twilio_sid    TEXT DEFAULT '',
-                created_at    TEXT DEFAULT (datetime('now'))
-            )
-        """)
-        conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_sms_conv_phone
-                ON sms_conversations(phone, created_at)
-        """)
-        conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_sms_conv_prospect
-                ON sms_conversations(prospect_id, created_at)
-        """)
-
-
-AUDIT_LOG_RETENTION_DAYS = 2555  # 7 years — FSRA compliance
-
-
-def _migrate_sms_agent():
-    """Add sms_opted_out column, sms_agents table, and partial unique index (idempotent)."""
-    with get_db() as conn:
-        # sms_opted_out column
-        cols = [row[1] for row in conn.execute("PRAGMA table_info(prospects)").fetchall()]
-        if "sms_opted_out" not in cols:
-            conn.execute("ALTER TABLE prospects ADD COLUMN sms_opted_out INTEGER DEFAULT 0")
-            logger.info("Migration: added sms_opted_out column")
-        # Always backfill from notes (idempotent — only updates rows not yet flagged)
-        conn.execute(
-            "UPDATE prospects SET sms_opted_out = 1 WHERE notes LIKE '%[SMS_OPTED_OUT]%' AND sms_opted_out = 0"
-        )
-        logger.info("Migration: backfilled sms_opted_out from notes")
-
-        # sms_agents table
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS sms_agents (
-                id            INTEGER PRIMARY KEY AUTOINCREMENT,
-                phone         TEXT NOT NULL,
-                prospect_id   INTEGER,
-                prospect_name TEXT NOT NULL,
-                objective     TEXT NOT NULL,
-                status        TEXT DEFAULT 'pending_approval',
-                attempts      INTEGER DEFAULT 0,
-                created_at    TEXT DEFAULT (datetime('now')),
-                updated_at    TEXT DEFAULT (datetime('now')),
-                completed_at  TEXT,
-                summary       TEXT
-            )
-        """)
-        conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_sms_agents_phone
-                ON sms_agents(phone, status)
-        """)
-
-        # Partial unique index to deduplicate Twilio inbound retries
-        conn.execute("""
-            CREATE UNIQUE INDEX IF NOT EXISTS ux_sms_inbound_sid
-                ON sms_conversations(phone, twilio_sid)
-                WHERE direction = 'inbound' AND twilio_sid != ''
-        """)
-
-        # Prospect notes timeline
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS prospect_notes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                prospect_id INTEGER NOT NULL,
-                content TEXT NOT NULL,
-                created_by TEXT DEFAULT '',
-                created_at TEXT DEFAULT (datetime('now')),
-                FOREIGN KEY (prospect_id) REFERENCES prospects(id)
-            )
-        """)
-        conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_prospect_notes_prospect
-                ON prospect_notes(prospect_id, created_at DESC)
-        """)
-
-
-def _migrate_multi_tenant():
-    """Create multi-tenant tables and add tenant_id to existing tables (safe to run repeatedly)."""
-    with get_db() as conn:
-        # Tenants table
         conn.execute("""
             CREATE TABLE IF NOT EXISTS tenants (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                slug TEXT NOT NULL UNIQUE,
-                company TEXT DEFAULT '',
-                timezone TEXT DEFAULT 'America/Toronto',
-                products TEXT DEFAULT '[]',
-                config TEXT DEFAULT '{}',
+                id          SERIAL PRIMARY KEY,
+                name        TEXT NOT NULL,
+                slug        TEXT NOT NULL UNIQUE,
+                company     TEXT DEFAULT '',
+                timezone    TEXT DEFAULT 'America/Toronto',
+                products    TEXT DEFAULT '[]',
+                config      TEXT DEFAULT '{}',
                 stripe_customer_id TEXT,
-                plan TEXT DEFAULT 'starter',
-                status TEXT DEFAULT 'active',
-                created_at TEXT DEFAULT (datetime('now')),
-                updated_at TEXT DEFAULT (datetime('now'))
+                plan        TEXT DEFAULT 'starter',
+                status      TEXT DEFAULT 'active',
+                created_at  TIMESTAMPTZ DEFAULT NOW(),
+                updated_at  TIMESTAMPTZ DEFAULT NOW()
             )
         """)
-        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_tenants_slug ON tenants(slug)")
-
-        # Users table
         conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                tenant_id INTEGER NOT NULL REFERENCES tenants(id),
-                email TEXT NOT NULL,
+                id            SERIAL PRIMARY KEY,
+                tenant_id     INTEGER NOT NULL REFERENCES tenants(id),
+                email         TEXT NOT NULL,
                 password_hash TEXT NOT NULL,
-                name TEXT DEFAULT '',
-                role TEXT DEFAULT 'agent',
+                name          TEXT DEFAULT '',
+                role          TEXT DEFAULT 'advisor',
                 telegram_chat_id TEXT,
-                status TEXT DEFAULT 'active',
-                created_at TEXT DEFAULT (datetime('now')),
-                last_login TEXT
+                status        TEXT DEFAULT 'active',
+                created_at    TIMESTAMPTZ DEFAULT NOW(),
+                last_login    TIMESTAMPTZ
             )
         """)
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(LOWER(email))")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id)")
-
-        # API keys table
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS tenant_config (
+                id          SERIAL PRIMARY KEY,
+                tenant_id   INTEGER NOT NULL REFERENCES tenants(id),
+                key         TEXT NOT NULL,
+                value       TEXT NOT NULL,
+                updated_at  TIMESTAMPTZ DEFAULT NOW(),
+                UNIQUE(tenant_id, key)
+            )
+        """)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS api_keys (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                tenant_id INTEGER NOT NULL REFERENCES tenants(id),
-                key_hash TEXT NOT NULL,
-                name TEXT DEFAULT 'Default',
-                scopes TEXT DEFAULT '["all"]',
-                created_at TEXT DEFAULT (datetime('now')),
-                expires_at TEXT
+                id          SERIAL PRIMARY KEY,
+                tenant_id   INTEGER NOT NULL REFERENCES tenants(id),
+                key_hash    TEXT NOT NULL,
+                name        TEXT DEFAULT 'Default',
+                scopes      TEXT DEFAULT '["all"]',
+                created_at  TIMESTAMPTZ DEFAULT NOW(),
+                expires_at  TIMESTAMPTZ
             )
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash)")
-
-        # Add tenant_id to existing tables (default 1 for backwards compat)
-        _tables_needing_tenant = [
-            "prospects", "activities", "meetings", "tasks", "campaigns",
-            "approval_queue", "audit_log", "nurture_sequences",
-            "booking_nurture_sequences", "sms_conversations", "sms_agents",
-            "insurance_book", "trust_config", "brand_voice", "market_calendar",
-        ]
-        for table in _tables_needing_tenant:
-            try:
-                cols = [row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()]
-                if "tenant_id" not in cols:
-                    conn.execute(f"ALTER TABLE {table} ADD COLUMN tenant_id INTEGER DEFAULT 1")
-                    logger.info("Migration: added tenant_id to %s", table)
-            except Exception:
-                pass  # Table may not exist yet
-
-        # Create default tenant for existing single-user deployment (idempotent)
-        existing = conn.execute("SELECT id FROM tenants WHERE id = 1").fetchone()
-        if not existing:
-            conn.execute(
-                """INSERT INTO tenants (id, name, slug, company, timezone, plan, status)
-                   VALUES (1, 'Default', 'default', '', 'America/Toronto', 'pro', 'active')"""
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS prospects (
+                id            SERIAL PRIMARY KEY,
+                tenant_id     INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id),
+                name          TEXT NOT NULL,
+                phone         TEXT DEFAULT '',
+                email         TEXT DEFAULT '',
+                source        TEXT DEFAULT '',
+                priority      TEXT DEFAULT '',
+                stage         TEXT DEFAULT 'New Lead',
+                product       TEXT DEFAULT '',
+                aum           REAL,
+                revenue       REAL,
+                first_contact TEXT,
+                next_followup TEXT,
+                notes         TEXT DEFAULT '',
+                send_channel  TEXT DEFAULT 'outlook',
+                assigned_to   TEXT DEFAULT '',
+                created_at    TIMESTAMPTZ DEFAULT NOW(),
+                updated_at    TIMESTAMPTZ DEFAULT NOW()
             )
-            logger.info("Migration: created default tenant (id=1)")
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_prospects_email ON prospects(email)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_prospects_tenant ON prospects(tenant_id)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS activities (
+                id          SERIAL PRIMARY KEY,
+                tenant_id   INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id),
+                date        TEXT,
+                prospect    TEXT DEFAULT '',
+                action      TEXT DEFAULT '',
+                outcome     TEXT DEFAULT '',
+                next_step   TEXT DEFAULT '',
+                notes       TEXT DEFAULT ''
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_activities_prospect ON activities(prospect)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS meetings (
+                id          SERIAL PRIMARY KEY,
+                tenant_id   INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id),
+                date        TEXT,
+                time        TEXT DEFAULT '',
+                prospect    TEXT DEFAULT '',
+                type        TEXT DEFAULT '',
+                prep_notes  TEXT DEFAULT '',
+                status      TEXT DEFAULT 'Scheduled'
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS tasks (
+                id          SERIAL PRIMARY KEY,
+                tenant_id   INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id),
+                title       TEXT NOT NULL,
+                prospect    TEXT DEFAULT '',
+                due_date    TEXT,
+                remind_at   TEXT,
+                assigned_to TEXT DEFAULT '',
+                created_by  TEXT DEFAULT '',
+                notes       TEXT DEFAULT '',
+                status      TEXT DEFAULT 'pending',
+                completed_at TEXT,
+                completed_by TEXT,
+                created_at  TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status_due ON tasks(status, due_date)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_remind ON tasks(remind_at)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS prospect_notes (
+                id          SERIAL PRIMARY KEY,
+                prospect_id INTEGER NOT NULL REFERENCES prospects(id) ON DELETE CASCADE,
+                content     TEXT NOT NULL,
+                created_by  TEXT DEFAULT '',
+                created_at  TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_prospect_notes_prospect ON prospect_notes(prospect_id)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS approval_queue (
+                id              SERIAL PRIMARY KEY,
+                tenant_id       INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id),
+                prospect_id     INTEGER REFERENCES prospects(id) ON DELETE CASCADE,
+                prospect_name   TEXT DEFAULT '',
+                draft_text      TEXT DEFAULT '',
+                draft_type      TEXT DEFAULT '',
+                status          TEXT DEFAULT 'pending',
+                telegram_msg_id TEXT,
+                created_at      TIMESTAMPTZ DEFAULT NOW(),
+                actioned_at     TIMESTAMPTZ,
+                snoozed_until   TIMESTAMPTZ
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_approval_queue_status ON approval_queue(status)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS audit_log (
+                id          SERIAL PRIMARY KEY,
+                tenant_id   INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id),
+                timestamp   TIMESTAMPTZ DEFAULT NOW(),
+                action      TEXT DEFAULT '',
+                actor       TEXT DEFAULT '',
+                target      TEXT DEFAULT '',
+                details     TEXT DEFAULT ''
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS trust_config (
+                id          SERIAL PRIMARY KEY,
+                tenant_id   INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id),
+                trust_level INTEGER DEFAULT 1,
+                changed_at  TIMESTAMPTZ DEFAULT NOW(),
+                changed_by  TEXT DEFAULT ''
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS campaigns (
+                id          SERIAL PRIMARY KEY,
+                tenant_id   INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id),
+                name        TEXT NOT NULL,
+                status      TEXT DEFAULT 'draft',
+                created_at  TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS outcomes (
+                id              SERIAL PRIMARY KEY,
+                tenant_id       INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id),
+                target          TEXT DEFAULT '',
+                sent_at         TIMESTAMPTZ,
+                resend_email_id TEXT,
+                status          TEXT DEFAULT '',
+                opened_at       TIMESTAMPTZ,
+                clicked_at      TIMESTAMPTZ
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_outcomes_resend_id ON outcomes(resend_email_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_outcomes_target ON outcomes(target, sent_at)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS nurture_sequences (
+                id              SERIAL PRIMARY KEY,
+                tenant_id       INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id),
+                prospect_id     INTEGER REFERENCES prospects(id) ON DELETE CASCADE,
+                prospect_name   TEXT DEFAULT '',
+                status          TEXT DEFAULT 'active',
+                next_touch_date TEXT,
+                touch_count     INTEGER DEFAULT 0,
+                created_at      TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_nurture_status ON nurture_sequences(status, next_touch_date)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS interactions (
+                id          SERIAL PRIMARY KEY,
+                tenant_id   INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id),
+                date        TIMESTAMPTZ DEFAULT NOW(),
+                prospect    TEXT DEFAULT '',
+                source      TEXT DEFAULT '',
+                raw_text    TEXT DEFAULT '',
+                summary     TEXT DEFAULT '',
+                action_items TEXT DEFAULT '',
+                created_at  TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_interactions_prospect ON interactions(prospect)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS insurance_book (
+                id          SERIAL PRIMARY KEY,
+                tenant_id   INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id),
+                name        TEXT NOT NULL,
+                phone       TEXT DEFAULT '',
+                address     TEXT DEFAULT '',
+                policy_start TEXT DEFAULT '',
+                status      TEXT DEFAULT 'Not Called',
+                last_called TEXT,
+                notes       TEXT DEFAULT '',
+                retry_date  TEXT
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS win_loss_log (
+                id          SERIAL PRIMARY KEY,
+                tenant_id   INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id),
+                date        TEXT,
+                prospect    TEXT DEFAULT '',
+                outcome     TEXT DEFAULT '',
+                reason      TEXT DEFAULT '',
+                product     TEXT DEFAULT ''
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS client_memory (
+                id          SERIAL PRIMARY KEY,
+                prospect_id INTEGER REFERENCES prospects(id) ON DELETE CASCADE,
+                memory_key  TEXT DEFAULT '',
+                memory_val  TEXT DEFAULT '',
+                extracted_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS brand_voice (
+                id          SERIAL PRIMARY KEY,
+                tenant_id   INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id),
+                voice_key   TEXT DEFAULT '',
+                voice_val   TEXT DEFAULT '',
+                created_at  TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS market_calendar (
+                id          SERIAL PRIMARY KEY,
+                tenant_id   INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id),
+                event_date  TEXT NOT NULL,
+                title       TEXT NOT NULL,
+                description TEXT DEFAULT '',
+                category    TEXT DEFAULT ''
+            )
+        """)
 
-    logger.info("Multi-tenant migration complete")
 
-
-def _migrate_sequences():
-    """Create sequence automation tables (safe to run repeatedly)."""
+def _create_sequence_tables():
     with get_db() as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS sequences (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                tenant_id INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id),
-                name TEXT NOT NULL,
-                description TEXT DEFAULT '',
-                trigger_type TEXT NOT NULL,
-                trigger_config TEXT DEFAULT '{}',
-                status TEXT DEFAULT 'active',
-                created_at TEXT DEFAULT (datetime('now')),
-                updated_at TEXT DEFAULT (datetime('now'))
+                id              SERIAL PRIMARY KEY,
+                tenant_id       INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id),
+                name            TEXT NOT NULL,
+                description     TEXT DEFAULT '',
+                trigger_type    TEXT NOT NULL,
+                trigger_config  TEXT DEFAULT '{}',
+                status          TEXT DEFAULT 'active',
+                created_at      TIMESTAMPTZ DEFAULT NOW(),
+                updated_at      TIMESTAMPTZ DEFAULT NOW()
             )
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_sequences_tenant ON sequences(tenant_id, status)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_sequences_trigger ON sequences(trigger_type, status)")
-
         conn.execute("""
             CREATE TABLE IF NOT EXISTS sequence_steps (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                sequence_id INTEGER NOT NULL REFERENCES sequences(id) ON DELETE CASCADE,
-                step_order INTEGER NOT NULL,
-                step_type TEXT NOT NULL,
-                delay_minutes INTEGER DEFAULT 0,
+                id              SERIAL PRIMARY KEY,
+                sequence_id     INTEGER NOT NULL REFERENCES sequences(id) ON DELETE CASCADE,
+                step_order      INTEGER NOT NULL,
+                step_type       TEXT NOT NULL,
+                delay_minutes   INTEGER DEFAULT 0,
                 content_template TEXT DEFAULT '',
-                channel TEXT DEFAULT '',
-                config TEXT DEFAULT '{}'
+                channel         TEXT DEFAULT '',
+                config          TEXT DEFAULT '{}'
             )
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_seq_steps_seq ON sequence_steps(sequence_id, step_order)")
-
         conn.execute("""
             CREATE TABLE IF NOT EXISTS sequence_enrollments (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                sequence_id INTEGER NOT NULL REFERENCES sequences(id),
-                prospect_id INTEGER NOT NULL REFERENCES prospects(id),
-                status TEXT DEFAULT 'active',
-                current_step INTEGER DEFAULT 1,
-                enrolled_at TEXT DEFAULT (datetime('now')),
-                last_step_at TEXT,
-                next_step_at TEXT,
-                completed_at TEXT,
-                trigger_data TEXT DEFAULT '{}'
+                id              SERIAL PRIMARY KEY,
+                sequence_id     INTEGER NOT NULL REFERENCES sequences(id),
+                prospect_id     INTEGER NOT NULL REFERENCES prospects(id),
+                status          TEXT DEFAULT 'active',
+                current_step    INTEGER DEFAULT 1,
+                enrolled_at     TIMESTAMPTZ DEFAULT NOW(),
+                last_step_at    TIMESTAMPTZ,
+                next_step_at    TIMESTAMPTZ,
+                completed_at    TIMESTAMPTZ,
+                trigger_data    TEXT DEFAULT '{}'
             )
         """)
-        conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_seq_enroll_due
-                ON sequence_enrollments(status, next_step_at)
-        """)
-        conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_seq_enroll_prospect
-                ON sequence_enrollments(prospect_id, status)
-        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_seq_enroll_due ON sequence_enrollments(status, next_step_at)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_seq_enroll_prospect ON sequence_enrollments(prospect_id, status)")
         conn.execute("""
             CREATE UNIQUE INDEX IF NOT EXISTS ux_seq_enroll_active
-                ON sequence_enrollments(sequence_id, prospect_id)
-                WHERE status = 'active'
+            ON sequence_enrollments(sequence_id, prospect_id)
+            WHERE status = 'active'
         """)
-
         conn.execute("""
             CREATE TABLE IF NOT EXISTS sequence_step_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                enrollment_id INTEGER NOT NULL REFERENCES sequence_enrollments(id),
-                step_id INTEGER NOT NULL REFERENCES sequence_steps(id),
-                status TEXT DEFAULT 'ok',
-                content TEXT DEFAULT '',
-                executed_at TEXT DEFAULT (datetime('now'))
+                id              SERIAL PRIMARY KEY,
+                enrollment_id   INTEGER NOT NULL REFERENCES sequence_enrollments(id),
+                step_id         INTEGER NOT NULL REFERENCES sequence_steps(id),
+                status          TEXT DEFAULT 'ok',
+                content         TEXT DEFAULT '',
+                executed_at     TIMESTAMPTZ DEFAULT NOW()
             )
         """)
-        conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_seq_step_logs_enrollment
-                ON sequence_step_logs(enrollment_id, executed_at)
-        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_seq_step_logs_enrollment ON sequence_step_logs(enrollment_id, executed_at)")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS prospect_tags (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                prospect_id INTEGER NOT NULL,
-                tag TEXT NOT NULL,
-                applied_by TEXT DEFAULT 'system',
-                applied_at TEXT DEFAULT (datetime('now')),
-                FOREIGN KEY (prospect_id) REFERENCES prospects(id) ON DELETE CASCADE,
+                id          SERIAL PRIMARY KEY,
+                prospect_id INTEGER NOT NULL REFERENCES prospects(id) ON DELETE CASCADE,
+                tag         TEXT NOT NULL,
+                applied_by  TEXT DEFAULT 'system',
+                applied_at  TIMESTAMPTZ DEFAULT NOW(),
                 UNIQUE(prospect_id, tag)
             )
         """)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS enrichment_queue (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                prospect_id INTEGER NOT NULL UNIQUE,
-                status TEXT DEFAULT 'pending',
-                attempts INTEGER DEFAULT 0,
-                last_attempt TEXT,
-                linkedin_url TEXT,
+                id              SERIAL PRIMARY KEY,
+                prospect_id     INTEGER NOT NULL UNIQUE REFERENCES prospects(id) ON DELETE CASCADE,
+                status          TEXT DEFAULT 'pending',
+                attempts        INTEGER DEFAULT 0,
+                last_attempt    TIMESTAMPTZ,
+                linkedin_url    TEXT,
                 instagram_handle TEXT,
-                headshot_url TEXT,
-                bio TEXT,
+                headshot_url    TEXT,
+                bio             TEXT,
                 company_website TEXT,
-                created_at TEXT DEFAULT (datetime('now')),
-                FOREIGN KEY (prospect_id) REFERENCES prospects(id) ON DELETE CASCADE
+                created_at      TIMESTAMPTZ DEFAULT NOW()
             )
         """)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS referrals (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                referrer_prospect_id INTEGER,
-                referred_prospect_id INTEGER NOT NULL,
-                referral_date TEXT DEFAULT (datetime('now')),
-                notes TEXT,
-                FOREIGN KEY (referrer_prospect_id) REFERENCES prospects(id),
-                FOREIGN KEY (referred_prospect_id) REFERENCES prospects(id)
+                id                      SERIAL PRIMARY KEY,
+                referrer_prospect_id    INTEGER REFERENCES prospects(id),
+                referred_prospect_id    INTEGER NOT NULL REFERENCES prospects(id),
+                referral_date           TIMESTAMPTZ DEFAULT NOW(),
+                notes                   TEXT
             )
         """)
+
+
+def _create_sms_tables():
+    with get_db() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS sms_conversations (
+                id              SERIAL PRIMARY KEY,
+                tenant_id       INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id),
+                phone           TEXT NOT NULL,
+                prospect_id     INTEGER REFERENCES prospects(id) ON DELETE SET NULL,
+                prospect_name   TEXT DEFAULT '',
+                status          TEXT DEFAULT 'active',
+                ai_enabled      BOOLEAN DEFAULT TRUE,
+                last_message_at TIMESTAMPTZ DEFAULT NOW(),
+                created_at      TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_sms_conv_phone ON sms_conversations(tenant_id, phone)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_sms_conv_prospect ON sms_conversations(prospect_id)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS sms_messages (
+                id              SERIAL PRIMARY KEY,
+                conversation_id INTEGER NOT NULL REFERENCES sms_conversations(id) ON DELETE CASCADE,
+                direction       TEXT NOT NULL,
+                body            TEXT DEFAULT '',
+                status          TEXT DEFAULT 'delivered',
+                sent_at         TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_sms_messages_conv ON sms_messages(conversation_id, sent_at)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS sms_agents (
+                id          SERIAL PRIMARY KEY,
+                tenant_id   INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id),
+                phone       TEXT NOT NULL,
+                persona     TEXT DEFAULT 'friendly',
+                status      TEXT DEFAULT 'active',
+                created_at  TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_sms_agents_phone ON sms_agents(tenant_id, phone)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS booking_nurture_sequences (
+                id              SERIAL PRIMARY KEY,
+                tenant_id       INTEGER NOT NULL DEFAULT 1 REFERENCES tenants(id),
+                prospect_id     INTEGER REFERENCES prospects(id) ON DELETE CASCADE,
+                prospect_name   TEXT DEFAULT '',
+                phone           TEXT DEFAULT '',
+                status          TEXT DEFAULT 'active',
+                current_step    INTEGER DEFAULT 1,
+                next_send_at    TIMESTAMPTZ,
+                created_at      TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_booking_nurture_status_sched ON booking_nurture_sequences(status, next_send_at)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_booking_nurture_prospect ON booking_nurture_sequences(prospect_id)")
+
+
+def _create_tracking_tables():
+    with get_db() as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS intake_form_responses (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                prospect_id INTEGER NOT NULL,
-                form_type TEXT NOT NULL,
-                responses TEXT NOT NULL,
-                submitted_at TEXT DEFAULT (datetime('now')),
-                FOREIGN KEY (prospect_id) REFERENCES prospects(id) ON DELETE CASCADE
+                id          SERIAL PRIMARY KEY,
+                prospect_id INTEGER NOT NULL REFERENCES prospects(id) ON DELETE CASCADE,
+                form_type   TEXT NOT NULL,
+                responses   TEXT NOT NULL,
+                submitted_at TIMESTAMPTZ DEFAULT NOW()
             )
         """)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS email_tracking (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                prospect_id INTEGER,
-                prospect_name TEXT,
-                email_type TEXT,
-                token TEXT UNIQUE,
-                opened_at TEXT,
-                link_clicked_at TEXT,
-                created_at TEXT DEFAULT (datetime('now')),
-                FOREIGN KEY (prospect_id) REFERENCES prospects(id) ON DELETE SET NULL
+                id              SERIAL PRIMARY KEY,
+                prospect_id     INTEGER REFERENCES prospects(id) ON DELETE SET NULL,
+                prospect_name   TEXT,
+                email_type      TEXT,
+                token           TEXT UNIQUE,
+                opened_at       TIMESTAMPTZ,
+                link_clicked_at TIMESTAMPTZ,
+                created_at      TIMESTAMPTZ DEFAULT NOW()
             )
         """)
 
-    logger.info("Sequence tables migration complete")
 
-
-def _migrate_phase6():
-    """Add Phase 6 columns if they don't exist (safe to run repeatedly)."""
+def _ensure_default_tenant():
+    """Create tenant id=1 if no tenants exist (single-user migration path)."""
     with get_db() as conn:
-        cols = [row[1] for row in conn.execute("PRAGMA table_info(prospects)").fetchall()]
-        if "send_channel" not in cols:
-            conn.execute("ALTER TABLE prospects ADD COLUMN send_channel TEXT DEFAULT 'outlook'")
-            logger.info("Migration: added send_channel to prospects")
-        outcome_cols = [row[1] for row in conn.execute("PRAGMA table_info(outcomes)").fetchall()]
-        if "resend_email_id" not in outcome_cols:
-            conn.execute("ALTER TABLE outcomes ADD COLUMN resend_email_id TEXT")
-            logger.info("Migration: added resend_email_id to outcomes")
-        # Migration: add assigned_to if not present
-        try:
-            conn.execute("ALTER TABLE prospects ADD COLUMN assigned_to TEXT DEFAULT ''")
-        except Exception:
-            pass  # Column already exists
-        # Migration: add trust_level to tenants if not present
-        try:
-            conn.execute("ALTER TABLE tenants ADD COLUMN trust_level INTEGER DEFAULT 1")
-        except Exception:
-            pass  # Column already exists
+        row = conn.execute("SELECT id FROM tenants LIMIT 1").fetchone()
+        if not row:
+            conn.execute("""
+                INSERT INTO tenants (name, slug, company, timezone, plan, status)
+                VALUES ('Default', 'default', '', 'America/Toronto', 'pro', 'active')
+            """)
+            logger.info("Created default tenant")
 
 
 # ── Prospects CRUD ──
@@ -1370,168 +1236,6 @@ def clear_reminder(task_id: int):
     """Clear remind_at after firing so it doesn't repeat."""
     with get_db() as conn:
         conn.execute("UPDATE tasks SET remind_at = NULL WHERE id = ?", (task_id,))
-
-
-# ── Migration from Excel ──
-
-def migrate_from_excel(excel_path: str) -> str:
-    """Migrate data from the existing Excel pipeline file to SQLite.
-
-    Skips if the database already has prospects.
-    """
-    import openpyxl
-
-    if not os.path.exists(excel_path):
-        return f"Excel file not found: {excel_path}"
-
-    # Skip if DB already has data
-    with get_db() as conn:
-        count = conn.execute("SELECT COUNT(*) FROM prospects").fetchone()[0]
-        if count > 0:
-            return f"Database already has {count} prospects. Skipping migration."
-
-    wb = openpyxl.load_workbook(excel_path, data_only=True)
-
-    def cell_str(ws, row, col):
-        v = ws.cell(row=row, column=col).value
-        return str(v) if v is not None else ""
-
-    def cell_val(ws, row, col):
-        return ws.cell(row=row, column=col).value
-
-    migrated = {"prospects": 0, "activities": 0, "meetings": 0,
-                "insurance": 0, "win_loss": 0}
-
-    with get_db() as conn:
-        # ── Pipeline sheet: starts row 5, columns 1-13 ──
-        if "Pipeline" in wb.sheetnames:
-            ws = wb["Pipeline"]
-            for r in range(5, 5 + 80):
-                name = cell_val(ws, r, 1)
-                if not name:
-                    continue
-                aum = _parse_numeric(cell_val(ws, r, 8))
-                revenue = _parse_numeric(cell_val(ws, r, 9))
-                first_contact = _parse_date_val(cell_val(ws, r, 10))
-                next_followup = _parse_date_val(cell_val(ws, r, 11))
-                # Column 12 is days_open (computed), skip it
-                conn.execute(
-                    """INSERT INTO prospects
-                       (name, phone, email, source, priority, stage, product,
-                        aum, revenue, first_contact, next_followup, notes)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        cell_str(ws, r, 1),
-                        cell_str(ws, r, 2),
-                        cell_str(ws, r, 3),
-                        cell_str(ws, r, 4),
-                        cell_str(ws, r, 5),
-                        cell_str(ws, r, 6) or "New Lead",
-                        cell_str(ws, r, 7),
-                        aum,
-                        revenue,
-                        first_contact or date.today().strftime("%Y-%m-%d"),
-                        next_followup or "",
-                        cell_str(ws, r, 13),
-                    ),
-                )
-                migrated["prospects"] += 1
-
-        # ── Activity Log sheet: starts row 3, columns 1-6 ──
-        if "Activity Log" in wb.sheetnames:
-            ws = wb["Activity Log"]
-            for r in range(3, 3 + 200):
-                d = cell_val(ws, r, 1)
-                if not d:
-                    continue
-                conn.execute(
-                    """INSERT INTO activities (date, prospect, action, outcome, next_step, notes)
-                       VALUES (?, ?, ?, ?, ?, ?)""",
-                    (
-                        _parse_date_val(d) or cell_str(ws, r, 1),
-                        cell_str(ws, r, 2),
-                        cell_str(ws, r, 3),
-                        cell_str(ws, r, 4),
-                        cell_str(ws, r, 5),
-                        cell_str(ws, r, 6),
-                    ),
-                )
-                migrated["activities"] += 1
-
-        # ── Meetings sheet: starts row 3, columns 1-6 ──
-        if "Meetings" in wb.sheetnames:
-            ws = wb["Meetings"]
-            for r in range(3, 3 + 100):
-                d = cell_val(ws, r, 1)
-                if not d:
-                    continue
-                conn.execute(
-                    """INSERT INTO meetings (date, time, prospect, type, prep_notes, status)
-                       VALUES (?, ?, ?, ?, ?, ?)""",
-                    (
-                        _parse_date_val(d) or cell_str(ws, r, 1),
-                        cell_str(ws, r, 2),
-                        cell_str(ws, r, 3),
-                        cell_str(ws, r, 4),
-                        cell_str(ws, r, 5),
-                        cell_str(ws, r, 6) or "Scheduled",
-                    ),
-                )
-                migrated["meetings"] += 1
-
-        # ── Insurance Book sheet: starts row 3, columns 1-8 ──
-        if "Insurance Book" in wb.sheetnames:
-            ws = wb["Insurance Book"]
-            for r in range(3, 3 + 500):
-                name = cell_val(ws, r, 1)
-                if not name:
-                    continue
-                conn.execute(
-                    """INSERT INTO insurance_book
-                       (name, phone, address, policy_start, status, last_called, notes, retry_date)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        cell_str(ws, r, 1),
-                        cell_str(ws, r, 2),
-                        cell_str(ws, r, 3),
-                        _parse_date_val(cell_val(ws, r, 4)) or cell_str(ws, r, 4),
-                        cell_str(ws, r, 5) or "Not Called",
-                        _parse_date_val(cell_val(ws, r, 6)) or "",
-                        cell_str(ws, r, 7),
-                        _parse_date_val(cell_val(ws, r, 8)) or "",
-                    ),
-                )
-                migrated["insurance"] += 1
-
-        # ── Win Loss Log sheet: starts row 3, columns 1-5 ──
-        if "Win Loss Log" in wb.sheetnames:
-            ws = wb["Win Loss Log"]
-            for r in range(3, 3 + 100):
-                d = cell_val(ws, r, 1)
-                if not d:
-                    continue
-                conn.execute(
-                    """INSERT INTO win_loss_log (date, prospect, outcome, reason, product)
-                       VALUES (?, ?, ?, ?, ?)""",
-                    (
-                        _parse_date_val(d) or cell_str(ws, r, 1),
-                        cell_str(ws, r, 2),
-                        cell_str(ws, r, 3),
-                        cell_str(ws, r, 4),
-                        cell_str(ws, r, 5),
-                    ),
-                )
-                migrated["win_loss"] += 1
-
-    wb.close()
-
-    summary = (
-        f"Migration complete: {migrated['prospects']} prospects, "
-        f"{migrated['activities']} activities, {migrated['meetings']} meetings, "
-        f"{migrated['insurance']} insurance entries, {migrated['win_loss']} win/loss records."
-    )
-    logger.info(summary)
-    return summary
 
 
 # ── Tag helpers ──
