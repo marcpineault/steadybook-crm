@@ -903,12 +903,7 @@ def _get_current_booking_url():
     """Get the booking URL from tenant config."""
     try:
         import tenants
-        tenant_id = 1
-        token = request.cookies.get("dash_session", "")
-        if token:
-            session = tenants.validate_session(token)
-            if session:
-                tenant_id = session["tenant_id"]
+        tenant_id = _tenant_id()
         config = tenants.get_tenant_config(tenant_id)
         return config.get("booking_url", "")
     except Exception:
@@ -2010,10 +2005,11 @@ def reporting():
 @app.route("/flows")
 def flows():
     """Flow builder — view and edit nurture sequences."""
-    if not _check_auth():
+    user = _check_auth()
+    if not user:
         return redirect("/login")
     import sequences as seq_module
-    tenant_id = 1
+    tenant_id = user["tenant_id"]
     all_sequences = seq_module.list_sequences(tenant_id)
     ctx = _common_context()
     ctx.update({
@@ -2325,6 +2321,104 @@ def api_setup_test(service):
             return jsonify({"ok": False, "error": str(e)})
 
     return jsonify({"ok": False, "error": f"Unknown service: {service}"}), 400
+
+
+import time as _time
+
+
+def _make_invite_token(tenant_id: int, role: str) -> str:
+    """Create a signed invite token valid for 7 days."""
+    import base64
+    expiry = int(_time.time()) + 7 * 24 * 3600
+    payload = f"{tenant_id}:{role}:{expiry}"
+    sig = hmac.new(app.secret_key.encode(), payload.encode(), "sha256").hexdigest()[:16]
+    token = base64.urlsafe_b64encode(f"{payload}:{sig}".encode()).decode()
+    return token
+
+
+def _verify_invite_token(token: str):
+    """Verify invite token. Returns (tenant_id, role) or raises ValueError."""
+    import base64
+    try:
+        decoded = base64.urlsafe_b64decode(token.encode()).decode()
+        tenant_id_str, role, expiry_str, sig = decoded.rsplit(":", 3)
+        payload = f"{tenant_id_str}:{role}:{expiry_str}"
+        expected_sig = hmac.new(app.secret_key.encode(), payload.encode(), "sha256").hexdigest()[:16]
+        if not hmac.compare_digest(sig, expected_sig):
+            raise ValueError("Invalid signature")
+        if int(expiry_str) < int(_time.time()):
+            raise ValueError("Invite link has expired")
+        return int(tenant_id_str), role
+    except ValueError:
+        raise
+    except Exception:
+        raise ValueError("Malformed invite token")
+
+
+@app.route("/api/invite/generate", methods=["POST"])
+@_require_auth
+def api_generate_invite():
+    user = _check_auth()
+    if user["role"] not in ("owner", "manager"):
+        return jsonify({"error": "Not authorized"}), 403
+    data = request.get_json() or {}
+    role = data.get("role", "advisor")
+    if role not in ("advisor", "manager"):
+        return jsonify({"error": "Invalid role"}), 400
+    token = _make_invite_token(user["tenant_id"], role)
+    base_url = request.host_url.rstrip("/")
+    return jsonify({"invite_url": f"{base_url}/invite/{token}"})
+
+
+@app.route("/invite/<token>")
+def invite_page(token):
+    try:
+        _verify_invite_token(token)
+    except ValueError as e:
+        return f"<h2>Invalid or expired invite link: {_esc(str(e))}</h2>", 400
+    return render_template("register.html", invite_token=token)
+
+
+@app.route("/api/invite/accept", methods=["POST"])
+def api_accept_invite():
+    data = request.get_json() or {}
+    token = data.get("token", "")
+    name = data.get("name", "").strip()
+    password = data.get("password", "")
+    email = data.get("email", "").strip().lower()
+
+    if not all([token, name, password, email]):
+        return jsonify({"error": "All fields required"}), 400
+    if len(password) < 8:
+        return jsonify({"error": "Password must be at least 8 characters"}), 400
+
+    try:
+        tenant_id, role = _verify_invite_token(token)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    pw_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+    try:
+        with db.get_db() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT id FROM users WHERE LOWER(email) = %s", (email,))
+            if cur.fetchone():
+                return jsonify({"error": "Email already registered"}), 409
+            cur.execute(
+                """INSERT INTO users (tenant_id, email, password_hash, name, role)
+                   VALUES (%s, %s, %s, %s, %s) RETURNING id""",
+                (tenant_id, email, pw_hash, name, role),
+            )
+            user_id = cur.fetchone()["id"]
+
+        session["user_id"] = user_id
+        session["tenant_id"] = tenant_id
+        db._current_tenant_id.set(tenant_id)
+        return jsonify({"ok": True})
+    except Exception:
+        logger.exception("Accept invite failed")
+        return jsonify({"error": "Failed to create account"}), 500
 
 
 def run_dashboard():
