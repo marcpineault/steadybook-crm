@@ -18,16 +18,27 @@ logger = logging.getLogger(__name__)
 
 # ── Encryption setup ──
 
+_fernet_instance: Fernet | None = None
+_fernet_key_used: str = ""
+
 def _get_fernet() -> Fernet:
+    """Get or create a cached Fernet instance. Ensures encryption/decryption consistency."""
+    global _fernet_instance, _fernet_key_used
     key = os.environ.get("ENCRYPTION_KEY", "")
     if not key:
-        # Auto-generate and warn — on Railway this should be set as a var
-        key = Fernet.generate_key().decode()
-        logger.warning(
-            "ENCRYPTION_KEY not set — generated ephemeral key. "
-            "Set ENCRYPTION_KEY env var to persist encrypted config across restarts."
-        )
-    return Fernet(key.encode() if isinstance(key, str) else key)
+        if _fernet_instance is None:
+            key = Fernet.generate_key().decode()
+            logger.warning(
+                "ENCRYPTION_KEY not set — generated ephemeral key. "
+                "Set ENCRYPTION_KEY env var to persist encrypted config across restarts."
+            )
+            _fernet_key_used = key
+            _fernet_instance = Fernet(key.encode())
+        return _fernet_instance
+    if key != _fernet_key_used:
+        _fernet_instance = Fernet(key.encode() if isinstance(key, str) else key)
+        _fernet_key_used = key
+    return _fernet_instance
 
 
 def encrypt_value(plaintext: str) -> str:
@@ -90,10 +101,14 @@ def get_config(tenant_id: int, key: str) -> str:
 def set_config(tenant_id: int, key: str, value: str) -> None:
     """Encrypt and persist a config value for a tenant."""
     encrypted = encrypt_value(value)
-    _upsert_row(tenant_id, key, encrypted)
+    try:
+        _upsert_row(tenant_id, key, encrypted)
+    except Exception:
+        logger.error("config_store: failed to persist key=%s for tenant_id=%s", key, tenant_id)
+        raise
 
 
-def get_all_config(tenant_id: int) -> dict:
+def get_all_config(tenant_id: int) -> dict[str, str]:
     """Return all config keys for a tenant (decrypted). Never returns encrypted values."""
     import db
     try:
