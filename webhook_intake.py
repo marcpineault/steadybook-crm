@@ -10,6 +10,7 @@ import html as html_module
 import logging
 import os
 import re
+import sys
 
 import db as _db
 import sms_agent as _sms_agent
@@ -327,6 +328,22 @@ def sms_reply():
             inbound_body=body,
             prospect=prospect,
         )
+
+        # Trigger stage evaluation after inbound SMS
+        if prospect_id:
+            try:
+                import asyncio
+                import stage_engine as _stage_engine
+                main_mod = sys.modules.get("__main__")
+                bot_event_loop = getattr(main_mod, "bot_event_loop", None)
+                if bot_event_loop:
+                    tenant_id = prospect.get("tenant_id", 1) if prospect else 1
+                    asyncio.run_coroutine_threadsafe(
+                        _stage_engine.evaluate_prospect(prospect_id, tenant_id),
+                        bot_event_loop,
+                    )
+            except Exception:
+                logger.exception("Stage engine trigger failed after inbound SMS")
     except Exception:
         logger.exception("SMS reply processing failed")
 
