@@ -28,6 +28,10 @@ logger = logging.getLogger(__name__)
 _DEFAULT_TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 _DEFAULT_OPENAI_KEY = os.environ.get("OPENAI_API_KEY", "")
 
+# Legacy single-tenant admin chat ID (used throughout bot for backward compat)
+# Per-tenant deployments resolve this dynamically via _get_admin_chat_id()
+ADMIN_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
+
 if not os.environ.get("TELEGRAM_CHAT_ID"):
     logger.warning("TELEGRAM_CHAT_ID not set -admin-only commands will be disabled for all users")
 if not os.environ.get("DASHBOARD_API_KEY"):
